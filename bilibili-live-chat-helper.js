@@ -1671,10 +1671,16 @@ let replacementMap = null
               }
             },
             onFinished: async () => {
-              // Wait for queue to finish processing (max 10s to prevent infinite hang)
+              // Clear flush timeout to prevent it from adding to queue during wait
+              if (sonioxFlushTimeout) {
+                clearTimeout(sonioxFlushTimeout)
+                sonioxFlushTimeout = null
+              }
+
+              // Wait for current queue processing to finish (max 10s)
               let waitCount = 0
               const maxWait = 100 // 100 * 100ms = 10 seconds
-              while ((sonioxProcessingQueue || sonioxTextQueue.length > 0) && waitCount < maxWait) {
+              while (sonioxProcessingQueue && waitCount < maxWait) {
                 await new Promise(r => setTimeout(r, 100))
                 waitCount++
               }
