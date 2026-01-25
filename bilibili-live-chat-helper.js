@@ -1360,6 +1360,8 @@ let replacementMap = null
       sonioxLastSendTime = 0
       sonioxAccumulatedFinalText = ''
       sonioxAccumulatedTranslatedText = ''
+      sonioxFinalText.textContent = ''
+      sonioxNonFinalText.textContent = ''
       if (sonioxFlushTimeout) {
         clearTimeout(sonioxFlushTimeout)
         sonioxFlushTimeout = null
@@ -1631,7 +1633,10 @@ let replacementMap = null
               appendToLimitedLog(msgLogs, `🔴 Soniox 错误：${message}`, maxLogLines)
               sonioxStatus.textContent = `错误: ${message}`
               sonioxStatus.style.color = '#f44'
-              resetSonioxState()
+              // Only reset if not already stopping/stopped (onFinished handles cleanup during stop)
+              if (sonioxState !== 'stopping' && sonioxState !== 'stopped') {
+                resetSonioxState()
+              }
             },
           }
 
