@@ -1452,7 +1452,10 @@ let replacementMap = null
       sonioxProcessingQueue = true
 
       try {
-        while (sonioxTextQueue.length > 0) {
+        let iterations = 0
+        const maxIterations = 1000 // Safety limit to prevent infinite loops
+        while (sonioxTextQueue.length > 0 && iterations < maxIterations) {
+          iterations++
           const item = sonioxTextQueue.shift()
 
           // Special flush signal
@@ -1472,6 +1475,9 @@ let replacementMap = null
             sonioxTextQueue.push(null) // Signal flush
             processTextQueue()
           }, SONIOX_FLUSH_DELAY_MS)
+        }
+        if (iterations >= maxIterations) {
+          console.warn('[Soniox] Queue processing hit iteration limit, remaining items:', sonioxTextQueue.length)
         }
       } finally {
         sonioxProcessingQueue = false
