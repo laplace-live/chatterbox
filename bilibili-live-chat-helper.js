@@ -1331,9 +1331,10 @@ let replacementMap = null
     sonioxLangJaInput.addEventListener('change', updateLanguageHints)
 
     sonioxMaxLengthInput.addEventListener('input', () => {
-      const value = parseInt(sonioxMaxLengthInput.value, 10)
-      if (value < 1) sonioxMaxLengthInput.value = '1'
-      GM_setValue('sonioxMaxLength', parseInt(sonioxMaxLengthInput.value, 10))
+      const value = parseInt(sonioxMaxLengthInput.value, 10) || 1
+      const correctedValue = Math.max(1, value)
+      sonioxMaxLengthInput.value = String(correctedValue)
+      GM_setValue('sonioxMaxLength', correctedValue)
     })
 
     sonioxAutoSendInput.addEventListener('input', () => {
@@ -1610,16 +1611,25 @@ let replacementMap = null
                       enqueueText(totalTranslatedFinalText)
                     }
                     sonioxAccumulatedTranslatedText = totalTranslatedFinalText
-                  } else if (totalTranslatedFinalText.length < sonioxAccumulatedTranslatedText.length) {
-                    // Soniox reset (new text is shorter) - treat as fresh start
-                    if (autoSend) {
-                      enqueueText(totalTranslatedFinalText)
-                    }
-                    sonioxAccumulatedTranslatedText = totalTranslatedFinalText
                   } else {
-                    // Ambiguous case: text doesn't match expected patterns
-                    // Could be correction/reprocessing - replace accumulator but don't send to avoid duplicates
-                    console.warn('[Soniox] Ambiguous translation tokens detected, skipping send to avoid duplicates')
+                    // Text doesn't match expected patterns - check if it's a new segment or correction
+                    // Find common prefix length to distinguish between new segment vs correction
+                    let commonPrefixLen = 0
+                    const minLen = Math.min(totalTranslatedFinalText.length, sonioxAccumulatedTranslatedText.length)
+                    while (commonPrefixLen < minLen &&
+                           totalTranslatedFinalText[commonPrefixLen] === sonioxAccumulatedTranslatedText[commonPrefixLen]) {
+                      commonPrefixLen++
+                    }
+
+                    // If less than 30% overlap, treat as new segment (Soniox reset)
+                    if (commonPrefixLen < sonioxAccumulatedTranslatedText.length * 0.3) {
+                      if (autoSend) {
+                        enqueueText(totalTranslatedFinalText)
+                      }
+                    } else {
+                      // Significant overlap - likely a correction, skip to avoid duplicates
+                      console.warn('[Soniox] Translation correction detected, skipping send to avoid duplicates')
+                    }
                     sonioxAccumulatedTranslatedText = totalTranslatedFinalText
                   }
                 }
