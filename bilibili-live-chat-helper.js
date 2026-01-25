@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LAPLACE 弹幕助手 - 哔哩哔哩直播间独轮车、弹幕发送
 // @namespace    https://greasyfork.org/users/1524935
-// @version      2.3.0
+// @version      2.3.1
 // @description  这是 bilibili 直播间简易版独轮车，基于 quiet/thusiant cmd 版本 https://greasyfork.org/scripts/421507 继续维护而来
 // @author       laplace-live
 // @license      AGPL-3.0
@@ -664,6 +664,10 @@ let replacementMap = null
               <input id="sonioxLangJa" type="checkbox" value="ja" ${(GM_getValue('sonioxLanguageHints') || ['zh']).includes('ja') ? 'checked' : ''} />
               <label for="sonioxLangJa">日本語</label>
             </span>
+            <span style="display: inline-flex; align-items: center; gap: .25em;">
+              <input id="sonioxLangKo" type="checkbox" value="ko" ${(GM_getValue('sonioxLanguageHints') || ['zh']).includes('ko') ? 'checked' : ''} />
+              <label for="sonioxLangKo">한국어</label>
+            </span>
             <label for="sonioxMaxLength">超过</label>
             <input id="sonioxMaxLength" type="number" min="1" style="width: 40px;" value="${GM_getValue('sonioxMaxLength')}" />
             <span>字自动分段</span>
@@ -1254,6 +1258,8 @@ let replacementMap = null
     /** @type {HTMLInputElement} */
     const sonioxLangJaInput = document.getElementById('sonioxLangJa')
     /** @type {HTMLInputElement} */
+    const sonioxLangKoInput = document.getElementById('sonioxLangKo')
+    /** @type {HTMLInputElement} */
     const sonioxMaxLengthInput = document.getElementById('sonioxMaxLength')
     /** @type {HTMLInputElement} */
     const sonioxAutoSendInput = document.getElementById('sonioxAutoSend')
@@ -1314,6 +1320,7 @@ let replacementMap = null
       if (sonioxLangZhInput.checked) hints.push('zh')
       if (sonioxLangEnInput.checked) hints.push('en')
       if (sonioxLangJaInput.checked) hints.push('ja')
+      if (sonioxLangKoInput.checked) hints.push('ko')
       // Ensure at least one language is selected
       if (hints.length === 0) {
         hints.push('zh')
@@ -1325,6 +1332,7 @@ let replacementMap = null
     sonioxLangZhInput.addEventListener('change', updateLanguageHints)
     sonioxLangEnInput.addEventListener('change', updateLanguageHints)
     sonioxLangJaInput.addEventListener('change', updateLanguageHints)
+    sonioxLangKoInput.addEventListener('change', updateLanguageHints)
 
     sonioxMaxLengthInput.addEventListener('input', () => {
       const value = parseInt(sonioxMaxLengthInput.value, 10) || 1
