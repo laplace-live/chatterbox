@@ -1670,9 +1670,15 @@ let replacementMap = null
               }
             },
             onFinished: async () => {
-              // Wait for queue to finish processing, then flush remaining buffer
-              while (sonioxProcessingQueue || sonioxTextQueue.length > 0) {
+              // Wait for queue to finish processing (max 10s to prevent infinite hang)
+              let waitCount = 0
+              const maxWait = 100 // 100 * 100ms = 10 seconds
+              while ((sonioxProcessingQueue || sonioxTextQueue.length > 0) && waitCount < maxWait) {
                 await new Promise(r => setTimeout(r, 100))
+                waitCount++
+              }
+              if (waitCount >= maxWait) {
+                console.warn('[Soniox] Queue processing timed out, forcing flush')
               }
               await flushSonioxBuffer()
               appendToLimitedLog(msgLogs, '🎤 同传已停止', maxLogLines)
