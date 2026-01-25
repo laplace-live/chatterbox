@@ -1623,11 +1623,10 @@ let replacementMap = null
                     }
                     sonioxAccumulatedTranslatedText = totalTranslatedFinalText
                   } else {
-                    // Soniox sent only new chunks (not accumulated) - append to our accumulator
-                    if (autoSend) {
-                      enqueueText(totalTranslatedFinalText)
-                    }
-                    sonioxAccumulatedTranslatedText += totalTranslatedFinalText
+                    // Ambiguous case: text doesn't match expected patterns
+                    // Could be correction/reprocessing - replace accumulator but don't send to avoid duplicates
+                    console.warn('[Soniox] Ambiguous translation tokens detected, skipping send to avoid duplicates')
+                    sonioxAccumulatedTranslatedText = totalTranslatedFinalText
                   }
                 }
 
