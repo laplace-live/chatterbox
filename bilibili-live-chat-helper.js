@@ -1513,7 +1513,7 @@ let replacementMap = null
           // Build start config
           /** @type {Object} */
           const startConfig = {
-            model: 'stt-rt-preview-v2',
+            model: 'stt-rt-v3',
             languageHints: languageHints,
             enableEndpointDetection: true,
             onStarted: () => {
