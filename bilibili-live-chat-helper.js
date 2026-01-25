@@ -1601,9 +1601,10 @@ let replacementMap = null
                 sonioxNonFinalText.textContent = nonFinalText
               }
 
-              // If endpoint detected, trigger immediate flush instead of waiting for timeout
+              // If endpoint detected, schedule flush (sonioxIsFlushing flag prevents concurrent execution)
+              // In translation mode, delay briefly to allow translation tokens to arrive
               if (endpointDetected && autoSend) {
-                flushSonioxBuffer()
+                setTimeout(() => flushSonioxBuffer(), translationEnabled ? 300 : 0)
               }
 
               // Auto-scroll to bottom
