@@ -1545,7 +1545,7 @@ let replacementMap = null
           const startConfig = {
             model: 'stt-rt-preview-v2',
             languageHints: languageHints,
-            enable_endpoint_detection: true,
+            enableEndpointDetection: true,
             onStarted: () => {
               sonioxState = 'running'
               sonioxStartBtn.textContent = '停止同传'
@@ -1562,13 +1562,21 @@ let replacementMap = null
               // Soniox sends each token ONCE with is_final: true (per official docs).
               // We simply accumulate final tokens and enqueue them for sending.
               // translation_status: "none" (not translated), "original" (spoken text), "translation" (translated text)
+              // With enableEndpointDetection, a special <end> token signals utterance end for immediate flush.
 
               let newFinalText = ''
               let nonFinalText = ''
               let newTranslatedFinalText = ''
               let translatedNonFinalText = ''
+              let endpointDetected = false
 
               for (const token of result.tokens) {
+                // Check for endpoint detection <end> token (always final)
+                if (token.text === '<end>' && token.is_final) {
+                  endpointDetected = true
+                  continue // Skip adding <end> to text buffers
+                }
+
                 if (translationEnabled) {
                   // When translation is enabled, collect translated tokens for sending
                   if (token.translation_status === 'translation') {
@@ -1623,6 +1631,14 @@ let replacementMap = null
                 }
                 sonioxFinalText.textContent = displayText
                 sonioxNonFinalText.textContent = nonFinalText
+              }
+
+              // If endpoint detected, trigger immediate flush instead of waiting for timeout
+              if (endpointDetected && autoSend) {
+                sonioxTextQueue.push(null) // Signal flush
+                if (!sonioxProcessingQueue) {
+                  processTextQueue()
+                }
               }
 
               // Auto-scroll to bottom
