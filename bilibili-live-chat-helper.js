@@ -1405,8 +1405,10 @@ let replacementMap = null
           appendToLimitedLog(msgLogs, `❌ 同传: ${segment}，原因：${result.error}`, maxLogLines)
 
           // Try AI evasion if enabled
-          sonioxLastSendTime = Date.now() // Update before retry to ensure rate limit
-          await tryAiEvasion(segment, roomId, csrfToken, '同传')
+          const evasionResult = await tryAiEvasion(segment, roomId, csrfToken, '同传')
+          if (evasionResult.success) {
+            sonioxLastSendTime = Date.now() // Update after successful retry
+          }
         }
       } catch (error) {
         appendToLimitedLog(msgLogs, `🔴 同传发送出错：${error.message}`, maxLogLines)
