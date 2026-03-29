@@ -1,6 +1,5 @@
-// Based on https://github.com/vercel/next.js/blob/canary/packages/create-next-app/templates/app-tw/ts/biome.json
 {
-  "$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -8,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!node_modules", "!dist", "!build", "!output", "!out", "!public", "!references"]
+    "includes": ["**", "!node_modules", "!dist", "!build", "!output", "!out", "!references", "!migrations"]
   },
   "formatter": {
     "enabled": true,
@@ -19,19 +18,40 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
-      "suspicious": {
-        "noDuplicateProperties": "off",
-        "noDuplicateCustomProperties": "off",
-        // https://github.com/biomejs/biome/issues/7223
-        "noUnknownAtRules": "off"
-      },
-      "complexity": {
-        "noImportantStyles": "off"
-      },
-      "nursery": {
-        // https://biomejs.dev/linter/rules/use-sorted-classes/
-        // "useSortedClasses": "error"
+      "recommended": true
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              [":BUN:", ":NODE:", ":PACKAGE:"],
+              ":BLANK_LINE:",
+              { "type": true },
+              ":BLANK_LINE:",
+              "@/types/**",
+              ":BLANK_LINE:",
+              "@/const/**",
+              "@/data/**",
+              ":BLANK_LINE:",
+              "@/lib/**",
+              ":BLANK_LINE:",
+              "@/utils/**",
+              ":BLANK_LINE:",
+              "@/hooks/**",
+              ":BLANK_LINE:",
+              "@/handlers/**",
+              ":BLANK_LINE:",
+              "@/components/**",
+              ":BLANK_LINE:",
+              ["@/app/**", "@/pages/**"],
+              "@/**"
+            ]
+          }
+        }
       }
     }
   },
