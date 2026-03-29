@@ -1,5 +1,5 @@
 {
-  "name": "laplace-userscripts",
+  "name": "laplace-live-chat-helper",
   "private": true,
   "scripts": {
     "build": "vite build",
