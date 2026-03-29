@@ -39,8 +39,8 @@ export function setupManualSend(): void {
         appendToLimitedLog(msgLogs, `✅ 手动: ${displayMsg}`, maxLogLines)
       } else {
         let errorMsg = result.error ?? '未知错误'
-        if (result.error?.includes('f')) errorMsg = 'f - 包含全局屏蔽词'
-        else if (result.error?.includes('k')) errorMsg = 'k - 包含房间屏蔽词'
+        if (result.error === 'f' || result.error?.includes('f')) errorMsg = 'f - 包含全局屏蔽词'
+        else if (result.error === 'k' || result.error?.includes('k')) errorMsg = 'k - 包含房间屏蔽词'
 
         const displayMsg = wasReplaced ? `${originalMessage} → ${processedMessage}` : processedMessage
         appendToLimitedLog(msgLogs, `❌ 手动: ${displayMsg}，原因：${errorMsg}`, maxLogLines)
