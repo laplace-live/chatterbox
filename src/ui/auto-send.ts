@@ -99,7 +99,7 @@ export function setupAutoSend(toggleBtn: HTMLElement, _list: HTMLElement): void 
   msgIntervalInput?.addEventListener('input', () => {
     const v = parseInt(msgIntervalInput.value, 10)
     if (!(v >= 0)) msgIntervalInput.value = '0'
-    GM_setValue('msgSendInterval', msgIntervalInput.value)
+    GM_setValue('msgSendInterval', parseInt(msgIntervalInput.value, 10))
   })
 
   randomColorInput?.addEventListener('input', () => {
@@ -115,7 +115,7 @@ export function setupAutoSend(toggleBtn: HTMLElement, _list: HTMLElement): void 
   maxLengthInput?.addEventListener('input', () => {
     const value = parseInt(maxLengthInput.value, 10)
     if (value < 1) maxLengthInput.value = '1'
-    GM_setValue('maxLength', maxLengthInput.value)
+    GM_setValue('maxLength', parseInt(maxLengthInput.value, 10))
     updateMessages()
   })
 
