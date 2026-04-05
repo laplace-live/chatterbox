@@ -153,8 +153,14 @@ export function setupMemes(): void {
         return
       }
 
-      const totalCopied = memes.reduce((sum, m) => sum + m.copyCount, 0)
-      statusEl.textContent = `${memes.length} 条，共被复制 ${totalCopied} 次`
+      statusEl.textContent = ''
+      statusEl.append(`${memes.length} 条 `)
+      const contributeLink = document.createElement('a')
+      contributeLink.href = 'https://laplace.live/memes'
+      contributeLink.target = '_blank'
+      contributeLink.textContent = '贡献烂梗'
+      contributeLink.style.cssText = 'color: #3b82f6; text-decoration: none;'
+      statusEl.appendChild(contributeLink)
 
       renderMemeList(memes)
     } catch (err) {
