@@ -1,6 +1,12 @@
-import { initGMDefaults, loadPersistedTemplates } from './state.js'
-import { initUI } from './ui/index.js'
+import { h, render } from 'preact'
 
-initGMDefaults()
-loadPersistedTemplates()
-initUI()
+import { App } from './ui/App.js'
+
+const check = setInterval(() => {
+  if (!document.body) return
+  clearInterval(check)
+  const root = document.createElement('div')
+  root.id = 'laplace-chatterbox-root'
+  document.body.appendChild(root)
+  render(h(App, null), root)
+}, 100)

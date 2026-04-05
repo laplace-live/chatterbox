@@ -6,7 +6,9 @@
     "dev": "vite build --watch"
   },
   "dependencies": {
-    "@soniox/speech-to-text-web": "^1.4.0"
+    "@preact/signals": "^2.9.0",
+    "@soniox/speech-to-text-web": "^1.4.0",
+    "preact": "^10.29.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",

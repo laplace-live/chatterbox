@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import monkey, { util } from 'vite-plugin-monkey'
 
 export default defineConfig({
+  esbuild: {
+    jsxFactory: 'h',
+    jsxFragment: 'Fragment',
+  },
   plugins: [
     monkey({
       entry: 'src/main.ts',

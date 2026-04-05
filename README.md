@@ -1,4 +1,4 @@
-# LAPLACE Userscript
+# LAPLACE Chatterbox
 
 ## License
 

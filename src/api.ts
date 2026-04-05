@@ -1,5 +1,5 @@
 import { BASE_URL } from './const.js'
-import { cachedRoomId, setCachedRoomId } from './state.js'
+import { cachedRoomId } from './store.js'
 import { extractRoomNumber } from './utils.js'
 import { cachedWbiKeys, encodeWbi } from './wbi.js'
 
@@ -45,10 +45,10 @@ export async function getRoomId(url = window.location.href): Promise<number> {
  * Returns the cached room ID, fetching and caching it if needed.
  */
 export async function ensureRoomId(): Promise<number> {
-  let roomId = cachedRoomId
+  let roomId = cachedRoomId.value
   if (roomId === null) {
     roomId = await getRoomId()
-    setCachedRoomId(roomId)
+    cachedRoomId.value = roomId
   }
   return roomId
 }

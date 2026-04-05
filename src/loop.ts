@@ -1,20 +1,23 @@
 import type { DanmakuConfigResponse } from './types.js'
 
-import { GM_getValue } from '$'
 import { ensureRoomId, getCsrfToken, getSpmPrefix, sendDanmaku } from './api.js'
 import { BASE_URL } from './const.js'
 import { applyReplacements, buildReplacementMap } from './replacement.js'
 import {
   activeTemplateIndex,
+  appendLog,
   availableDanmakuColors,
   cachedRoomId,
-  MsgTemplates,
-  onRoomIdReadyCallback,
+  forceScrollDanmaku,
+  maxLength,
+  msgSendInterval,
+  msgTemplates,
+  randomChar,
+  randomColor,
+  randomInterval,
   sendMsg,
-  setAvailableDanmakuColors,
-  setSendMsg,
-} from './state.js'
-import { appendToLimitedLog, processMessages } from './utils.js'
+} from './store.js'
+import { processMessages } from './utils.js'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi.js'
 
 const DEFAULT_COLORS = [
@@ -36,24 +39,19 @@ const DEFAULT_COLORS = [
  */
 export async function loop(): Promise<void> {
   let count = 0
-  const msgLogs = document.getElementById('msgLogs') as HTMLTextAreaElement
-  const maxLogLines = GM_getValue<number>('maxLogLines')
 
-  let roomId = cachedRoomId
+  let roomId = cachedRoomId.value
   if (roomId === null) {
     try {
       roomId = await ensureRoomId()
       buildReplacementMap()
-      if (onRoomIdReadyCallback) {
-        onRoomIdReadyCallback()
-      }
 
       await waitForWbiKeys()
       if (cachedWbiKeys) {
         try {
           const configQuery = encodeWbi(
             {
-              room_id: String(cachedRoomId),
+              room_id: String(cachedRoomId.value),
               web_location: getSpmPrefix(),
             },
             cachedWbiKeys
@@ -74,7 +72,7 @@ export async function loop(): Promise<void> {
               }
             }
             if (colors.length > 0) {
-              setAvailableDanmakuColors(colors)
+              availableDanmakuColors.value = colors
               console.log('[LAPLACE Chatterbox Helper] Available colors:', colors)
             }
           }
@@ -83,12 +81,11 @@ export async function loop(): Promise<void> {
         }
       }
 
-      const forceScrollDanmaku = GM_getValue<boolean>('forceScrollDanmaku')
-      if (forceScrollDanmaku) {
+      if (forceScrollDanmaku.value) {
         const initCsrfToken = getCsrfToken()
         if (initCsrfToken) {
           const initConfigForm = new FormData()
-          initConfigForm.append('room_id', String(cachedRoomId))
+          initConfigForm.append('room_id', String(cachedRoomId.value))
           initConfigForm.append('mode', '1')
           initConfigForm.append('csrf_token', initCsrfToken)
           initConfigForm.append('csrf', initCsrfToken)
@@ -106,7 +103,7 @@ export async function loop(): Promise<void> {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      appendToLimitedLog(msgLogs, `❌ 获取房间ID失败: ${message}`, maxLogLines)
+      appendLog(`❌ 获取房间ID失败: ${message}`)
       await new Promise(r => setTimeout(r, 5000))
       return
     }
@@ -115,36 +112,32 @@ export async function loop(): Promise<void> {
   const csrfToken = getCsrfToken()
 
   while (true) {
-    if (sendMsg) {
-      const currentTemplate = MsgTemplates[activeTemplateIndex] ?? ''
+    if (sendMsg.value) {
+      const currentTemplate = msgTemplates.value[activeTemplateIndex.value] ?? ''
       if (!currentTemplate.trim()) {
-        appendToLimitedLog(msgLogs, '⚠️ 当前模板为空，已自动停止运行', maxLogLines)
-        setSendMsg(false)
-        const sendBtn = document.getElementById('sendBtn')
-        const toggleBtn = document.getElementById('toggleBtn')
-        if (sendBtn) sendBtn.textContent = '开启独轮车'
-        if (toggleBtn) (toggleBtn as HTMLElement).style.background = 'rgb(166 166 166)'
+        appendLog('⚠️ 当前模板为空，已自动停止运行')
+        sendMsg.value = false
         continue
       }
 
-      const msgSendInterval = GM_getValue<number>('msgSendInterval')
-      const enableRandomColor = GM_getValue<boolean>('randomColor')
-      const enableRandomInterval = GM_getValue<boolean>('randomInterval')
-      const enableRandomChar = GM_getValue<boolean>('randomChar')
-      const Msg = processMessages(currentTemplate, GM_getValue<number>('maxLength'), enableRandomChar)
+      const interval = msgSendInterval.value
+      const enableRandomColor = randomColor.value
+      const enableRandomInterval = randomInterval.value
+      const enableRandomChar = randomChar.value
+      const Msg = processMessages(currentTemplate, maxLength.value, enableRandomChar)
 
       for (const message of Msg) {
-        if (sendMsg) {
+        if (sendMsg.value) {
           const originalMessage = message
           const processedMessage = applyReplacements(message)
           const wasReplaced = originalMessage !== processedMessage
 
           if (enableRandomColor) {
-            const colorSet = availableDanmakuColors ?? DEFAULT_COLORS
-            const randomColor = colorSet[Math.floor(Math.random() * colorSet.length)] ?? '0xffffff'
+            const colorSet = availableDanmakuColors.value ?? DEFAULT_COLORS
+            const rndColor = colorSet[Math.floor(Math.random() * colorSet.length)] ?? '0xffffff'
             const configForm = new FormData()
             configForm.append('room_id', String(roomId))
-            configForm.append('color', randomColor)
+            configForm.append('color', rndColor)
             configForm.append('csrf_token', csrfToken ?? '')
             configForm.append('csrf', csrfToken ?? '')
             configForm.append('visit_id', '')
@@ -164,15 +157,15 @@ export async function loop(): Promise<void> {
           const logMessage = result.success
             ? `✅ 自动: ${displayMsg}`
             : `❌ 自动: ${displayMsg}，原因：${result.error}。`
-          appendToLimitedLog(msgLogs, logMessage, maxLogLines)
+          appendLog(logMessage)
 
           const resolvedRandomInterval = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
-          await new Promise(r => setTimeout(r, msgSendInterval * 1000 - resolvedRandomInterval))
+          await new Promise(r => setTimeout(r, interval * 1000 - resolvedRandomInterval))
         }
       }
 
       count += 1
-      appendToLimitedLog(msgLogs, `🔵第 ${count} 轮发送完成`, maxLogLines)
+      appendLog(`🔵第 ${count} 轮发送完成`)
     } else {
       count = 0
       await new Promise(r => setTimeout(r, 1000))

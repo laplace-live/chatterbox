@@ -46,19 +46,6 @@ export function stripTrailingPunctuation(text: string): string {
 }
 
 /**
- * Appends a message to a textarea log with a maximum line limit.
- */
-export function appendToLimitedLog(logElement: HTMLTextAreaElement, message: string, maxLines: number): void {
-  const lines = logElement.value.split('\n')
-  if (lines.length >= maxLines) {
-    lines.splice(0, lines.length - maxLines + 1)
-  }
-  lines.push(message)
-  logElement.value = lines.join('\n')
-  logElement.scrollTop = logElement.scrollHeight
-}
-
-/**
  * Extracts the room number from a Bilibili live room URL.
  */
 export function extractRoomNumber(url: string): string | undefined {

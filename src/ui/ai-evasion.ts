@@ -1,7 +1,7 @@
-import { GM_getValue } from '$'
 import { sendDanmaku } from '../api.js'
 import { BASE_URL } from '../const.js'
-import { appendToLimitedLog, getGraphemes } from '../utils.js'
+import { aiEvasion, appendLog } from '../store.js'
+import { getGraphemes } from '../utils.js'
 
 interface DetectionResult {
   hasSensitiveContent?: boolean
@@ -13,11 +13,7 @@ interface DetectionResult {
 /**
  * Calls Laplace chat-audit API to detect sensitive words.
  */
-export async function detectSensitiveWords(
-  text: string,
-  msgLogs: HTMLTextAreaElement,
-  maxLogLines: number
-): Promise<DetectionResult> {
+export async function detectSensitiveWords(text: string): Promise<DetectionResult> {
   try {
     const resp = await fetch(BASE_URL.LAPLACE_CHAT_AUDIT, {
       method: 'POST',
@@ -32,7 +28,7 @@ export async function detectSensitiveWords(
   } catch (err) {
     console.error('AI detection error:', err)
     const msg = err instanceof Error ? err.message : String(err)
-    appendToLimitedLog(msgLogs, `⚠️ AI检测服务出错：${msg}`, maxLogLines)
+    appendLog(`⚠️ AI检测服务出错：${msg}`)
     return { hasSensitiveContent: false }
   }
 }
@@ -63,36 +59,29 @@ export async function tryAiEvasion(
   message: string,
   roomId: number,
   csrfToken: string,
-  logPrefix: string,
-  msgLogs: HTMLTextAreaElement,
-  maxLogLines: number
+  logPrefix: string
 ): Promise<TryAiEvasionResult> {
-  const aiEvasionEnabled = GM_getValue<boolean>('aiEvasion', false)
-  if (!aiEvasionEnabled) return { success: false }
+  if (!aiEvasion.value) return { success: false }
 
-  appendToLimitedLog(msgLogs, `🤖 ${logPrefix}AI规避：正在检测敏感词…`, maxLogLines)
+  appendLog(`🤖 ${logPrefix}AI规避：正在检测敏感词…`)
 
-  const detection = await detectSensitiveWords(message, msgLogs, maxLogLines)
+  const detection = await detectSensitiveWords(message)
 
   if (detection.hasSensitiveContent && detection.sensitiveWords && detection.sensitiveWords.length > 0) {
-    appendToLimitedLog(
-      msgLogs,
-      `🤖 ${logPrefix}检测到敏感词：${detection.sensitiveWords.join(', ')}，正在尝试规避…`,
-      maxLogLines
-    )
+    appendLog(`🤖 ${logPrefix}检测到敏感词：${detection.sensitiveWords.join(', ')}，正在尝试规避…`)
 
     const evadedMessage = replaceSensitiveWords(message, detection.sensitiveWords)
     const retryResult = await sendDanmaku(evadedMessage, roomId, csrfToken)
 
     if (retryResult.success) {
-      appendToLimitedLog(msgLogs, `✅ ${logPrefix}AI规避成功: ${evadedMessage}`, maxLogLines)
+      appendLog(`✅ ${logPrefix}AI规避成功: ${evadedMessage}`)
       return { success: true, evadedMessage }
     }
 
-    appendToLimitedLog(msgLogs, `❌ ${logPrefix}AI规避失败: ${evadedMessage}，原因：${retryResult.error}`, maxLogLines)
+    appendLog(`❌ ${logPrefix}AI规避失败: ${evadedMessage}，原因：${retryResult.error}`)
     return { success: false, evadedMessage, error: retryResult.error }
   }
 
-  appendToLimitedLog(msgLogs, `⚠️ ${logPrefix}无法检测到敏感词，请手动检查`, maxLogLines)
+  appendLog(`⚠️ ${logPrefix}无法检测到敏感词，请手动检查`)
   return { success: false }
 }
