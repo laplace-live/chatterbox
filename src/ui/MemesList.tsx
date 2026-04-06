@@ -207,6 +207,7 @@ const MEME_RELOAD_INTERVAL = 30_000 // 30 seconds
 export function MemesList() {
   const memes = useSignal<LaplaceInternal.HTTPS.Workers.MemeWithUser[]>([])
   const sortBy = useSignal<MemeSortBy>('lastCopiedAt')
+  const filterText = useSignal('')
   const status = useSignal('')
   const statusColor = useSignal('#666')
   const loading = useSignal(false)
@@ -317,10 +318,28 @@ export function MemesList() {
           贡献烂梗
         </a>
       </div>
+      {memes.value.length > 0 && (
+        <input
+          type='text'
+          placeholder='筛选烂梗…'
+          value={filterText.value}
+          onInput={e => {
+            filterText.value = (e.target as HTMLInputElement).value
+          }}
+          style={{ boxSizing: 'border-box', width: '100%', marginBottom: '.5em' }}
+        />
+      )}
       <div ref={containerRef} style={{ maxHeight: '200px', overflowY: 'auto' }}>
-        {memes.value.map(meme => (
-          <MemeItem key={meme.id} meme={meme} onUpdateCount={updateCount} />
-        ))}
+        {memes.value
+          .filter(m => {
+            const q = filterText.value.trim().toLowerCase()
+            if (!q) return true
+            if (m.content.toLowerCase().includes(q)) return true
+            return m.tags.some(t => t.name.toLowerCase().includes(q))
+          })
+          .map(meme => (
+            <MemeItem key={meme.id} meme={meme} onUpdateCount={updateCount} />
+          ))}
       </div>
     </>
   )
