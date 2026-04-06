@@ -1,6 +1,6 @@
 import { h, render } from 'preact'
 
-import { App } from './components/App.js'
+import { App } from './components/app'
 
 const check = setInterval(() => {
   if (!document.body) return
