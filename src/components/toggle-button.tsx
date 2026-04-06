@@ -1,13 +1,12 @@
 import { useComputed } from '@preact/signals'
 
-import { sendMsg } from '../store'
+import { dialogOpen, sendMsg } from '../store'
 
 export function ToggleButton() {
   const bg = useComputed(() => (sendMsg.value ? 'rgb(0 186 143)' : '#777'))
 
   const toggle = () => {
-    const dialog = document.getElementById('laplace-chatterbox-dialog')
-    if (dialog) dialog.style.display = dialog.style.display === 'none' ? 'block' : 'none'
+    dialogOpen.value = !dialogOpen.value
   }
 
   return (

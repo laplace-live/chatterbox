@@ -1,7 +1,7 @@
 import { ensureRoomId, getCsrfToken, sendDanmaku } from './api'
 import { showConfirm } from './components/ui/alert-dialog'
 import { applyReplacements } from './replacement'
-import { activeTab, appendLog, danmakuDirectConfirm, danmakuDirectMode, fasongText } from './store'
+import { activeTab, appendLog, danmakuDirectConfirm, danmakuDirectMode, dialogOpen, fasongText } from './store'
 
 const MARKER = 'lc-dm-direct'
 const STYLE_ID = 'lc-dm-direct-style'
@@ -88,10 +88,7 @@ function injectButtons(node: HTMLElement, msg: string): void {
 function handleSteal(msg: string): void {
   fasongText.value = msg
   activeTab.value = 'fasong'
-  const dialog = document.getElementById('laplace-chatterbox-dialog')
-  if (dialog && dialog.style.display === 'none') {
-    dialog.style.display = 'block'
-  }
+  dialogOpen.value = true
   appendLog(`🥷 偷: ${msg}`)
 }
 

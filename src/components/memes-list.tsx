@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef } from 'preact/hooks'
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../api'
 import { BASE_URL } from '../const'
 import { applyReplacements } from '../replacement'
-import { appendLog, cachedStreamerUid } from '../store'
+import { appendLog, cachedStreamerUid, optimizeLayout } from '../store'
 
 type MemeSortBy = NonNullable<LaplaceInternal.HTTPS.Workers.MemeListQuery['sortBy']>
 
@@ -335,7 +335,16 @@ export function MemesList() {
           style={{ boxSizing: 'border-box', width: '100%', marginBottom: '.5em' }}
         />
       )}
-      <div ref={containerRef} style={{ maxHeight: '200px', overflowY: 'auto' }}>
+      <div
+        ref={containerRef}
+        style={{
+          overflowY: 'auto',
+          marginLeft: '-10px',
+          marginRight: '-10px',
+          paddingInline: '10px',
+          ...(optimizeLayout.value ? { flex: 1, minHeight: 0 } : { maxHeight: '240px' }),
+        }}
+      >
         {memes.value
           .filter(m => {
             const q = filterText.value.trim().toLowerCase()

@@ -42,6 +42,7 @@ export const remoteKeywords = gmSignal<{
 export const remoteKeywordsLastSync = gmSignal<number | null>('remoteKeywordsLastSync', null)
 
 // Runtime state (not GM-persisted)
+export const dialogOpen = signal(false)
 export const sendMsg = signal(false)
 export const cachedRoomId = signal<number | null>(null)
 export const cachedStreamerUid = signal<number | null>(null)
