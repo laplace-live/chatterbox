@@ -1,6 +1,6 @@
 import type { LaplaceInternal } from '@laplace.live/internal'
 import { useSignal } from '@preact/signals'
-import { useEffect } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../api.js'
 import { BASE_URL } from '../const.js'
@@ -114,6 +114,7 @@ function MemeItem({
 
   return (
     <div
+      data-meme-id={meme.id}
       style={{
         padding: '.4em 0',
         borderBottom: '1px solid var(--Ga2, #eee)',
@@ -201,20 +202,36 @@ function MemeItem({
   )
 }
 
+const MEME_RELOAD_INTERVAL = 30_000 // 30 seconds
+
 export function MemesList() {
   const memes = useSignal<LaplaceInternal.HTTPS.Workers.MemeWithUser[]>([])
   const sortBy = useSignal<MemeSortBy>('lastCopiedAt')
   const status = useSignal('')
   const statusColor = useSignal('#666')
   const loading = useSignal(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const prevRectsRef = useRef<Map<number, DOMRect>>(new Map())
 
-  const loadMemes = async () => {
-    loading.value = true
+  const capturePositions = () => {
+    const el = containerRef.current
+    if (!el) return
+    const map = new Map<number, DOMRect>()
+    for (let i = 0; i < el.children.length; i++) {
+      const child = el.children[i] as HTMLElement
+      const id = Number(child.dataset.memeId)
+      if (!Number.isNaN(id)) map.set(id, child.getBoundingClientRect())
+    }
+    prevRectsRef.current = map
+  }
+
+  const loadMemes = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) loading.value = true
     statusColor.value = '#666'
 
     try {
       const roomId = await ensureRoomId()
-      const data = await fetchMemes(roomId, sortBy.value)
+      const data = await fetchMemes(roomId, sortBy.peek())
 
       if (data.length === 0) {
         memes.value = []
@@ -222,6 +239,7 @@ export function MemesList() {
         return
       }
 
+      if (memes.peek().length > 0) capturePositions()
       status.value = `${data.length} 条`
       memes.value = data
     } catch (err) {
@@ -229,9 +247,37 @@ export function MemesList() {
       status.value = `加载失败: ${msg}`
       statusColor.value = '#f44'
     } finally {
-      loading.value = false
+      if (!silent) loading.value = false
     }
   }
+
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    const old = prevRectsRef.current
+    if (!el || old.size === 0) return
+    prevRectsRef.current = new Map()
+
+    for (let i = 0; i < el.children.length; i++) {
+      const node = el.children[i] as HTMLElement
+      const id = Number(node.dataset.memeId)
+      const prev = old.get(id)
+      if (!prev) continue
+
+      const curr = node.getBoundingClientRect()
+      const dy = prev.top - curr.top
+      if (Math.abs(dy) < 1) continue
+
+      node.style.transform = `translateY(${dy}px)`
+      node.style.transition = ''
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          node.style.transition = 'transform .3s ease'
+          node.style.transform = ''
+        })
+      })
+    }
+  }, [memes.value])
 
   const updateCount = (id: number, count: number) => {
     memes.value = memes.value.map(m => (m.id === id ? { ...m, copyCount: count } : m))
@@ -239,7 +285,9 @@ export function MemesList() {
 
   useEffect(() => {
     void loadMemes()
-  }, [])
+    const timer = setInterval(() => void loadMemes({ silent: true }), MEME_RELOAD_INTERVAL)
+    return () => clearInterval(timer)
+  }, [sortBy.value])
 
   return (
     <>
@@ -250,7 +298,6 @@ export function MemesList() {
           value={sortBy.value}
           onChange={e => {
             sortBy.value = (e.target as HTMLSelectElement).value as MemeSortBy
-            void loadMemes()
           }}
         >
           <option value='lastCopiedAt'>最近复制</option>
@@ -270,7 +317,7 @@ export function MemesList() {
           贡献烂梗
         </a>
       </div>
-      <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+      <div ref={containerRef} style={{ maxHeight: '200px', overflowY: 'auto' }}>
         {memes.value.map(meme => (
           <MemeItem key={meme.id} meme={meme} onUpdateCount={updateCount} />
         ))}
