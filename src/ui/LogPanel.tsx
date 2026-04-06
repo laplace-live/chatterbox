@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks'
 
-import { logLines, maxLogLines } from '../store.js'
+import { logLines, logPanelOpen, maxLogLines } from '../store.js'
 
 export function LogPanel() {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -10,7 +10,13 @@ export function LogPanel() {
   }, [logLines.value])
 
   return (
-    <details style={{ marginTop: '.25em' }}>
+    <details
+      open={logPanelOpen.value}
+      onToggle={e => {
+        logPanelOpen.value = e.currentTarget.open
+      }}
+      style={{ marginTop: '.25em' }}
+    >
       <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>日志</summary>
       <textarea
         ref={ref}

@@ -21,6 +21,7 @@ export const optimizeLayout = gmSignal('optimizeLayout', false)
 export const activeTab = gmSignal('activeTab', 'dulunche')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
 export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)
+export const logPanelOpen = gmSignal('logPanelOpen', false)
 
 // Soniox settings
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
