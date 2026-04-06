@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { startDanmakuDirect, stopDanmakuDirect } from '../danmaku-direct.js'
 import { loop } from '../loop.js'
 import { danmakuDirectMode, optimizeLayout } from '../store.js'
+import { AlertDialog } from './AlertDialog.js'
 import { Dialog } from './Dialog.js'
 import { ToggleButton } from './ToggleButton.js'
 
@@ -48,6 +49,7 @@ export function App() {
     <>
       <ToggleButton />
       <Dialog />
+      <AlertDialog />
     </>
   )
 }

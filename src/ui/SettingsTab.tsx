@@ -7,6 +7,7 @@ import { buildReplacementMap } from '../replacement.js'
 import {
   appendLog,
   cachedRoomId,
+  danmakuDirectConfirm,
   danmakuDirectMode,
   forceScrollDanmaku,
   maxLogLines,
@@ -415,6 +416,20 @@ export function SettingsTab() {
               }}
             />
             <label htmlFor='danmakuDirectMode'>+1模式（在聊天消息旁显示偷弹幕和+1按钮）</label>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em', paddingLeft: '1.5em' }}>
+            <input
+              id='danmakuDirectConfirm'
+              type='checkbox'
+              checked={danmakuDirectConfirm.value}
+              disabled={!danmakuDirectMode.value}
+              onInput={e => {
+                danmakuDirectConfirm.value = (e.target as HTMLInputElement).checked
+              }}
+            />
+            <label htmlFor='danmakuDirectConfirm' style={{ color: danmakuDirectMode.value ? undefined : '#999' }}>
+              +1弹幕发送前需确认
+            </label>
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
             <input

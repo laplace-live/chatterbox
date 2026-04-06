@@ -1,6 +1,7 @@
 import { ensureRoomId, getCsrfToken, sendDanmaku } from './api.js'
 import { applyReplacements } from './replacement.js'
-import { activeTab, appendLog, danmakuDirectMode, fasongText } from './store.js'
+import { activeTab, appendLog, danmakuDirectConfirm, danmakuDirectMode, fasongText } from './store.js'
+import { showConfirm } from './ui/AlertDialog.js'
 
 const MARKER = 'lc-dm-direct'
 const STYLE_ID = 'lc-dm-direct-style'
@@ -95,6 +96,11 @@ function handleSteal(msg: string): void {
 }
 
 async function handleRepeat(msg: string): Promise<void> {
+  if (danmakuDirectConfirm.value) {
+    const confirmed = await showConfirm({ title: '确认发送以下弹幕？', body: msg, confirmText: '发送' })
+    if (!confirmed) return
+  }
+
   try {
     const roomId = await ensureRoomId()
     const csrfToken = getCsrfToken()
