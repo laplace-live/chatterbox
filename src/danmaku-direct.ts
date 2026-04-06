@@ -131,6 +131,7 @@ function handleDelegatedClick(e: Event): void {
 let observer: MutationObserver | null = null
 let styleEl: HTMLStyleElement | null = null
 let delegateTarget: HTMLElement | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function processExistingNodes(container: HTMLElement): void {
   const nodes = Array.from(container.querySelectorAll<HTMLElement>('.chat-item.danmaku-item'))
@@ -176,12 +177,20 @@ export function startDanmakuDirect(): void {
   if (observer) return
   if (tryAttach()) return
 
-  const poll = setInterval(() => {
-    if (tryAttach()) clearInterval(poll)
+  // Bilibili's SPA may not have rendered .chat-items yet; poll until it appears
+  pollTimer = setInterval(() => {
+    if (tryAttach()) {
+      if (pollTimer !== null) clearInterval(pollTimer)
+      pollTimer = null
+    }
   }, 1000)
 }
 
 export function stopDanmakuDirect(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
   if (observer) {
     observer.disconnect()
     observer = null
