@@ -37,7 +37,7 @@ export async function getRoomId(url = window.location.href): Promise<number> {
     throw new Error(`HTTP ${room.status}: ${room.statusText}`)
   }
 
-  const roomData = (await room.json()) as { data: { room_id: number; uid: number } }
+  const roomData: { data: { room_id: number; uid: number } } = await room.json()
   cachedStreamerUid.value = roomData.data.uid
   return roomData.data.room_id
 }

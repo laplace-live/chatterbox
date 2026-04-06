@@ -9,6 +9,9 @@ import { appendLog, cachedStreamerUid } from '../store'
 
 type MemeSortBy = NonNullable<LaplaceInternal.HTTPS.Workers.MemeListQuery['sortBy']>
 
+const MEME_SORT_OPTIONS: Set<string> = new Set<MemeSortBy>(['lastCopiedAt', 'copyCount', 'createdAt'])
+const isMemeSortBy = (v: string): v is MemeSortBy => MEME_SORT_OPTIONS.has(v)
+
 const TAG_COLORS: Record<string, string> = {
   red: '#ef4444',
   yellow: '#eab308',
@@ -219,7 +222,8 @@ export function MemesList() {
     if (!el) return
     const map = new Map<number, DOMRect>()
     for (let i = 0; i < el.children.length; i++) {
-      const child = el.children[i] as HTMLElement
+      const child = el.children[i]
+      if (!(child instanceof HTMLElement)) continue
       const id = Number(child.dataset.memeId)
       if (!Number.isNaN(id)) map.set(id, child.getBoundingClientRect())
     }
@@ -259,7 +263,8 @@ export function MemesList() {
     prevRectsRef.current = new Map()
 
     for (let i = 0; i < el.children.length; i++) {
-      const node = el.children[i] as HTMLElement
+      const node = el.children[i]
+      if (!(node instanceof HTMLElement)) continue
       const id = Number(node.dataset.memeId)
       const prev = old.get(id)
       if (!prev) continue
@@ -298,7 +303,8 @@ export function MemesList() {
           style={{ fontSize: '12px' }}
           value={sortBy.value}
           onChange={e => {
-            sortBy.value = (e.target as HTMLSelectElement).value as MemeSortBy
+            const v = e.currentTarget.value
+            if (isMemeSortBy(v)) sortBy.value = v
           }}
         >
           <option value='lastCopiedAt'>最近复制</option>
@@ -324,7 +330,7 @@ export function MemesList() {
           placeholder='筛选烂梗…'
           value={filterText.value}
           onInput={e => {
-            filterText.value = (e.target as HTMLInputElement).value
+            filterText.value = e.currentTarget.value
           }}
           style={{ boxSizing: 'border-box', width: '100%', marginBottom: '.5em' }}
         />

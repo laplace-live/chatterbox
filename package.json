@@ -1,9 +1,12 @@
 {
   "name": "laplace-live-chat-helper",
   "private": true,
+  "version": "2.3.8",
+  "type": "module",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite build --watch"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@preact/signals": "^2.9.0",

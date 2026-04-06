@@ -64,7 +64,7 @@ export function AutoSendControls() {
           style={{ width: '16ch' }}
           value={String(idx)}
           onChange={e => {
-            activeTemplateIndex.value = parseInt((e.target as HTMLSelectElement).value, 10)
+            activeTemplateIndex.value = parseInt(e.currentTarget.value, 10)
           }}
         >
           {templates.map((t, i) => (
@@ -83,7 +83,7 @@ export function AutoSendControls() {
 
       <textarea
         value={currentTemplate}
-        onInput={e => updateTemplate((e.target as HTMLTextAreaElement).value)}
+        onInput={e => updateTemplate(e.currentTarget.value)}
         placeholder='在这输入弹幕，每行一句话，超过可发送字数的会自动进行分割'
         style={{ boxSizing: 'border-box', height: '100px', width: '100%', resize: 'vertical' }}
       />
@@ -98,7 +98,7 @@ export function AutoSendControls() {
           style={{ width: '40px' }}
           value={msgSendInterval.value}
           onInput={e => {
-            const v = parseInt((e.target as HTMLInputElement).value, 10)
+            const v = parseInt(e.currentTarget.value, 10)
             msgSendInterval.value = v >= 0 ? v : 0
           }}
         />
@@ -111,7 +111,7 @@ export function AutoSendControls() {
           style={{ width: '30px' }}
           value={maxLength.value}
           onInput={e => {
-            const v = parseInt((e.target as HTMLInputElement).value, 10)
+            const v = parseInt(e.currentTarget.value, 10)
             maxLength.value = v >= 1 ? v : 1
           }}
         />
@@ -122,7 +122,7 @@ export function AutoSendControls() {
             type='checkbox'
             checked={randomColor.value}
             onInput={e => {
-              randomColor.value = (e.target as HTMLInputElement).checked
+              randomColor.value = e.currentTarget.checked
             }}
           />
           <label for='randomColor'>随机颜色</label>
@@ -133,7 +133,7 @@ export function AutoSendControls() {
             type='checkbox'
             checked={randomInterval.value}
             onInput={e => {
-              randomInterval.value = (e.target as HTMLInputElement).checked
+              randomInterval.value = e.currentTarget.checked
             }}
           />
           <label for='randomInterval'>间隔增加随机性</label>
@@ -144,7 +144,7 @@ export function AutoSendControls() {
             type='checkbox'
             checked={randomChar.value}
             onInput={e => {
-              randomChar.value = (e.target as HTMLInputElement).checked
+              randomChar.value = e.currentTarget.checked
             }}
           />
           <label for='randomChar'>随机字符</label>

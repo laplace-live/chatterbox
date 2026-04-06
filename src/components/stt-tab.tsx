@@ -267,7 +267,7 @@ export function SttTab() {
             style={{ flex: 1, minWidth: '150px' }}
             value={sonioxApiKey.value}
             onInput={e => {
-              sonioxApiKey.value = (e.target as HTMLInputElement).value
+              sonioxApiKey.value = e.currentTarget.value
             }}
           />
           <button
@@ -300,7 +300,7 @@ export function SttTab() {
                 <input
                   type='checkbox'
                   checked={hints.includes(lang)}
-                  onChange={e => updateLangHints(lang, (e.target as HTMLInputElement).checked)}
+                  onChange={e => updateLangHints(lang, e.currentTarget.checked)}
                 />
                 <label htmlFor={lang}>{labels[lang]}</label>
               </span>
@@ -314,7 +314,7 @@ export function SttTab() {
             style={{ width: '40px' }}
             value={sonioxMaxLength.value}
             onInput={e => {
-              const v = parseInt((e.target as HTMLInputElement).value, 10) || 1
+              const v = parseInt(e.currentTarget.value, 10) || 1
               sonioxMaxLength.value = Math.max(1, v)
             }}
           />
@@ -327,7 +327,7 @@ export function SttTab() {
               type='checkbox'
               checked={sonioxAutoSend.value}
               onInput={e => {
-                sonioxAutoSend.value = (e.target as HTMLInputElement).checked
+                sonioxAutoSend.value = e.currentTarget.checked
               }}
             />
             <label htmlFor='sonioxAutoSend'>识别完成后自动发送弹幕</label>
@@ -344,7 +344,7 @@ export function SttTab() {
               type='checkbox'
               checked={sonioxTranslationEnabled.value}
               onInput={e => {
-                sonioxTranslationEnabled.value = (e.target as HTMLInputElement).checked
+                sonioxTranslationEnabled.value = e.currentTarget.checked
               }}
             />
             <label htmlFor='sonioxTranslationEnabled'>启用实时翻译</label>
@@ -357,7 +357,7 @@ export function SttTab() {
             style={{ minWidth: '80px' }}
             value={sonioxTranslationTarget.value}
             onChange={e => {
-              sonioxTranslationTarget.value = (e.target as HTMLSelectElement).value
+              sonioxTranslationTarget.value = e.currentTarget.value
             }}
           >
             <option value='en'>English</option>

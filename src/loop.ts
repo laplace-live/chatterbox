@@ -57,10 +57,10 @@ export async function loop(): Promise<void> {
             cachedWbiKeys
           )
           const configUrl = `${BASE_URL.BILIBILI_GET_DM_CONFIG}?${configQuery}`
-          const configResp = (await fetch(configUrl, {
+          const configResp: DanmakuConfigResponse = await fetch(configUrl, {
             method: 'GET',
             credentials: 'include',
-          }).then(r => r.json())) as DanmakuConfigResponse
+          }).then(r => r.json())
 
           if (configResp?.data?.group) {
             const colors: string[] = []

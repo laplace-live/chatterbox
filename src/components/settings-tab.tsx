@@ -349,10 +349,10 @@ export function SettingsTab() {
             style={{ flex: 1, minWidth: '80px' }}
             value={replaceFrom.value}
             onInput={e => {
-              replaceFrom.value = (e.target as HTMLInputElement).value
+              replaceFrom.value = e.currentTarget.value
             }}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !(e as KeyboardEvent).isComposing) {
+              if (e.key === 'Enter' && !e.isComposing) {
                 e.preventDefault()
                 addRule()
               }
@@ -364,10 +364,10 @@ export function SettingsTab() {
             style={{ flex: 1, minWidth: '80px' }}
             value={replaceTo.value}
             onInput={e => {
-              replaceTo.value = (e.target as HTMLInputElement).value
+              replaceTo.value = e.currentTarget.value
             }}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !(e as KeyboardEvent).isComposing) {
+              if (e.key === 'Enter' && !e.isComposing) {
                 e.preventDefault()
                 addRule()
               }
@@ -393,7 +393,7 @@ export function SettingsTab() {
             style={{ width: '80px' }}
             value={maxLogLines.value}
             onChange={e => {
-              let v = parseInt((e.target as HTMLInputElement).value, 10)
+              let v = parseInt(e.currentTarget.value, 10)
               if (Number.isNaN(v) || v < 1) v = 1
               else if (v > 1000) v = 1000
               maxLogLines.value = v
@@ -412,7 +412,7 @@ export function SettingsTab() {
               type='checkbox'
               checked={danmakuDirectMode.value}
               onInput={e => {
-                danmakuDirectMode.value = (e.target as HTMLInputElement).checked
+                danmakuDirectMode.value = e.currentTarget.checked
               }}
             />
             <label htmlFor='danmakuDirectMode'>+1模式（在聊天消息旁显示偷弹幕和+1按钮）</label>
@@ -424,7 +424,7 @@ export function SettingsTab() {
               checked={danmakuDirectConfirm.value}
               disabled={!danmakuDirectMode.value}
               onInput={e => {
-                danmakuDirectConfirm.value = (e.target as HTMLInputElement).checked
+                danmakuDirectConfirm.value = e.currentTarget.checked
               }}
             />
             <label htmlFor='danmakuDirectConfirm' style={{ color: danmakuDirectMode.value ? undefined : '#999' }}>
@@ -437,7 +437,7 @@ export function SettingsTab() {
               type='checkbox'
               checked={forceScrollDanmaku.value}
               onInput={e => {
-                forceScrollDanmaku.value = (e.target as HTMLInputElement).checked
+                forceScrollDanmaku.value = e.currentTarget.checked
               }}
             />
             <label htmlFor='forceScrollDanmaku'>脚本载入时强制配置弹幕位置为滚动方向</label>
@@ -448,7 +448,7 @@ export function SettingsTab() {
               type='checkbox'
               checked={optimizeLayout.value}
               onInput={e => {
-                optimizeLayout.value = (e.target as HTMLInputElement).checked
+                optimizeLayout.value = e.currentTarget.checked
               }}
             />
             <label htmlFor='optimizeLayout'>优化布局</label>

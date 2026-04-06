@@ -48,10 +48,10 @@ export function NormalSendTab() {
         <textarea
           value={fasongText.value}
           onInput={e => {
-            fasongText.value = (e.target as HTMLTextAreaElement).value
+            fasongText.value = e.currentTarget.value
           }}
           onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey && !(e as KeyboardEvent).isComposing) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
               e.preventDefault()
               void sendMessage()
             }
@@ -84,7 +84,7 @@ export function NormalSendTab() {
             type='checkbox'
             checked={aiEvasion.value}
             onInput={e => {
-              aiEvasion.value = (e.target as HTMLInputElement).checked
+              aiEvasion.value = e.currentTarget.checked
             }}
           />
           <label for='aiEvasion'>AI规避（发送失败时自动检测敏感词并重试）</label>
