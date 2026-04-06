@@ -7,6 +7,7 @@ interface ConfirmOptions {
   body?: ComponentChildren
   confirmText?: string
   cancelText?: string
+  anchor?: { x: number; y: number }
   resolve: (confirmed: boolean) => void
 }
 
@@ -17,6 +18,7 @@ export function showConfirm(opts?: {
   body?: ComponentChildren
   confirmText?: string
   cancelText?: string
+  anchor?: { x: number; y: number }
 }): Promise<boolean> {
   return new Promise(resolve => {
     pending.value = { ...opts, resolve }
@@ -32,6 +34,21 @@ export function AlertDialog() {
     if (!dialog) return
     if (p) {
       dialog.showModal()
+
+      if (p.anchor) {
+        const rect = dialog.getBoundingClientRect()
+        const x = Math.max(0, Math.min(p.anchor.x - rect.width / 2, window.innerWidth - rect.width))
+        const y = Math.max(0, Math.min(p.anchor.y - rect.height - 8, window.innerHeight - rect.height))
+        dialog.style.margin = '0'
+        dialog.style.position = 'fixed'
+        dialog.style.left = `${x}px`
+        dialog.style.top = `${y}px`
+      } else {
+        dialog.style.margin = ''
+        dialog.style.position = ''
+        dialog.style.left = ''
+        dialog.style.top = ''
+      }
     } else {
       dialog.close()
     }
@@ -50,6 +67,12 @@ export function AlertDialog() {
       onCancel={e => {
         e.preventDefault()
         close(false)
+      }}
+      onClick={e => {
+        if (p.anchor && e.target === ref.current) close(false)
+      }}
+      onKeyDown={e => {
+        if (p.anchor && e.key === 'Escape') close(false)
       }}
       style={{
         border: '1px solid var(--Ga2, #ccc)',

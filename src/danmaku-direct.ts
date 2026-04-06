@@ -95,9 +95,9 @@ function handleSteal(msg: string): void {
   appendLog(`🥷 偷: ${msg}`)
 }
 
-async function handleRepeat(msg: string): Promise<void> {
+async function handleRepeat(msg: string, anchor?: { x: number; y: number }): Promise<void> {
   if (danmakuDirectConfirm.value) {
-    const confirmed = await showConfirm({ title: '确认发送以下弹幕？', body: msg, confirmText: '发送' })
+    const confirmed = await showConfirm({ title: '确认发送以下弹幕？', body: msg, confirmText: '发送', anchor })
     if (!confirmed) return
   }
 
@@ -122,16 +122,20 @@ async function handleRepeat(msg: string): Promise<void> {
   }
 }
 
-function handleDelegatedClick(e: Event): void {
-  const btn = (e.target as HTMLElement).closest(`.${MARKER} button`) as HTMLElement | null
+function handleDelegatedClick(e: MouseEvent): void {
+  const target = e.target
+  if (!(target instanceof HTMLElement)) return
+  const btn = target.closest<HTMLElement>(`.${MARKER} button`)
   if (!btn) return
   e.stopPropagation()
-  const container = btn.closest(`.${MARKER}`) as HTMLElement | null
+  const container = btn.closest<HTMLElement>(`.${MARKER}`)
   const msg = container?.dataset.msg
   if (!msg) return
   const action = btn.dataset.action
   if (action === 'steal') handleSteal(msg)
-  else if (action === 'repeat') void handleRepeat(msg)
+  else if (action === 'repeat') {
+    void handleRepeat(msg, { x: e.clientX, y: e.clientY })
+  }
 }
 
 let observer: MutationObserver | null = null

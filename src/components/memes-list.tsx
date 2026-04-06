@@ -168,10 +168,10 @@ function MemeItem({
             transition: 'background .15s',
           }}
           onMouseEnter={e => {
-            ;(e.currentTarget as HTMLElement).style.background = 'var(--bg2, #f0f0f0)'
+            e.currentTarget.style.background = 'var(--bg2, #f0f0f0)'
           }}
           onMouseLeave={e => {
-            ;(e.currentTarget as HTMLElement).style.background = ''
+            e.currentTarget.style.background = ''
           }}
         >
           {meme.content}
