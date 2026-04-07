@@ -1,7 +1,7 @@
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../api'
 import { applyReplacements } from '../replacement'
-import { aiEvasion, appendLog, fasongText, isEmoticonUnique } from '../store'
-import { formatDanmakuError } from '../utils'
+import { aiEvasion, appendLog, fasongText, isEmoticonUnique, maxLength, msgSendInterval } from '../store'
+import { formatDanmakuError, processMessages } from '../utils'
 import { tryAiEvasion } from './ai-evasion'
 
 export function NormalSendTab() {
@@ -12,7 +12,6 @@ export function NormalSendTab() {
       return
     }
 
-    // 如果消息是表情，则直接发送，否则进行替换
     const isEmote = isEmoticonUnique(originalMessage)
     const processedMessage = isEmote ? originalMessage : applyReplacements(originalMessage)
     const wasReplaced = !isEmote && originalMessage !== processedMessage
@@ -26,16 +25,27 @@ export function NormalSendTab() {
         return
       }
 
-      const result = await sendDanmaku(processedMessage, roomId, csrfToken)
-      const label = result.isEmoticon ? '手动表情' : '手动'
+      const segments = isEmote ? [processedMessage] : processMessages(processedMessage, maxLength.value)
+      const total = segments.length
 
-      if (result.success) {
-        const displayMsg = wasReplaced ? `${originalMessage} → ${processedMessage}` : processedMessage
-        appendLog(`✅ ${label}: ${displayMsg}`)
-      } else {
-        const displayMsg = wasReplaced ? `${originalMessage} → ${processedMessage}` : processedMessage
-        appendLog(`❌ ${label}: ${displayMsg}，原因：${formatDanmakuError(result.error)}`)
-        await tryAiEvasion(processedMessage, roomId, csrfToken, '')
+      for (let i = 0; i < total; i++) {
+        const segment = segments[i]
+        const result = await sendDanmaku(segment, roomId, csrfToken)
+        const baseLabel = result.isEmoticon ? '手动表情' : '手动'
+        const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
+
+        if (result.success) {
+          const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
+          appendLog(`✅ ${label}: ${displayMsg}`)
+        } else {
+          const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
+          appendLog(`❌ ${label}: ${displayMsg}，原因：${formatDanmakuError(result.error)}`)
+          await tryAiEvasion(segment, roomId, csrfToken, '')
+        }
+
+        if (i < total - 1) {
+          await new Promise(r => setTimeout(r, msgSendInterval.value * 1000))
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

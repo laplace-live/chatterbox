@@ -12,7 +12,7 @@ function gmSignal<T>(key: string, defaultValue: T) {
 
 // GM-persisted settings
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
-export const maxLength = gmSignal('maxLength', 20)
+export const maxLength = gmSignal('maxLength', 38)
 export const maxLogLines = gmSignal('maxLogLines', 1000)
 export const randomColor = gmSignal('randomColor', false)
 export const randomInterval = gmSignal('randomInterval', false)
