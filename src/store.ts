@@ -58,10 +58,43 @@ export const remoteKeywords = gmSignal<{
 } | null>('remoteKeywords', null)
 export const remoteKeywordsLastSync = gmSignal<number | null>('remoteKeywordsLastSync', null)
 
+export const persistSendState = gmSignal<Record<string, boolean>>('persistSendState', {})
+
 // Runtime state (not GM-persisted)
 export const dialogOpen = signal(false)
 export const sendMsg = signal(false)
 export const cachedRoomId = signal<number | null>(null)
+
+effect(() => {
+  const persist = persistSendState.value
+  const roomId = cachedRoomId.peek()
+  if (roomId === null) return
+  const key = String(roomId)
+  if (persist[key]) {
+    const stored = GM_getValue<Record<string, boolean>>('persistedSendMsg', {})
+    GM_setValue('persistedSendMsg', { ...stored, [key]: sendMsg.value })
+  } else {
+    const stored = GM_getValue<Record<string, boolean>>('persistedSendMsg', {})
+    if (key in stored) {
+      const { [key]: _, ...rest } = stored
+      GM_setValue('persistedSendMsg', rest)
+    }
+  }
+})
+
+export function restoreSendState(): void {
+  const roomId = cachedRoomId.value
+  if (roomId === null) return
+  const key = String(roomId)
+  if (persistSendState.peek()[key]) {
+    const stored = GM_getValue<Record<string, boolean>>('persistedSendMsg', {})
+    if (stored[key]) {
+      sendMsg.value = true
+      appendLog('🔄 已恢复独轮车运行状态')
+    }
+  }
+}
+
 export const cachedStreamerUid = signal<number | null>(null)
 export const availableDanmakuColors = signal<string[] | null>(null)
 export const replacementMap = signal<Map<string, string> | null>(null)

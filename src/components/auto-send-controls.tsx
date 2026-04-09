@@ -1,9 +1,11 @@
 import {
   activeTemplateIndex,
   appendLog,
+  cachedRoomId,
   maxLength,
   msgSendInterval,
   msgTemplates,
+  persistSendState,
   randomChar,
   randomColor,
   randomInterval,
@@ -148,6 +150,20 @@ export function AutoSendControls() {
             }}
           />
           <label for='randomChar'>随机字符</label>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          <input
+            id='persistSendState'
+            type='checkbox'
+            disabled={cachedRoomId.value === null}
+            checked={cachedRoomId.value !== null && !!persistSendState.value[String(cachedRoomId.value)]}
+            onInput={e => {
+              const roomId = cachedRoomId.value
+              if (roomId === null) return
+              persistSendState.value = { ...persistSendState.value, [String(roomId)]: e.currentTarget.checked }
+            }}
+          />
+          <label for='persistSendState'>保持当前直播间独轮车开关状态</label>
         </span>
       </div>
     </>

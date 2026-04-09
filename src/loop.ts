@@ -16,6 +16,7 @@ import {
   randomChar,
   randomColor,
   randomInterval,
+  restoreSendState,
   sendMsg,
 } from './store'
 import { formatDanmakuError, processMessages } from './utils'
@@ -114,6 +115,8 @@ export async function loop(): Promise<void> {
       await new Promise(r => setTimeout(r, 5000))
       return
     }
+
+    restoreSendState()
   }
 
   const csrfToken = getCsrfToken()
