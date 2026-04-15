@@ -37,7 +37,7 @@ export function Configurator() {
 
       <div
         style={{
-          display: tab === 'dulunche' ? (optimized ? 'flex' : 'block') : 'none',
+          display: tab === 'fasong' ? (optimized ? 'flex' : 'block') : 'none',
           flexDirection: optimized ? 'column' : undefined,
           flex: optimized ? 1 : undefined,
           paddingInline: '10px',
@@ -47,26 +47,12 @@ export function Configurator() {
         <AutoSendControls />
         <div
           style={{
-            margin: '.5em 0',
-            paddingTop: '.5em',
-            borderTop: '1px solid var(--Ga2, #eee)',
+            margin: '.5rem 0',
             ...(optimized && { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }),
           }}
         >
           <MemesList />
         </div>
-      </div>
-
-      <div
-        style={{
-          display: tab === 'fasong' ? (optimized ? 'flex' : 'block') : 'none',
-          flexDirection: optimized ? 'column' : undefined,
-          flex: optimized ? 1 : undefined,
-          paddingInline: '10px',
-          minHeight: optimized ? 0 : undefined,
-          overflowY: optimized ? 'auto' : undefined,
-        }}
-      >
         <NormalSendTab />
       </div>
 

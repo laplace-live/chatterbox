@@ -1,8 +1,7 @@
 import { activeTab } from '../store'
 
 const TABS = [
-  { id: 'dulunche', label: '独轮车' },
-  { id: 'fasong', label: '常规发送' },
+  { id: 'fasong', label: '发送' },
   { id: 'tongchuan', label: '同传' },
   { id: 'settings', label: '设置' },
   { id: 'about', label: '关于' },

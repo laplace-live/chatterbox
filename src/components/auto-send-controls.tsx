@@ -2,6 +2,7 @@ import { cancelLoop } from '../loop'
 import {
   activeTemplateIndex,
   appendLog,
+  autoSendPanelOpen,
   cachedRoomId,
   maxLength,
   msgSendInterval,
@@ -59,7 +60,15 @@ export function AutoSendControls() {
   }
 
   return (
-    <>
+    <details
+      open={autoSendPanelOpen.value}
+      onToggle={e => {
+        autoSendPanelOpen.value = e.currentTarget.open
+      }}
+    >
+      <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>
+        独轮车{sendMsg.value ? ' 🟢 已启动' : ''}
+      </summary>
       <div style={{ margin: '.5em 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.25em' }}>
         <button type='button' onClick={toggleSend}>
           {sendMsg.value ? '停车' : '开车'}
@@ -89,7 +98,7 @@ export function AutoSendControls() {
         value={currentTemplate}
         onInput={e => updateTemplate(e.currentTarget.value)}
         placeholder='在这输入弹幕，每行一句话，超过可发送字数的会自动进行分割'
-        style={{ boxSizing: 'border-box', height: '100px', width: '100%', resize: 'vertical' }}
+        style={{ boxSizing: 'border-box', height: '80px', width: '100%', resize: 'vertical' }}
       />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5em', margin: '.5em 0' }}>
@@ -170,6 +179,6 @@ export function AutoSendControls() {
           <label for='persistSendState'>保持当前直播间独轮车开关状态</label>
         </span>
       </div>
-    </>
+    </details>
   )
 }

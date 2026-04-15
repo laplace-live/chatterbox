@@ -1,6 +1,14 @@
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../api'
 import { applyReplacements } from '../replacement'
-import { aiEvasion, appendLog, fasongText, isEmoticonUnique, maxLength, msgSendInterval } from '../store'
+import {
+  aiEvasion,
+  appendLog,
+  fasongText,
+  isEmoticonUnique,
+  maxLength,
+  msgSendInterval,
+  normalSendPanelOpen,
+} from '../store'
 import { formatDanmakuError, processMessages } from '../utils'
 import { tryAiEvasion } from './ai-evasion'
 
@@ -54,7 +62,13 @@ export function NormalSendTab() {
   }
 
   return (
-    <>
+    <details
+      open={normalSendPanelOpen.value}
+      onToggle={e => {
+        normalSendPanelOpen.value = e.currentTarget.open
+      }}
+    >
+      <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>常规发送</summary>
       <div style={{ margin: '.5em 0', position: 'relative' }}>
         <textarea
           value={fasongText.value}
@@ -101,6 +115,6 @@ export function NormalSendTab() {
           <label for='aiEvasion'>AI规避（发送失败时自动检测敏感词并重试）</label>
         </span>
       </div>
-    </>
+    </details>
   )
 }
