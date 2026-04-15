@@ -2,8 +2,13 @@ import preact from '@preact/preset-vite'
 import { defineConfig } from 'vite'
 import monkey, { util } from 'vite-plugin-monkey'
 
+import pkg from './package.json'
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    __LAPLACE_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [
     preact(),
     monkey({

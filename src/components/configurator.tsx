@@ -1,4 +1,5 @@
 import { activeTab, dialogOpen, optimizeLayout } from '../store'
+import { AboutTab } from './about-tab'
 import { AutoSendControls } from './auto-send-controls'
 import { LogPanel } from './log-panel'
 import { MemesList } from './memes-list'
@@ -93,6 +94,19 @@ export function Configurator() {
         }}
       >
         <SettingsTab />
+      </div>
+
+      <div
+        style={{
+          display: tab === 'about' ? (optimized ? 'flex' : 'block') : 'none',
+          flexDirection: optimized ? 'column' : undefined,
+          flex: optimized ? 1 : undefined,
+          paddingInline: '10px',
+          minHeight: optimized ? 0 : undefined,
+          overflowY: optimized ? 'auto' : undefined,
+        }}
+      >
+        <AboutTab />
       </div>
 
       <div style={{ paddingInline: '10px', paddingBlockEnd: '5px' }}>

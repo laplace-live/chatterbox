@@ -5,6 +5,7 @@ const TABS = [
   { id: 'fasong', label: '常规发送' },
   { id: 'tongchuan', label: '同传' },
   { id: 'settings', label: '设置' },
+  { id: 'about', label: '关于' },
 ] as const
 
 export function Tabs() {
