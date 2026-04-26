@@ -17,6 +17,7 @@ import {
   optimizeLayout,
   remoteKeywords,
   remoteKeywordsLastSync,
+  unlockBeBlocked,
   unlockForbidLive,
 } from '../lib/store'
 import { EmoteIds } from './emote-ids'
@@ -642,7 +643,7 @@ export function SettingsTab() {
           )}
         </div>
         <div style={{ marginBlock: '.5em', color: '#666' }}>
-          名单中的用户发送的弹幕不会计入「自动融入」统计。在公屏点击用户名可将该用户加入 / 移出名单。
+          名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 / 移出名单。
         </div>
         <div style={{ marginBottom: '.5em', maxHeight: '200px', overflowY: 'auto' }}>
           {blacklistEntries.length === 0 ? (
@@ -763,7 +764,18 @@ export function SettingsTab() {
                 unlockForbidLive.value = e.currentTarget.checked
               }}
             />
-            <label htmlFor='unlockForbidLive'>拉黑直播间解锁（刷新生效，仅布局解锁）</label>
+            <label htmlFor='unlockForbidLive'>直播间拉黑解锁（刷新生效，仅布局解锁）</label>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+            <input
+              id='unlockBeBlocked'
+              type='checkbox'
+              checked={unlockBeBlocked.value}
+              onInput={e => {
+                unlockBeBlocked.value = e.currentTarget.checked
+              }}
+            />
+            <label htmlFor='unlockBeBlocked'>空间拉黑解锁（刷新生效，仅布局解锁）</label>
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
             <input
