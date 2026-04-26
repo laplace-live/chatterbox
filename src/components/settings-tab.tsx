@@ -6,6 +6,7 @@ import { BASE_URL } from '../lib/const'
 import { appendLog, maxLogLines } from '../lib/log'
 import { buildReplacementMap } from '../lib/replacement'
 import {
+  autoBlendUserBlacklist,
   cachedRoomId,
   danmakuDirectAlwaysShow,
   danmakuDirectConfirm,
@@ -386,6 +387,24 @@ export function SettingsTab() {
   }
   const editingRules = editingRoomId.value ? (localRoomRules.value[editingRoomId.value] ?? []) : []
 
+  const blacklistEntries = Object.entries(autoBlendUserBlacklist.value).sort(([uidA, unameA], [uidB, unameB]) =>
+    (unameA || uidA).localeCompare(unameB || uidB, 'zh-Hans-CN')
+  )
+
+  const removeFromBlacklist = (uid: string) => {
+    const next = { ...autoBlendUserBlacklist.value }
+    const removedUname = next[uid]
+    delete next[uid]
+    autoBlendUserBlacklist.value = next
+    appendLog(`🚲 已解除融入拉黑：${removedUname || uid}`)
+  }
+
+  const clearBlacklist = () => {
+    if (!confirm(`确定清空 ${blacklistEntries.length} 个拉黑用户？`)) return
+    autoBlendUserBlacklist.value = {}
+    appendLog('🚲 已清空融入拉黑名单')
+  }
+
   return (
     <>
       <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
@@ -612,6 +631,66 @@ export function SettingsTab() {
           </>
         ) : (
           <div style={{ color: '#999' }}>请选择或添加一个直播间</div>
+        )}
+      </div>
+
+      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>
+          自动融入拉黑名单
+          {blacklistEntries.length > 0 && (
+            <span style={{ color: '#999', fontWeight: 'normal' }}> ({blacklistEntries.length})</span>
+          )}
+        </div>
+        <div style={{ marginBlock: '.5em', color: '#666' }}>
+          名单中的用户发送的弹幕不会计入「自动融入」统计。在公屏点击用户名可将该用户加入 / 移出名单。
+        </div>
+        <div style={{ marginBottom: '.5em', maxHeight: '200px', overflowY: 'auto' }}>
+          {blacklistEntries.length === 0 ? (
+            <div style={{ color: '#999' }}>暂无拉黑用户</div>
+          ) : (
+            blacklistEntries.map(([uid, uname]) => (
+              <div
+                key={uid}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '.5em',
+                  padding: '.2em',
+                  borderBottom: '1px solid var(--Ga2, #eee)',
+                }}
+              >
+                <span style={{ flex: 1, wordBreak: 'break-all', display: 'flex', alignItems: 'baseline', gap: '.5em' }}>
+                  <a
+                    href={`https://space.bilibili.com/${uid}`}
+                    target='_blank'
+                    rel='noopener'
+                    style={{ color: '#288bb8', textDecoration: 'none' }}
+                  >
+                    {uname || '(无昵称)'}
+                  </a>
+                  <span style={{ color: '#999', fontSize: '11px', fontFamily: 'monospace' }}>{uid}</span>
+                </span>
+                <button
+                  type='button'
+                  onClick={() => removeFromBlacklist(uid)}
+                  style={{
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    color: 'red',
+                    border: 'none',
+                    borderRadius: '2px',
+                  }}
+                >
+                  移出
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        {blacklistEntries.length > 0 && (
+          <button type='button' onClick={clearBlacklist}>
+            清空名单
+          </button>
         )}
       </div>
 

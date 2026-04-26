@@ -4,6 +4,7 @@ import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
 import { autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
+import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
 import { Configurator } from './configurator'
 import { ToggleButton } from './toggle-button'
 import { AlertDialog } from './ui/alert-dialog'
@@ -44,6 +45,14 @@ export function App() {
     }
     return () => stopAutoBlend()
   }, [autoBlendEnabled.value])
+
+  // Always-on: the "融入拉黑" toggle injected into B站's chat-item menu
+  // should be available even when 自动融入 is currently off, so users can
+  // pre-blacklist known spammers before flipping the switch.
+  useEffect(() => {
+    startUserBlacklistHijack()
+    return () => stopUserBlacklistHijack()
+  }, [])
 
   useEffect(() => {
     const el = document.querySelector<HTMLElement>('.app-body')

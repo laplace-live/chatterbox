@@ -189,10 +189,7 @@ export function AutoBlendControls() {
         </span>
       </div>
 
-      <div style={{ color: '#999', fontSize: '12px', lineHeight: 1.5 }}>
-        监测当前直播间弹幕，自动跟车热门弹幕。会复用「独轮车」面板里的随机字符 / 随机颜色 /
-        间隔随机性以及发送间隔与最大字数；自己发出的弹幕不会被计入
-      </div>
+      <div style={{ color: '#999', fontSize: '12px', lineHeight: 1.5 }}>监测当前直播间弹幕，自动跟车热门弹幕</div>
     </details>
   )
 }

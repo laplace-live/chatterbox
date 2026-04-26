@@ -57,12 +57,17 @@ export function extractDanmakuInfo(node: HTMLElement): DanmakuEvent | null {
   const text = node.dataset.danmaku
   const replymid = node.dataset.replymid
   if (text === undefined || replymid === undefined) return null
-  const userEl = node.querySelector('[data-uname]') ?? node.querySelector('[data-uid]')
+  // B站 puts user data on the chat-item root itself (alongside `data-danmaku`
+  // / `data-replymid`), NOT on a descendant — `querySelector` would always
+  // miss them. Read from the node first, fall back to a descendant lookup so
+  // we still work on hypothetical future layouts where the attributes move.
+  const uname = node.dataset.uname ?? node.querySelector<HTMLElement>('[data-uname]')?.dataset.uname ?? null
+  const uid = node.dataset.uid ?? node.querySelector<HTMLElement>('[data-uid]')?.dataset.uid ?? null
   return {
     node,
     text,
-    uname: userEl?.getAttribute('data-uname') ?? null,
-    uid: userEl?.getAttribute('data-uid') ?? null,
+    uname,
+    uid,
     isReply: replymid !== '0',
   }
 }

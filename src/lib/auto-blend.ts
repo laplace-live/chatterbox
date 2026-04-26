@@ -11,6 +11,7 @@ import {
   autoBlendSendCount,
   autoBlendUniqueUsers,
   autoBlendUseReplacements,
+  autoBlendUserBlacklist,
   autoBlendWindowSec,
   isEmoticonUnique,
   maxLength,
@@ -61,9 +62,15 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): v
   if (!text) return
   if (isReply && !autoBlendIncludeReply.value) return
 
-  // Always exclude self by uid; the global cooldown after our own send is the
-  // backup that catches echoes when uid extraction fails.
-  if (uid && myUid && uid === myUid) return
+  if (uid) {
+    // Always exclude self by uid; the global cooldown after our own send is
+    // the backup that catches echoes when uid extraction fails.
+    if (myUid && uid === myUid) return
+    // User-level blacklist set via the right-click menu in chat. Discard
+    // entirely so the user neither contributes to unique-user counts nor
+    // bumps totalCount toward the threshold.
+    if (uid in autoBlendUserBlacklist.value) return
+  }
 
   pruneExpired(now)
 

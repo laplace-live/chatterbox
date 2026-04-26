@@ -41,6 +41,10 @@ export const autoBlendIncludeReply = gmSignal('autoBlendIncludeReply', false)
 export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', true)
 // Per-room opt-in to remember 自动融入 on/off state across reloads.
 export const persistAutoBlendState = gmSignal<Record<string, boolean>>('persistAutoBlendState', {})
+// Cross-room blacklist: danmaku from these uids are never counted toward
+// auto-blend triggers. Stored as uid → uname so the username can be shown
+// in logs / future management UI even after the user leaves the room.
+export const autoBlendUserBlacklist = gmSignal<Record<string, string>>('autoBlendUserBlacklist', {})
 
 // Soniox settings
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
