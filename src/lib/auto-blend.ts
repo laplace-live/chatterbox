@@ -1,5 +1,6 @@
 import { ensureRoomId, getCsrfToken, getDedeUid, setRandomDanmakuColor } from './api'
 import { subscribeDanmaku } from './danmaku-stream'
+import { formatLockedEmoticonReject, isEmoticonUnique, isLockedEmoticon } from './emoticon'
 import { appendLog } from './log'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
@@ -13,7 +14,6 @@ import {
   autoBlendUseReplacements,
   autoBlendUserBlacklist,
   autoBlendWindowSec,
-  isEmoticonUnique,
   maxLength,
   msgSendInterval,
   randomChar,
@@ -111,6 +111,14 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       return
     }
     const roomId = await ensureRoomId()
+
+    // Trending text might be a fan-club / 舰长 / etc. emote we can't send.
+    // Bail out early so the cooldown still engages (preventing repeat
+    // attempts) but no failed request hits Bilibili.
+    if (isLockedEmoticon(originalText)) {
+      appendLog(formatLockedEmoticonReject(originalText, '自动融入(表情)'))
+      return
+    }
 
     const isEmote = isEmoticonUnique(originalText)
     const useReplacements = autoBlendUseReplacements.value && !isEmote

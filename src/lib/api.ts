@@ -1,14 +1,9 @@
 import type { BilibiliGetEmoticonsResponse } from '../types'
 
 import { BASE_URL } from './const'
+import { isEmoticonUnique } from './emoticon'
 import { buildReplacementMap } from './replacement'
-import {
-  availableDanmakuColors,
-  cachedEmoticonPackages,
-  cachedRoomId,
-  cachedStreamerUid,
-  isEmoticonUnique,
-} from './store'
+import { availableDanmakuColors, cachedEmoticonPackages, cachedRoomId, cachedStreamerUid } from './store'
 import { extractRoomNumber } from './utils'
 import { cachedWbiKeys, encodeWbi } from './wbi'
 

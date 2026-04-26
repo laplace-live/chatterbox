@@ -1,9 +1,10 @@
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
+import { formatLockedEmoticonReject, isEmoticonUnique, isLockedEmoticon } from '../lib/emoticon'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
-import { aiEvasion, fasongText, isEmoticonUnique, maxLength, msgSendInterval, normalSendPanelOpen } from '../lib/store'
+import { aiEvasion, fasongText, maxLength, msgSendInterval, normalSendPanelOpen } from '../lib/store'
 import { processMessages } from '../lib/utils'
 
 export function NormalSendTab() {
@@ -11,6 +12,12 @@ export function NormalSendTab() {
     const originalMessage = fasongText.value.trim()
     if (!originalMessage) {
       appendLog('⚠️ 消息内容不能为空')
+      return
+    }
+
+    if (isLockedEmoticon(originalMessage)) {
+      appendLog(formatLockedEmoticonReject(originalMessage, '手动表情'))
+      fasongText.value = ''
       return
     }
 

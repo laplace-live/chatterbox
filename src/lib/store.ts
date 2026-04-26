@@ -147,9 +147,5 @@ export const replacementMap = signal<Map<string, string> | null>(null)
 
 export const cachedEmoticonPackages = signal<BilibiliEmoticonPackage[]>([])
 
-export function isEmoticonUnique(msg: string): boolean {
-  return cachedEmoticonPackages.value.some(pkg => pkg.emoticons.some(e => e.emoticon_unique === msg))
-}
-
 // Fasong tab shared text
 export const fasongText = signal('')

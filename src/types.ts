@@ -62,6 +62,29 @@ export interface BilibiliEmoticon {
   url: string
   emoticon_unique: string
   emoticon_id: number
+  /**
+   * Per-emoticon usage permission, computed by the server based on the
+   * current user's level / fan-club / guard status. `1` = the user can send
+   * this emote, `0` = locked. Optional because it's only present on the live
+   * `GetEmoticons` response (older responses or other shapes may omit it).
+   */
+  perm?: number
+  /**
+   * Identity tier required to unlock. Observed values: `1` 总督 / `2` 提督 /
+   * `3` 舰长 / `4` 粉丝团 / `99` 公开. Used purely for log/UI hints.
+   */
+  identity?: number
+  /** Fan-club level required to unlock (0 when not gated by level). */
+  unlock_need_level?: number
+  /** Gift id required to unlock (0 when not gated by gift). */
+  unlock_need_gift?: number
+  /**
+   * Human-readable unlock requirement shown by Bilibili itself, e.g. `粉丝团`,
+   * `lv.5`, `舰长`, `提督`, `总督`. Empty string when unlocked for all.
+   */
+  unlock_show_text?: string
+  /** Hex color string Bilibili uses for the unlock badge (e.g. `#FF6699`). */
+  unlock_show_color?: string
 }
 
 export interface BilibiliEmoticonPackage {

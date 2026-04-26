@@ -41,13 +41,24 @@ export function EmoteIds() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
             {pkg.emoticons.map(emo => {
               const isCopied = copiedId.value === emo.emoticon_unique
+              // `perm === 0` means the server has marked this emote as locked
+              // for the current user (level / 粉丝团 / 舰长 / etc.). The check
+              // is `=== 0` rather than `!== 1` so absent `perm` (older API
+              // shapes) defaults to "unlocked", matching legacy behavior.
+              const isLocked = emo.perm === 0
+              const lockText = emo.unlock_show_text?.trim() || ''
+              const titleParts: string[] = [emo.emoji, `点击复制: ${emo.emoticon_unique}`]
+              if (isLocked) {
+                titleParts.push(lockText ? `🔒 该表情需要 ${lockText} 才能发送` : '🔒 该表情已被平台锁定')
+              }
               return (
                 <button
                   type='button'
                   key={emo.emoticon_id}
-                  title={`${emo.emoji}\n点击复制: ${emo.emoticon_unique}`}
+                  title={titleParts.join('\n')}
                   onClick={() => void handleCopy(emo.emoticon_unique)}
                   style={{
+                    position: 'relative',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -65,10 +76,36 @@ export function EmoteIds() {
                   <img
                     src={emo.url}
                     alt={emo.emoji}
-                    style={{ width: '48px', height: '48px', objectFit: 'contain' }}
+                    style={{
+                      width: '48px',
+                      height: '48px',
+                      objectFit: 'contain', // Locked emotes stay clickable (so the user can still copy
+                      // the unique text) but are dimmed to signal that direct
+                      // sending will be blocked downstream.
+                      opacity: isLocked && !isCopied ? 0.5 : 1,
+                    }}
                     loading='lazy'
                   />
                   {isCopied ? '已复制' : emo.emoji}
+                  {isLocked && !isCopied && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: '1px',
+                        right: '1px',
+                        padding: '2px',
+                        background: emo.unlock_show_color || 'rgba(0, 0, 0, 0.6)',
+                        color: '#fff',
+                        fontSize: '9px',
+                        lineHeight: '1',
+                        borderRadius: '2px',
+                        pointerEvents: 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {lockText || '🔒'}
+                    </span>
+                  )}
                 </button>
               )
             })}
