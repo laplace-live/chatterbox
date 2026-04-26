@@ -72,6 +72,15 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): v
     if (uid in autoBlendUserBlacklist.value) return
   }
 
+  // Locked emotes (fan-club / 舰长 / 提督 / 总督 etc.) can never be
+  // auto-sent, so keep them out of `counters` entirely. This stops a popular
+  // locked emote from (a) accumulating a trend we couldn't act on and
+  // (b) hijacking a `triggerSend` cycle — the global cooldown would
+  // otherwise engage and freeze legitimate plain-text trends for several
+  // seconds. The `triggerSend` safety net below still catches the rare race
+  // where the emoticon cache loads AFTER counters started accumulating.
+  if (isLockedEmoticon(text)) return
+
   pruneExpired(now)
 
   let c = counters.get(text)
@@ -98,6 +107,18 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   // engaging the cooldown so the trend keeps accumulating and naturally
   // re-evaluates threshold on the next matching danmaku once we're free.
   if (isSending) return
+
+  // Safety net for the rare race where the emoticon cache loaded only AFTER
+  // this trend started accumulating in `recordDanmaku` (so the filter there
+  // missed it). Bail BEFORE engaging the cooldown / clearing counters, so
+  // we don't penalize legitimate plain-text trends for an emote we were
+  // never going to send. Drop the trend so it can't immediately re-fire.
+  if (isLockedEmoticon(originalText)) {
+    counters.delete(originalText)
+    appendLog(formatLockedEmoticonReject(originalText, '自动融入(表情)'))
+    return
+  }
+
   isSending = true
   // Engage the global hard cooldown up front (before the await) and wipe all
   // pending counters so nothing accumulates during the freeze and nothing
@@ -111,14 +132,6 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       return
     }
     const roomId = await ensureRoomId()
-
-    // Trending text might be a fan-club / 舰长 / etc. emote we can't send.
-    // Bail out early so the cooldown still engages (preventing repeat
-    // attempts) but no failed request hits Bilibili.
-    if (isLockedEmoticon(originalText)) {
-      appendLog(formatLockedEmoticonReject(originalText, '自动融入(表情)'))
-      return
-    }
 
     const isEmote = isEmoticonUnique(originalText)
     const useReplacements = autoBlendUseReplacements.value && !isEmote
