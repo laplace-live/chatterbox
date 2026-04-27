@@ -71,7 +71,7 @@ export function AlertDialog() {
         // Original used `var(--Ga2, #ccc)` here (different fallback from elsewhere);
         // preserved via arbitrary value rather than mapping into the theme.
         'lc-border lc-border-solid lc-border-[var(--Ga2,#ccc)]',
-        'lc-rounded-lg lc-p-3 lc-max-w-[320px] lc-text-xs'
+        'lc-rounded-lg lc-p-3 lc-max-w-[320px]'
       )}
       onCancel={e => {
         e.preventDefault()

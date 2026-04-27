@@ -170,7 +170,7 @@ export function AutoBlendControls() {
           />
         </div>
 
-        <div class='lc-text-ga4 lc-text-xs lc-leading-[1.5]'>监测当前直播间弹幕，自动跟车热门弹幕</div>
+        <div class='lc-text-ga4 lc-text-sm lc-leading-[1.5]'>监测当前直播间弹幕，自动跟车热门弹幕</div>
       </AccordionContent>
     </AccordionItem>
   )
