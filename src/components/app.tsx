@@ -46,7 +46,7 @@ export function App() {
     return () => stopAutoBlend()
   }, [autoBlendEnabled.value])
 
-  // Always-on: the "融入拉黑" toggle injected into B站's chat-item menu
+  // Always-on: the "融入黑名单" toggle injected into B站's chat-item menu
   // should be available even when 自动融入 is currently off, so users can
   // pre-blacklist known spammers before flipping the switch.
   useEffect(() => {

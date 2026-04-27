@@ -397,13 +397,13 @@ export function SettingsTab() {
     const removedUname = next[uid]
     delete next[uid]
     autoBlendUserBlacklist.value = next
-    appendLog(`🚲 已解除融入拉黑：${removedUname || uid}`)
+    appendLog(`🚲 已解除融入黑名单：${removedUname || uid}`)
   }
 
   const clearBlacklist = () => {
-    if (!confirm(`确定清空 ${blacklistEntries.length} 个拉黑用户？`)) return
+    if (!confirm(`确定清空 ${blacklistEntries.length} 个黑名单用户？`)) return
     autoBlendUserBlacklist.value = {}
-    appendLog('🚲 已清空融入拉黑名单')
+    appendLog('🚲 已清空融入黑名单')
   }
 
   return (
@@ -637,7 +637,7 @@ export function SettingsTab() {
 
       <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>
-          自动融入拉黑名单
+          自动融入黑名单
           {blacklistEntries.length > 0 && (
             <span style={{ color: '#999', fontWeight: 'normal' }}> ({blacklistEntries.length})</span>
           )}
@@ -647,7 +647,7 @@ export function SettingsTab() {
         </div>
         <div style={{ marginBottom: '.5em', maxHeight: '200px', overflowY: 'auto' }}>
           {blacklistEntries.length === 0 ? (
-            <div style={{ color: '#999' }}>暂无拉黑用户</div>
+            <div style={{ color: '#999' }}>暂无黑名单用户</div>
           ) : (
             blacklistEntries.map(([uid, uname]) => (
               <div

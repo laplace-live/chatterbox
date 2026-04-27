@@ -1,7 +1,7 @@
 /**
  * Hijacks Bilibili's left-click `.danmaku-menu` (the popover that opens when
  * clicking a username, danmaku text, or emoticon in the chat panel) to add a
- * "融入拉黑" / "解除融入拉黑" toggle.
+ * "融入黑名单" / "解除融入黑名单" toggle.
  *
  * IMPORTANT: B站 mounts a SINGLE `.danmaku-menu` element (under
  * `.chat-history-panel`) and reuses it across opens — each open just toggles
@@ -63,7 +63,7 @@ function buildToggleItem(template: HTMLElement, uid: string, uname: string | nul
     a.removeAttribute('href')
   }
   const span = div.querySelector('span')
-  if (span) span.textContent = isBlacklisted ? '🟣 解除融入拉黑' : '🟣 融入拉黑'
+  if (span) span.textContent = isBlacklisted ? '🟣 解除融入黑名单' : '🟣 添加融入黑名单'
 
   div.addEventListener('click', e => {
     // Stop propagation so we don't re-trigger the click listener that opens
@@ -74,10 +74,10 @@ function buildToggleItem(template: HTMLElement, uid: string, uname: string | nul
     const display = uname || uid
     if (uid in next) {
       delete next[uid]
-      appendLog(`🚲 已解除融入拉黑：${display}`)
+      appendLog(`🚲 已解除融入黑名单：${display}`)
     } else {
       next[uid] = uname ?? ''
-      appendLog(`🚲 已加入融入拉黑：${display}`)
+      appendLog(`🚲 已加入融入黑名单：${display}`)
     }
     autoBlendUserBlacklist.value = next
 
