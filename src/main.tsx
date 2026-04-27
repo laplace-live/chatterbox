@@ -11,7 +11,7 @@ function mount() {
 }
 
 // The userscript matches both live.bilibili.com (full danmaku helper UI) and
-// space.bilibili.com (fetch-hijack only, e.g. unlockBeBlocked on profile
+// space.bilibili.com (fetch-hijack only, e.g. unlockSpaceBlock on profile
 // pages). On non-live hosts we skip mounting the App so live-page features
 // like the send loop, room-id resolution, and DOM hijacks don't run against
 // pages they were never designed for.

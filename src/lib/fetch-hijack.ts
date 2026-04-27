@@ -1,37 +1,37 @@
 import { effect } from '@preact/signals'
 
 import { unsafeWindow } from '$'
-import { unlockBeBlocked, unlockForbidLive } from './store'
+import { unlockLiveBlock, unlockSpaceBlock } from './store'
 
-const FORBID_LIVE_INDICATOR_ID = 'laplace-chatterbox-forbid-live-indicator'
-const BE_BLOCKED_BANNER_ID = 'laplace-chatterbox-be-blocked-banner'
+const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
+const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
 
 // Observer references live at module scope so the toggle-off path
 // (`effect(...)` below) can cancel a pending injection. Without this, a
 // MutationObserver waiting for B站's late-mounted header could fire after
 // the user disables the feature and inject the indicator anyway — the
 // `remove*()` calls find nothing in the DOM yet, so they can't undo it.
-let forbidLiveObserver: MutationObserver | null = null
-let beBlockedObserver: MutationObserver | null = null
+let liveBlockObserver: MutationObserver | null = null
+let spaceBlockObserver: MutationObserver | null = null
 
-function disconnectForbidLiveObserver(): void {
-  forbidLiveObserver?.disconnect()
-  forbidLiveObserver = null
+function disconnectLiveBlockObserver(): void {
+  liveBlockObserver?.disconnect()
+  liveBlockObserver = null
 }
 
-function disconnectBeBlockedObserver(): void {
-  beBlockedObserver?.disconnect()
-  beBlockedObserver = null
+function disconnectSpaceBlockObserver(): void {
+  spaceBlockObserver?.disconnect()
+  spaceBlockObserver = null
 }
 
-function removeForbidLiveIndicator(): void {
-  disconnectForbidLiveObserver()
-  document.getElementById(FORBID_LIVE_INDICATOR_ID)?.remove()
+function removeLiveBlockIndicator(): void {
+  disconnectLiveBlockObserver()
+  document.getElementById(LIVE_BLOCK_INDICATOR_ID)?.remove()
 }
 
-function removeBeBlockedBanner(): void {
-  disconnectBeBlockedObserver()
-  document.getElementById(BE_BLOCKED_BANNER_ID)?.remove()
+function removeSpaceBlockBanner(): void {
+  disconnectSpaceBlockObserver()
+  document.getElementById(SPACE_BLOCK_BANNER_ID)?.remove()
 }
 
 /**
@@ -44,12 +44,12 @@ function removeBeBlockedBanner(): void {
  * document-start, B站 mounts the header later), a one-shot MutationObserver
  * waits for it.
  */
-function ensureForbidLiveIndicator(): void {
-  if (document.getElementById(FORBID_LIVE_INDICATOR_ID)) return
+function ensureLiveBlockIndicator(): void {
+  if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
   const inject = (ctnr: HTMLElement): void => {
-    if (document.getElementById(FORBID_LIVE_INDICATOR_ID)) return
+    if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
     const el = document.createElement('div')
-    el.id = FORBID_LIVE_INDICATOR_ID
+    el.id = LIVE_BLOCK_INDICATOR_ID
     el.title = 'LAPLACE 弹幕助手已解除该直播间的部分拉黑限制'
     el.textContent = '🔓 拉黑已解锁'
     el.style.cssText = [
@@ -74,24 +74,24 @@ function ensureForbidLiveIndicator(): void {
     return
   }
   // Cancel any earlier pending observer so we keep at most one alive.
-  disconnectForbidLiveObserver()
-  forbidLiveObserver = new MutationObserver(() => {
-    // The user can flip `unlockForbidLive` off in the configurator
+  disconnectLiveBlockObserver()
+  liveBlockObserver = new MutationObserver(() => {
+    // The user can flip `unlockLiveBlock` off in the configurator
     // between us setting up this observer and B站 finally mounting
     // `.right-ctnr`. Re-read the signal so we don't inject behind the
     // user's back. The `effect(...)` below also disconnects on toggle-off
     // — this check is a defensive fallback for cases where the observer
     // fires before the effect microtask runs.
-    if (!unlockForbidLive.value) {
-      disconnectForbidLiveObserver()
+    if (!unlockLiveBlock.value) {
+      disconnectLiveBlockObserver()
       return
     }
     const c = document.querySelector<HTMLElement>('.right-ctnr')
     if (!c) return
-    disconnectForbidLiveObserver()
+    disconnectLiveBlockObserver()
     inject(c)
   })
-  forbidLiveObserver.observe(document.documentElement, { childList: true, subtree: true })
+  liveBlockObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 /**
@@ -100,13 +100,13 @@ function ensureForbidLiveIndicator(): void {
  * livestream pill for the (common) case where our userscript runs before
  * B站 has rendered the header.
  */
-function ensureBeBlockedBanner(): void {
-  if (document.getElementById(BE_BLOCKED_BANNER_ID)) return
+function ensureSpaceBlockBanner(): void {
+  if (document.getElementById(SPACE_BLOCK_BANNER_ID)) return
   const headerSelector = '.header.space-header'
   const inject = (header: HTMLElement): void => {
-    if (document.getElementById(BE_BLOCKED_BANNER_ID)) return
+    if (document.getElementById(SPACE_BLOCK_BANNER_ID)) return
     const el = document.createElement('div')
-    el.id = BE_BLOCKED_BANNER_ID
+    el.id = SPACE_BLOCK_BANNER_ID
     el.textContent = '🔓 LAPLACE 弹幕助手已解除该用户的部分拉黑限制'
     el.style.cssText = [
       'background: rgb(228 243 240)',
@@ -125,21 +125,21 @@ function ensureBeBlockedBanner(): void {
     inject(header)
     return
   }
-  disconnectBeBlockedObserver()
-  beBlockedObserver = new MutationObserver(() => {
-    // Same toggle-off race as `ensureForbidLiveIndicator`: re-check the
+  disconnectSpaceBlockObserver()
+  spaceBlockObserver = new MutationObserver(() => {
+    // Same toggle-off race as `ensureLiveBlockIndicator`: re-check the
     // signal before injecting in case the user disabled the feature
     // while we were waiting for B站 to mount `.header.space-header`.
-    if (!unlockBeBlocked.value) {
-      disconnectBeBlockedObserver()
+    if (!unlockSpaceBlock.value) {
+      disconnectSpaceBlockObserver()
       return
     }
     const h = document.querySelector<HTMLElement>(headerSelector)
     if (!h) return
-    disconnectBeBlockedObserver()
+    disconnectSpaceBlockObserver()
     inject(h)
   })
-  beBlockedObserver.observe(document.documentElement, { childList: true, subtree: true })
+  spaceBlockObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 // React to the configurator toggle in real time so disabling the feature
@@ -147,10 +147,10 @@ function ensureBeBlockedBanner(): void {
 // only re-shows it on the next fetch hit, which matches the existing
 // "刷新生效" UX of the toggle itself.)
 effect(() => {
-  if (!unlockForbidLive.value) removeForbidLiveIndicator()
+  if (!unlockLiveBlock.value) removeLiveBlockIndicator()
 })
 effect(() => {
-  if (!unlockBeBlocked.value) removeBeBlockedBanner()
+  if (!unlockSpaceBlock.value) removeSpaceBlockBanner()
 })
 
 /** Patches fetch() responses for specific Bilibili live API endpoints. */
@@ -162,13 +162,13 @@ effect(() => {
     const url = input instanceof Request ? input.url : input.toString()
     const resp = await originalFetch.call(pageWindow, input, init)
 
-    if (unlockForbidLive.value && url.includes('/xlive/web-room/v1/index/getInfoByUser')) {
+    if (unlockLiveBlock.value && url.includes('/xlive/web-room/v1/index/getInfoByUser')) {
       console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser fetch response:', url)
       // Clear the previous room's pill before deciding whether to inject
       // one for the current room. Bilibili reuses `.right-ctnr` across SPA
       // navigations, so a stale "已解锁" pill would otherwise linger when
       // the new room isn't blocking us.
-      removeForbidLiveIndicator()
+      removeLiveBlockIndicator()
       const text = await resp.text()
       try {
         const data = JSON.parse(text)
@@ -177,7 +177,7 @@ effect(() => {
           data.data.forbid_live.is_forbid = false
           data.data.forbid_live.forbid_text = ''
           console.log('[LAPLACE Chatterbox] Blacklist livestream block removed')
-          if (wasBlocking) ensureForbidLiveIndicator()
+          if (wasBlocking) ensureLiveBlockIndicator()
           return new Response(JSON.stringify(data), {
             status: resp.status,
             statusText: resp.statusText,
@@ -194,19 +194,19 @@ effect(() => {
       })
     }
 
-    if (unlockBeBlocked.value && url.includes('/x/space/wbi/acc/relation')) {
+    if (unlockSpaceBlock.value && url.includes('/x/space/wbi/acc/relation')) {
       console.log('[LAPLACE Chatterbox] Hijacking acc/relation fetch response:', url)
       // Same SPA-navigation rationale as the livestream branch above:
       // clear the previous user's banner before deciding whether the
       // current user's relation needs one.
-      removeBeBlockedBanner()
+      removeSpaceBlockBanner()
       const text = await resp.text()
       try {
         const data = JSON.parse(text)
         if (data?.data?.be_relation && data.data.be_relation.attribute !== 0) {
           data.data.be_relation.attribute = 0
           console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
-          ensureBeBlockedBanner()
+          ensureSpaceBlockBanner()
           return new Response(JSON.stringify(data), {
             status: resp.status,
             statusText: resp.statusText,

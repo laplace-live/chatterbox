@@ -17,8 +17,8 @@ import {
   optimizeLayout,
   remoteKeywords,
   remoteKeywordsLastSync,
-  unlockBeBlocked,
-  unlockForbidLive,
+  unlockLiveBlock,
+  unlockSpaceBlock,
 } from '../lib/store'
 import { EmoteIds } from './emote-ids'
 
@@ -757,25 +757,25 @@ export function SettingsTab() {
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
             <input
-              id='unlockForbidLive'
+              id='unlockLiveBlock'
               type='checkbox'
-              checked={unlockForbidLive.value}
+              checked={unlockLiveBlock.value}
               onInput={e => {
-                unlockForbidLive.value = e.currentTarget.checked
+                unlockLiveBlock.value = e.currentTarget.checked
               }}
             />
-            <label htmlFor='unlockForbidLive'>直播间拉黑解锁（刷新生效，仅布局解锁）</label>
+            <label htmlFor='unlockLiveBlock'>直播间拉黑解锁（刷新生效，仅布局解锁）</label>
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
             <input
-              id='unlockBeBlocked'
+              id='unlockSpaceBlock'
               type='checkbox'
-              checked={unlockBeBlocked.value}
+              checked={unlockSpaceBlock.value}
               onInput={e => {
-                unlockBeBlocked.value = e.currentTarget.checked
+                unlockSpaceBlock.value = e.currentTarget.checked
               }}
             />
-            <label htmlFor='unlockBeBlocked'>空间拉黑解锁（刷新生效，仅布局解锁）</label>
+            <label htmlFor='unlockSpaceBlock'>空间拉黑解锁（刷新生效，仅布局解锁）</label>
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
             <input
