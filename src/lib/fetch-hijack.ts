@@ -6,11 +6,31 @@ import { unlockBeBlocked, unlockForbidLive } from './store'
 const FORBID_LIVE_INDICATOR_ID = 'laplace-chatterbox-forbid-live-indicator'
 const BE_BLOCKED_BANNER_ID = 'laplace-chatterbox-be-blocked-banner'
 
+// Observer references live at module scope so the toggle-off path
+// (`effect(...)` below) can cancel a pending injection. Without this, a
+// MutationObserver waiting for B站's late-mounted header could fire after
+// the user disables the feature and inject the indicator anyway — the
+// `remove*()` calls find nothing in the DOM yet, so they can't undo it.
+let forbidLiveObserver: MutationObserver | null = null
+let beBlockedObserver: MutationObserver | null = null
+
+function disconnectForbidLiveObserver(): void {
+  forbidLiveObserver?.disconnect()
+  forbidLiveObserver = null
+}
+
+function disconnectBeBlockedObserver(): void {
+  beBlockedObserver?.disconnect()
+  beBlockedObserver = null
+}
+
 function removeForbidLiveIndicator(): void {
+  disconnectForbidLiveObserver()
   document.getElementById(FORBID_LIVE_INDICATOR_ID)?.remove()
 }
 
 function removeBeBlockedBanner(): void {
+  disconnectBeBlockedObserver()
   document.getElementById(BE_BLOCKED_BANNER_ID)?.remove()
 }
 
@@ -53,13 +73,25 @@ function ensureForbidLiveIndicator(): void {
     inject(ctnr)
     return
   }
-  const obs = new MutationObserver(() => {
+  // Cancel any earlier pending observer so we keep at most one alive.
+  disconnectForbidLiveObserver()
+  forbidLiveObserver = new MutationObserver(() => {
+    // The user can flip `unlockForbidLive` off in the configurator
+    // between us setting up this observer and B站 finally mounting
+    // `.right-ctnr`. Re-read the signal so we don't inject behind the
+    // user's back. The `effect(...)` below also disconnects on toggle-off
+    // — this check is a defensive fallback for cases where the observer
+    // fires before the effect microtask runs.
+    if (!unlockForbidLive.value) {
+      disconnectForbidLiveObserver()
+      return
+    }
     const c = document.querySelector<HTMLElement>('.right-ctnr')
     if (!c) return
-    obs.disconnect()
+    disconnectForbidLiveObserver()
     inject(c)
   })
-  obs.observe(document.documentElement, { childList: true, subtree: true })
+  forbidLiveObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 /**
@@ -93,13 +125,21 @@ function ensureBeBlockedBanner(): void {
     inject(header)
     return
   }
-  const obs = new MutationObserver(() => {
+  disconnectBeBlockedObserver()
+  beBlockedObserver = new MutationObserver(() => {
+    // Same toggle-off race as `ensureForbidLiveIndicator`: re-check the
+    // signal before injecting in case the user disabled the feature
+    // while we were waiting for B站 to mount `.header.space-header`.
+    if (!unlockBeBlocked.value) {
+      disconnectBeBlockedObserver()
+      return
+    }
     const h = document.querySelector<HTMLElement>(headerSelector)
     if (!h) return
-    obs.disconnect()
+    disconnectBeBlockedObserver()
     inject(h)
   })
-  obs.observe(document.documentElement, { childList: true, subtree: true })
+  beBlockedObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 // React to the configurator toggle in real time so disabling the feature
