@@ -6,6 +6,11 @@ import { unlockLiveBlock, unlockSpaceBlock } from './store'
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
 const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
 
+// B站 API URLs whose JSON we transform on the fly. Match by `includes` so
+// a query string / version prefix doesn't matter.
+const GET_INFO_BY_USER_PATTERN = '/xlive/web-room/v1/index/getInfoByUser'
+const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
+
 // Observer references live at module scope so the toggle-off path
 // (`effect(...)` below) can cancel a pending injection. Without this, a
 // MutationObserver waiting for B站's late-mounted header could fire after
@@ -153,77 +158,121 @@ effect(() => {
   if (!unlockSpaceBlock.value) removeSpaceBlockBanner()
 })
 
-/** Patches fetch() responses for specific Bilibili live API endpoints. */
+/** True iff the current signal state means we'd actually rewrite this URL. */
+function shouldHijackUrl(url: string): boolean {
+  return (
+    (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) ||
+    (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN))
+  )
+}
+
+/**
+ * Mutates parsed-JSON `data` in place to neutralize the relevant block
+ * flags AND triggers the matching indicator/banner side effects.
+ *
+ * Idempotent: re-applying it on already-transformed data is a no-op
+ * (`is_forbid` is already `false`, `attribute` is already `0`), so it's
+ * safe even if B站's code clones a Response and consumes it twice.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: parsed JSON shape from B站
+function applyTransforms(url: string, data: any): void {
+  if (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) {
+    console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
+    // Clear the previous room's pill before deciding whether to inject
+    // one for the current room. Bilibili reuses `.right-ctnr` across SPA
+    // navigations, so a stale "已解锁" pill would otherwise linger when
+    // the new room isn't blocking us.
+    removeLiveBlockIndicator()
+    const forbid = data?.data?.forbid_live
+    if (forbid) {
+      const wasBlocking = !!forbid.is_forbid
+      forbid.is_forbid = false
+      forbid.forbid_text = ''
+      console.log('[LAPLACE Chatterbox] Blacklist livestream block removed')
+      if (wasBlocking) ensureLiveBlockIndicator()
+    }
+  } else if (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN)) {
+    console.log('[LAPLACE Chatterbox] Hijacking acc/relation response:', url)
+    // Same SPA-navigation rationale as the livestream branch above:
+    // clear the previous user's banner before deciding whether the
+    // current user's relation needs one.
+    removeSpaceBlockBanner()
+    const beRel = data?.data?.be_relation
+    if (beRel?.attribute === 128) {
+      beRel.attribute = 0
+      console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
+      ensureSpaceBlockBanner()
+    }
+  }
+}
+/**
+ * Patches `Response.prototype.json` / `Response.prototype.text` so we
+ * transform B站 API responses regardless of which fetch reference
+ * produced the Response.
+ *
+ * Why this layer and not `window.fetch`?
+ * --------------------------------------
+ * Patching `window.fetch` only catches calls that go through the
+ * post-patch reference. B站's bundled JS captures the original `fetch`
+ * into a closure during module init:
+ *
+ *     // somewhere inside B站's bundle (one-time module setup)
+ *     const _fetch = window.fetch
+ *     export const apiFetch = (u, o) => _fetch(u, o)
+ *
+ * Whether `_fetch` is ours or theirs depends on a parse-time race
+ * between the userscript injection and the bundle's first `<script>`
+ * execution. With DevTools "Disable cache" ON the bundle takes a fresh
+ * network roundtrip and we always win; with cache ON the bundle parses
+ * synchronously from disk cache and frequently beats us, leaving every
+ * subsequent API call on the unpatched closure. That race exactly
+ * matches the reported flakiness.
+ *
+ * The prototype layer side-steps the race entirely: `response.json()`
+ * looks up `.json` on `Response.prototype` at *call* time, and the call
+ * cannot happen until the network roundtrip resolves — by which point
+ * even a slow userscript injection has long since landed. As long as
+ * our patch is in place before the *first response is consumed* (not
+ * before the first fetch is *issued*), the hijack is deterministic.
+ */
 ;(() => {
   console.log('[LAPLACE Chatterbox] fetch-hijack loaded on', location.hostname)
-  const pageWindow = unsafeWindow
-  const originalFetch = pageWindow.fetch
-  const patchedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = input instanceof Request ? input.url : input.toString()
-    const resp = await originalFetch.call(pageWindow, input, init)
+  try {
+    const ResponseProto = unsafeWindow.Response.prototype
 
-    if (unlockLiveBlock.value && url.includes('/xlive/web-room/v1/index/getInfoByUser')) {
-      console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser fetch response:', url)
-      // Clear the previous room's pill before deciding whether to inject
-      // one for the current room. Bilibili reuses `.right-ctnr` across SPA
-      // navigations, so a stale "已解锁" pill would otherwise linger when
-      // the new room isn't blocking us.
-      removeLiveBlockIndicator()
-      const text = await resp.text()
-      try {
-        const data = JSON.parse(text)
-        if (data?.data?.forbid_live) {
-          const wasBlocking = !!data.data.forbid_live.is_forbid
-          data.data.forbid_live.is_forbid = false
-          data.data.forbid_live.forbid_text = ''
-          console.log('[LAPLACE Chatterbox] Blacklist livestream block removed')
-          if (wasBlocking) ensureLiveBlockIndicator()
-          return new Response(JSON.stringify(data), {
-            status: resp.status,
-            statusText: resp.statusText,
-            headers: resp.headers,
-          })
+    const origJson = ResponseProto.json
+    ResponseProto.json = async function (this: Response): Promise<unknown> {
+      const data = await origJson.call(this)
+      const url = this.url
+      if (url && data && typeof data === 'object') {
+        try {
+          applyTransforms(url, data)
+        } catch (err) {
+          console.error('[LAPLACE Chatterbox] applyTransforms (json) failed:', err)
         }
-      } catch {
-        /* not JSON, return as-is */
       }
-      return new Response(text, {
-        status: resp.status,
-        statusText: resp.statusText,
-        headers: resp.headers,
-      })
+      return data
     }
 
-    if (unlockSpaceBlock.value && url.includes('/x/space/wbi/acc/relation')) {
-      console.log('[LAPLACE Chatterbox] Hijacking acc/relation fetch response:', url)
-      // Same SPA-navigation rationale as the livestream branch above:
-      // clear the previous user's banner before deciding whether the
-      // current user's relation needs one.
-      removeSpaceBlockBanner()
-      const text = await resp.text()
-      try {
-        const data = JSON.parse(text)
-        if (data?.data?.be_relation?.attribute && data.data.be_relation.attribute === 128) {
-          data.data.be_relation.attribute = 0
-          console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
-          ensureSpaceBlockBanner()
-          return new Response(JSON.stringify(data), {
-            status: resp.status,
-            statusText: resp.statusText,
-            headers: resp.headers,
-          })
+    // text() patch covers consumers that hand-roll JSON.parse (e.g.
+    // `const t = await r.text(); JSON.parse(t)`). For non-target URLs
+    // we pass the original string straight through — no parse cost.
+    const origText = ResponseProto.text
+    ResponseProto.text = async function (this: Response): Promise<string> {
+      const text = await origText.call(this)
+      const url = this.url
+      if (url && shouldHijackUrl(url)) {
+        try {
+          const data = JSON.parse(text)
+          applyTransforms(url, data)
+          return JSON.stringify(data)
+        } catch {
+          // Body wasn't JSON (or transform threw); pass through unchanged.
         }
-      } catch {
-        /* not JSON, return as-is */
       }
-      return new Response(text, {
-        status: resp.status,
-        statusText: resp.statusText,
-        headers: resp.headers,
-      })
+      return text
     }
-
-    return resp
+  } catch (err) {
+    console.error('[LAPLACE Chatterbox] Failed to install Response prototype patches:', err)
   }
-  pageWindow.fetch = Object.assign(patchedFetch, originalFetch)
 })()
