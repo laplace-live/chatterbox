@@ -6,6 +6,7 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { aiEvasion, fasongText, maxLength, msgSendInterval, normalSendPanelOpen } from '../lib/store'
 import { processMessages } from '../lib/utils'
+import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
 
@@ -62,50 +63,52 @@ export function NormalSendTab() {
   }
 
   return (
-    <details
+    <AccordionItem
       open={normalSendPanelOpen.value}
-      onToggle={e => {
-        normalSendPanelOpen.value = e.currentTarget.open
+      onOpenChange={v => {
+        normalSendPanelOpen.value = v
       }}
     >
-      <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>常规发送</summary>
-      <div style={{ margin: '.5em 0', position: 'relative' }}>
-        <Textarea
-          value={fasongText.value}
-          onInput={e => {
-            fasongText.value = e.currentTarget.value
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-              e.preventDefault()
-              void sendMessage()
-            }
-          }}
-          placeholder='输入弹幕内容… (Enter 发送)'
-          style={{ height: '50px' }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            right: '8px',
-            bottom: '6px',
-            color: '#999',
-            pointerEvents: 'none',
-          }}
-        >
-          {fasongText.value.length}
+      <AccordionTrigger>常规发送</AccordionTrigger>
+      <AccordionContent>
+        <div style={{ margin: '.5em 0', position: 'relative' }}>
+          <Textarea
+            value={fasongText.value}
+            onInput={e => {
+              fasongText.value = e.currentTarget.value
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+                e.preventDefault()
+                void sendMessage()
+              }
+            }}
+            placeholder='输入弹幕内容… (Enter 发送)'
+            style={{ height: '50px' }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '8px',
+              bottom: '6px',
+              color: '#999',
+              pointerEvents: 'none',
+            }}
+          >
+            {fasongText.value.length}
+          </div>
         </div>
-      </div>
-      <div style={{ margin: '.5em 0' }}>
-        <Checkbox
-          id='aiEvasion'
-          checked={aiEvasion.value}
-          onInput={e => {
-            aiEvasion.value = e.currentTarget.checked
-          }}
-          label='AI规避（发送失败时自动检测敏感词并重试）'
-        />
-      </div>
-    </details>
+        <div style={{ margin: '.5em 0' }}>
+          <Checkbox
+            id='aiEvasion'
+            checked={aiEvasion.value}
+            onInput={e => {
+              aiEvasion.value = e.currentTarget.checked
+            }}
+            label='AI规避（发送失败时自动检测敏感词并重试）'
+          />
+        </div>
+      </AccordionContent>
+    </AccordionItem>
   )
 }

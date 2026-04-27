@@ -26,6 +26,15 @@ const CSS = `
   outline: 2px solid #36a185;
   outline-offset: 1px;
 }
+.lpc-ui-accordion-trigger {
+  list-style: none;
+}
+.lpc-ui-accordion-trigger::-webkit-details-marker {
+  display: none;
+}
+.lpc-ui-accordion-item[open] .lpc-ui-accordion-chevron {
+  transform: rotate(180deg);
+}
 `
 
 export function ensureUiStyles(): void {

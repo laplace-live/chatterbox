@@ -9,6 +9,7 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { cachedStreamerUid, maxLength, memesPanelOpen, msgSendInterval, optimizeLayout } from '../lib/store'
 import { processMessages } from '../lib/utils'
+import { AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
@@ -331,14 +332,14 @@ export function MemesList() {
 
   return (
     <>
-      <details
+      <AccordionItem
         open={memesPanelOpen.value}
-        onToggle={e => {
-          memesPanelOpen.value = e.currentTarget.open
+        onOpenChange={v => {
+          memesPanelOpen.value = v
         }}
       >
-        <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>烂梗库</summary>
-      </details>
+        <AccordionTrigger>烂梗库</AccordionTrigger>
+      </AccordionItem>
       {memesPanelOpen.value && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '.5em', marginTop: '.5em', marginBottom: '.5em' }}>

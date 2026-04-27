@@ -1,4 +1,5 @@
 import type { CSSProperties, TextareaHTMLAttributes } from 'preact'
+import { forwardRef } from 'preact/compat'
 
 import { ensureUiStyles } from './styles'
 
@@ -10,13 +11,22 @@ export interface TextareaProps extends TextareaBase {
   className?: string
 }
 
-export function Textarea({ disabled, style, class: className, className: classNameAlt, ...props }: TextareaProps) {
+// Wrapped in `forwardRef` so consumers (e.g. LogPanel's auto-scroll
+// useEffect) can attach a ref to the underlying <textarea>. Preact 10
+// strips `ref` from the props of a plain function component during
+// `createElement`, so without forwardRef the ref silently never reaches
+// the DOM and `ref.current` stays null.
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { disabled, style, class: className, className: classNameAlt, ...props },
+  ref
+) {
   ensureUiStyles()
 
   const cls = ['lpc-ui-textarea', className, classNameAlt].filter(Boolean).join(' ')
 
   return (
     <textarea
+      ref={ref}
       disabled={disabled}
       class={cls}
       style={{
@@ -41,4 +51,4 @@ export function Textarea({ disabled, style, class: className, className: classNa
       {...props}
     />
   )
-}
+})
