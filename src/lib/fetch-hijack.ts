@@ -203,7 +203,7 @@ effect(() => {
       const text = await resp.text()
       try {
         const data = JSON.parse(text)
-        if (data?.data?.be_relation && data.data.be_relation.attribute !== 0) {
+        if (data?.data?.be_relation?.attribute && data.data.be_relation.attribute === 128) {
           data.data.be_relation.attribute = 0
           console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
           ensureSpaceBlockBanner()
