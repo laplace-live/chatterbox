@@ -54,21 +54,23 @@ export function App() {
     return () => stopUserBlacklistHijack()
   }, [])
 
-  // B站's SPA may render `.app-body` after our userscript has already
-  // mounted, and may even replace the node on navigation. Setting an inline
-  // style on the element only works if we happen to query it at the right
-  // time. Inject a <style> rule instead so the browser applies it whenever
-  // `.app-body` exists, regardless of mount order.
+  // B站's SPA renders `.app-body` after our userscript has mounted and
+  // also re-applies inline styles on it after hydration, which silently
+  // overrode any plain CSS rule (or inline style we'd set imperatively)
+  // once the page finished loading. Inject a <style> rule with !important
+  // so the browser applies it whenever `.app-body` exists and B站's
+  // post-hydration inline writes can't clobber it.
   useEffect(() => {
-    // Clear any stale inline margin left over from older versions of this
-    // script that mutated `.app-body` directly. New versions always drive
-    // the layout via the injected <style> below.
+    // Clear stale inline margin left over from older versions of this
+    // script that mutated `.app-body` directly. We only clear the exact
+    // value the old code wrote ('1rem') so we never accidentally wipe a
+    // margin B站 itself put there.
     const stale = document.querySelector<HTMLElement>('.app-body')
-    if (stale?.style.marginLeft) stale.style.marginLeft = ''
+    if (stale?.style.marginLeft === '1rem') stale.style.marginLeft = ''
 
     if (!optimizeLayout.value) return
     const style = document.createElement('style')
-    style.textContent = '.app-body { margin-left: 1rem; }'
+    style.textContent = '.app-body { margin-left: 1rem !important; }'
     document.head.appendChild(style)
     return () => style.remove()
   }, [optimizeLayout.value])
