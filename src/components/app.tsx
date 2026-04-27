@@ -54,14 +54,23 @@ export function App() {
     return () => stopUserBlacklistHijack()
   }, [])
 
+  // B站's SPA may render `.app-body` after our userscript has already
+  // mounted, and may even replace the node on navigation. Setting an inline
+  // style on the element only works if we happen to query it at the right
+  // time. Inject a <style> rule instead so the browser applies it whenever
+  // `.app-body` exists, regardless of mount order.
   useEffect(() => {
-    const el = document.querySelector<HTMLElement>('.app-body')
-    if (!el) return
-    if (optimizeLayout.value) {
-      el.style.marginLeft = '1rem'
-    } else {
-      el.style.marginLeft = ''
-    }
+    // Clear any stale inline margin left over from older versions of this
+    // script that mutated `.app-body` directly. New versions always drive
+    // the layout via the injected <style> below.
+    const stale = document.querySelector<HTMLElement>('.app-body')
+    if (stale?.style.marginLeft) stale.style.marginLeft = ''
+
+    if (!optimizeLayout.value) return
+    const style = document.createElement('style')
+    style.textContent = '.app-body { margin-left: 1rem; }'
+    document.head.appendChild(style)
+    return () => style.remove()
   }, [optimizeLayout.value])
 
   return (
