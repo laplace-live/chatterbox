@@ -21,8 +21,8 @@ export function Textarea({ disabled, style, class: className, className: classNa
       class={cls}
       style={{
         boxSizing: 'border-box',
-        padding: '6px 8px',
-        border: '1px solid var(--Ga2, #ccc)',
+        padding: '2px 4px',
+        border: '1px solid var(--Ga4, #999)',
         borderRadius: '4px',
         background: 'var(--bg1, #fff)',
         color: 'inherit',

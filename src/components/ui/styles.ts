@@ -18,7 +18,8 @@ const CSS = `
   filter: brightness(0.9);
 }
 .lpc-ui-input:focus,
-.lpc-ui-textarea:focus {
+.lpc-ui-textarea:focus,
+.lpc-ui-select:focus {
   border-color: #36a185;
 }
 .lpc-ui-checkbox:focus-visible {

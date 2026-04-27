@@ -9,6 +9,9 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { cachedStreamerUid, maxLength, memesPanelOpen, msgSendInterval, optimizeLayout } from '../lib/store'
 import { processMessages } from '../lib/utils'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { NativeSelect } from './ui/native-select'
 
 type MemeSortBy = NonNullable<LaplaceInternal.HTTPS.Workers.MemeListQuery['sortBy']>
 
@@ -261,7 +264,7 @@ export function MemesList() {
 
       if (data.length === 0) {
         memes.value = []
-        status.value = '当前房间暂无烂梗'
+        status.value = '暂无烂梗'
         return
       }
 
@@ -339,8 +342,7 @@ export function MemesList() {
       {memesPanelOpen.value && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '.5em', marginTop: '.5em', marginBottom: '.5em' }}>
-            <select
-              style={{ fontSize: '12px' }}
+            <NativeSelect
               value={sortBy.value}
               onChange={e => {
                 const v = e.currentTarget.value
@@ -350,15 +352,10 @@ export function MemesList() {
               <option value='lastCopiedAt'>最近使用</option>
               <option value='copyCount'>最多复制</option>
               <option value='createdAt'>最新添加</option>
-            </select>
-            <button
-              type='button'
-              style={{ fontSize: '12px' }}
-              disabled={loading.value}
-              onClick={() => void loadMemes()}
-            >
+            </NativeSelect>
+            <Button variant='outline' size='sm' disabled={loading.value} onClick={() => void loadMemes()}>
               {loading.value ? '加载中…' : '刷新'}
-            </button>
+            </Button>
             <span style={{ color: statusColor.value }}>{status.value}</span>
             <a
               href={`https://laplace.live/memes${cachedStreamerUid.value ? `?contribute=${cachedStreamerUid.value}` : ''}`}
@@ -370,14 +367,14 @@ export function MemesList() {
             </a>
           </div>
           {memes.value.length > 0 && (
-            <input
+            <Input
               type='text'
               placeholder='筛选烂梗…'
               value={filterText.value}
               onInput={e => {
                 filterText.value = e.currentTarget.value
               }}
-              style={{ boxSizing: 'border-box', width: '100%', marginBottom: '.5em' }}
+              style={{ width: '100%', marginBottom: '.5em' }}
             />
           )}
           <div

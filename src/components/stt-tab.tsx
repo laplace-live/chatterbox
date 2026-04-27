@@ -18,6 +18,11 @@ import {
   sttRunning,
 } from '../lib/store'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
+import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { NativeSelect } from './ui/native-select'
 
 const SONIOX_FLUSH_DELAY_MS = 5000
 
@@ -260,7 +265,7 @@ export function SttTab() {
       <div style={{ margin: '.5em 0', paddingBottom: '.5em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>Soniox API 设置</div>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
-          <input
+          <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
             placeholder='输入 Soniox API Key'
             style={{ flex: 1, minWidth: '150px' }}
@@ -269,15 +274,15 @@ export function SttTab() {
               sonioxApiKey.value = e.currentTarget.value
             }}
           />
-          <button
-            type='button'
-            style={{ cursor: 'pointer' }}
+          <Button
+            variant='outline'
+            size='sm'
             onClick={() => {
               apiKeyVisible.value = !apiKeyVisible.value
             }}
           >
             {apiKeyVisible.value ? '隐藏' : '显示'}
-          </button>
+          </Button>
         </div>
         <div style={{ marginBlock: '.5em', color: '#666', fontSize: '0.9em' }}>
           前往{' '}
@@ -295,22 +300,21 @@ export function SttTab() {
           {(['zh', 'en', 'ja', 'ko'] as const).map(lang => {
             const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
             return (
-              <span key={lang} style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-                <input
-                  type='checkbox'
-                  checked={hints.includes(lang)}
-                  onChange={e => updateLangHints(lang, e.currentTarget.checked)}
-                />
-                <label htmlFor={lang}>{labels[lang]}</label>
-              </span>
+              <Checkbox
+                key={lang}
+                id={`stt-lang-${lang}`}
+                checked={hints.includes(lang)}
+                onChange={e => updateLangHints(lang, e.currentTarget.checked)}
+                label={labels[lang]}
+              />
             )
           })}
-          <label htmlFor='sonioxMaxLength'>超过</label>
-          <input
+          <Label htmlFor='sonioxMaxLength'>超过</Label>
+          <Input
             id='sonioxMaxLength'
             type='number'
             min='1'
-            style={{ width: '40px' }}
+            style={{ width: '50px' }}
             value={sonioxMaxLength.value}
             onInput={e => {
               const v = parseInt(e.currentTarget.value, 10) || 1
@@ -320,49 +324,40 @@ export function SttTab() {
           <span>字自动分段</span>
         </div>
         <div style={{ display: 'flex', gap: '.75em', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='sonioxAutoSend'
-              type='checkbox'
-              checked={sonioxAutoSend.value}
-              onInput={e => {
-                sonioxAutoSend.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='sonioxAutoSend'>识别完成后自动发送弹幕</label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='sonioxWrapBrackets'
-              type='checkbox'
-              checked={sonioxWrapBrackets.value}
-              onInput={e => {
-                sonioxWrapBrackets.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='sonioxWrapBrackets'>使用【】包裹同传内容</label>
-          </span>
+          <Checkbox
+            id='sonioxAutoSend'
+            checked={sonioxAutoSend.value}
+            onInput={e => {
+              sonioxAutoSend.value = e.currentTarget.checked
+            }}
+            label='识别完成后自动发送弹幕'
+          />
+          <Checkbox
+            id='sonioxWrapBrackets'
+            checked={sonioxWrapBrackets.value}
+            onInput={e => {
+              sonioxWrapBrackets.value = e.currentTarget.checked
+            }}
+            label='使用【】包裹同传内容'
+          />
         </div>
       </div>
 
       <div style={{ margin: '.5em 0', paddingBottom: '.5em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>实时翻译设置</div>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='sonioxTranslationEnabled'
-              type='checkbox'
-              checked={sonioxTranslationEnabled.value}
-              onInput={e => {
-                sonioxTranslationEnabled.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='sonioxTranslationEnabled'>启用实时翻译</label>
-          </span>
+          <Checkbox
+            id='sonioxTranslationEnabled'
+            checked={sonioxTranslationEnabled.value}
+            onInput={e => {
+              sonioxTranslationEnabled.value = e.currentTarget.checked
+            }}
+            label='启用实时翻译'
+          />
         </div>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label htmlFor='sonioxTranslationTarget'>翻译目标语言：</label>
-          <select
+          <Label htmlFor='sonioxTranslationTarget'>翻译目标语言：</Label>
+          <NativeSelect
             id='sonioxTranslationTarget'
             style={{ minWidth: '80px' }}
             value={sonioxTranslationTarget.value}
@@ -373,16 +368,21 @@ export function SttTab() {
             <option value='en'>English</option>
             <option value='zh'>中文</option>
             <option value='ja'>日本語</option>
-          </select>
+          </NativeSelect>
         </div>
         <div style={{ marginTop: '.5em', color: '#666', fontSize: '0.9em' }}>启用后将发送翻译结果而非原始识别文字</div>
       </div>
 
       <div style={{ margin: '.5em 0' }}>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
-          <button type='button' onClick={() => void toggle()}>
+          <Button
+            variant={state.value === 'running' ? 'destructive' : 'default'}
+            size='sm'
+            disabled={state.value === 'starting' || state.value === 'stopping'}
+            onClick={() => void toggle()}
+          >
             {btnText}
-          </button>
+          </Button>
           <span style={{ color: statusColor.value }}>{statusText.value}</span>
         </div>
         <div style={{ marginBlock: '.5em' }}>

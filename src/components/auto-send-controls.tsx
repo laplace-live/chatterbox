@@ -14,6 +14,11 @@ import {
   sendMsg,
 } from '../lib/store'
 import { getGraphemes, processMessages, trimText } from '../lib/utils'
+import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
+import { Input } from './ui/input'
+import { NativeSelect } from './ui/native-select'
+import { Textarea } from './ui/textarea'
 
 function getPreview(template: string): string {
   const firstLine = (template.split('\n')[0] ?? '').trim()
@@ -70,10 +75,10 @@ export function AutoSendControls() {
         独轮车{sendMsg.value ? ' 🟢' : ''}
       </summary>
       <div style={{ margin: '.5em 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.25em' }}>
-        <button type='button' onClick={toggleSend}>
+        <Button variant={sendMsg.value ? 'destructive' : 'default'} size='sm' onClick={toggleSend}>
           {sendMsg.value ? '停车' : '开车'}
-        </button>
-        <select
+        </Button>
+        <NativeSelect
           style={{ width: '16ch' }}
           value={String(idx)}
           onChange={e => {
@@ -85,31 +90,31 @@ export function AutoSendControls() {
               {i + 1}: {getPreview(t)}
             </option>
           ))}
-        </select>
-        <button type='button' onClick={addTemplate}>
+        </NativeSelect>
+        <Button variant='outline' size='sm' onClick={addTemplate}>
           新增
-        </button>
-        <button type='button' onClick={removeTemplate}>
+        </Button>
+        <Button variant='outline' size='sm' onClick={removeTemplate}>
           删除当前
-        </button>
+        </Button>
       </div>
 
-      <textarea
+      <Textarea
         value={currentTemplate}
         onInput={e => updateTemplate(e.currentTarget.value)}
         placeholder='在这输入弹幕，每行一句话，超过可发送字数的会自动进行分割'
-        style={{ boxSizing: 'border-box', height: '80px', width: '100%', resize: 'vertical' }}
+        style={{ height: '80px' }}
       />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5em', margin: '.5em 0' }}>
         <div>
           <span>{msgCount} 条，</span>
           <span>间隔</span>
-          <input
+          <Input
             type='number'
             min='0'
             autocomplete='off'
-            style={{ width: '40px' }}
+            style={{ width: '50px' }}
             value={msgSendInterval.value}
             onInput={e => {
               const v = parseInt(e.currentTarget.value, 10)
@@ -118,11 +123,11 @@ export function AutoSendControls() {
           />
           <span>秒，</span>
           <span>超过</span>
-          <input
+          <Input
             type='number'
             min='1'
             autocomplete='off'
-            style={{ width: '30px' }}
+            style={{ width: '50px' }}
             value={maxLength.value}
             onInput={e => {
               const v = parseInt(e.currentTarget.value, 10)
@@ -131,53 +136,41 @@ export function AutoSendControls() {
           />
           <span>字自动分段</span>
         </div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='randomColor'
-            type='checkbox'
-            checked={randomColor.value}
-            onInput={e => {
-              randomColor.value = e.currentTarget.checked
-            }}
-          />
-          <label for='randomColor'>随机颜色</label>
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='randomInterval'
-            type='checkbox'
-            checked={randomInterval.value}
-            onInput={e => {
-              randomInterval.value = e.currentTarget.checked
-            }}
-          />
-          <label for='randomInterval'>间隔增加随机性</label>
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='randomChar'
-            type='checkbox'
-            checked={randomChar.value}
-            onInput={e => {
-              randomChar.value = e.currentTarget.checked
-            }}
-          />
-          <label for='randomChar'>随机字符</label>
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='persistSendState'
-            type='checkbox'
-            disabled={cachedRoomId.value === null}
-            checked={cachedRoomId.value !== null && !!persistSendState.value[String(cachedRoomId.value)]}
-            onInput={e => {
-              const roomId = cachedRoomId.value
-              if (roomId === null) return
-              persistSendState.value = { ...persistSendState.value, [String(roomId)]: e.currentTarget.checked }
-            }}
-          />
-          <label for='persistSendState'>保持当前直播间独轮车开关状态</label>
-        </span>
+        <Checkbox
+          id='randomColor'
+          checked={randomColor.value}
+          onInput={e => {
+            randomColor.value = e.currentTarget.checked
+          }}
+          label='随机颜色'
+        />
+        <Checkbox
+          id='randomInterval'
+          checked={randomInterval.value}
+          onInput={e => {
+            randomInterval.value = e.currentTarget.checked
+          }}
+          label='间隔增加随机性'
+        />
+        <Checkbox
+          id='randomChar'
+          checked={randomChar.value}
+          onInput={e => {
+            randomChar.value = e.currentTarget.checked
+          }}
+          label='随机字符'
+        />
+        <Checkbox
+          id='persistSendState'
+          disabled={cachedRoomId.value === null}
+          checked={cachedRoomId.value !== null && !!persistSendState.value[String(cachedRoomId.value)]}
+          onInput={e => {
+            const roomId = cachedRoomId.value
+            if (roomId === null) return
+            persistSendState.value = { ...persistSendState.value, [String(roomId)]: e.currentTarget.checked }
+          }}
+          label='保持当前直播间独轮车开关状态'
+        />
       </div>
     </details>
   )

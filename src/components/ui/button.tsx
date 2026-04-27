@@ -21,7 +21,7 @@ export interface ButtonProps extends ButtonBase {
 }
 
 const SIZE_STYLES: Record<ButtonSize, CSSProperties> = {
-  sm: { padding: '2px 8px', minHeight: '20px' },
+  sm: { padding: '1px 6px', minHeight: '18px' },
   default: { padding: '4px 10px', minHeight: '24px' },
   lg: { padding: '6px 14px', minHeight: '28px' },
   icon: { padding: '0', width: '24px', height: '24px' },
@@ -36,7 +36,7 @@ const VARIANT_STYLES: Record<ButtonVariant, CSSProperties> = {
   secondary: {
     background: 'var(--Ga1_s, rgba(0,0,0,.04))',
     color: 'inherit',
-    border: '1px solid var(--Ga2, #ccc)',
+    border: '1px solid var(--Ga4, #999)',
   },
   destructive: {
     background: 'transparent',
@@ -46,7 +46,7 @@ const VARIANT_STYLES: Record<ButtonVariant, CSSProperties> = {
   outline: {
     background: 'transparent',
     color: 'inherit',
-    border: '1px solid var(--Ga2, #ccc)',
+    border: '1px solid var(--Ga4, #999)',
   },
   ghost: {
     background: 'transparent',

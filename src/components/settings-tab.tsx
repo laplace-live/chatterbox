@@ -21,6 +21,11 @@ import {
   unlockSpaceBlock,
 } from '../lib/store'
 import { EmoteIds } from './emote-ids'
+import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { NativeSelect } from './ui/native-select'
 
 const SYNC_INTERVAL = 10 * 60 * 1000
 
@@ -422,12 +427,12 @@ export function SettingsTab() {
         </div>
         <div style={{ marginBlock: '.5em', color: '#666' }}>每10分钟会自动同步云端替换规则</div>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
-          <button type='button' disabled={syncing.value} onClick={() => void syncRemote()}>
+          <Button variant='outline' size='sm' disabled={syncing.value} onClick={() => void syncRemote()}>
             {syncing.value ? '同步中…' : '同步'}
-          </button>
-          <button type='button' disabled={testingRemote.value} onClick={() => void testRemote()}>
+          </Button>
+          <Button variant='outline' size='sm' disabled={testingRemote.value} onClick={() => void testRemote()}>
             {testingRemote.value ? '测试中…' : '测试云端词库'}
-          </button>
+          </Button>
           <span style={{ color: syncStatusColor.value }}>{syncStatus.value}</span>
         </div>
       </div>
@@ -435,9 +440,9 @@ export function SettingsTab() {
       <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
           <div style={{ fontWeight: 'bold' }}>本地全局规则</div>
-          <button type='button' disabled={testingLocal.value} onClick={() => void testLocal()}>
+          <Button variant='outline' size='sm' disabled={testingLocal.value} onClick={() => void testLocal()}>
             {testingLocal.value ? '测试中…' : '测试本地词库'}
-          </button>
+          </Button>
         </div>
         <div style={{ marginBlock: '.5em', color: '#666' }}>适用于所有直播间，优先级高于云端规则</div>
         <div style={{ marginBottom: '.5em', maxHeight: '160px', overflowY: 'auto' }}>
@@ -458,25 +463,15 @@ export function SettingsTab() {
                 <span style={{ flex: 1, wordBreak: 'break-all', fontFamily: 'monospace' }}>
                   {rule.from ?? '(空)'} → {rule.to ?? '(空)'}
                 </span>
-                <button
-                  type='button'
-                  onClick={() => removeGlobalRule(i)}
-                  style={{
-                    cursor: 'pointer',
-                    background: 'transparent',
-                    color: 'red',
-                    border: 'none',
-                    borderRadius: '2px',
-                  }}
-                >
+                <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => removeGlobalRule(i)}>
                   删除
-                </button>
+                </Button>
               </div>
             ))
           )}
         </div>
         <div style={{ display: 'flex', gap: '.25em', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
+          <Input
             placeholder='替换前'
             style={{ flex: 1, minWidth: '80px' }}
             value={globalReplaceFrom.value}
@@ -491,7 +486,7 @@ export function SettingsTab() {
             }}
           />
           <span>→</span>
-          <input
+          <Input
             placeholder='替换后'
             style={{ flex: 1, minWidth: '80px' }}
             value={globalReplaceTo.value}
@@ -505,9 +500,9 @@ export function SettingsTab() {
               }
             }}
           />
-          <button type='button' onClick={addGlobalRule}>
+          <Button variant='outline' size='sm' onClick={addGlobalRule}>
             添加
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -515,7 +510,7 @@ export function SettingsTab() {
         <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>本地直播间规则</div>
         <div style={{ marginBlock: '.5em', color: '#666' }}>仅在对应直播间生效；优先级高于全局规则</div>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
-          <select
+          <NativeSelect
             value={editingRoomId.value}
             onChange={e => {
               editingRoomId.value = e.currentTarget.value
@@ -531,9 +526,9 @@ export function SettingsTab() {
                 {rid === currentRoomStr ? ' (当前)' : ''}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           <div style={{ display: 'flex', gap: '.25em', alignItems: 'center' }}>
-            <input
+            <Input
               placeholder='房间号'
               style={{ width: '80px' }}
               value={newRoomId.value}
@@ -547,14 +542,14 @@ export function SettingsTab() {
                 }
               }}
             />
-            <button type='button' onClick={addRoom}>
+            <Button variant='outline' size='sm' onClick={addRoom}>
               添加房间
-            </button>
+            </Button>
           </div>
           {editingRoomId.value && editingRoomId.value !== currentRoomStr && (
-            <button type='button' onClick={() => deleteRoom(editingRoomId.value)} style={{ color: 'red' }}>
+            <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => deleteRoom(editingRoomId.value)}>
               删除此房间
-            </button>
+            </Button>
           )}
         </div>
 
@@ -578,25 +573,15 @@ export function SettingsTab() {
                     <span style={{ flex: 1, wordBreak: 'break-all', fontFamily: 'monospace' }}>
                       {rule.from ?? '(空)'} → {rule.to ?? '(空)'}
                     </span>
-                    <button
-                      type='button'
-                      onClick={() => removeRoomRule(i)}
-                      style={{
-                        cursor: 'pointer',
-                        background: 'transparent',
-                        color: 'red',
-                        border: 'none',
-                        borderRadius: '2px',
-                      }}
-                    >
+                    <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => removeRoomRule(i)}>
                       删除
-                    </button>
+                    </Button>
                   </div>
                 ))
               )}
             </div>
             <div style={{ display: 'flex', gap: '.25em', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
+              <Input
                 placeholder='替换前'
                 style={{ flex: 1, minWidth: '80px' }}
                 value={roomReplaceFrom.value}
@@ -611,7 +596,7 @@ export function SettingsTab() {
                 }}
               />
               <span>→</span>
-              <input
+              <Input
                 placeholder='替换后'
                 style={{ flex: 1, minWidth: '80px' }}
                 value={roomReplaceTo.value}
@@ -625,9 +610,9 @@ export function SettingsTab() {
                   }
                 }}
               />
-              <button type='button' onClick={addRoomRule}>
+              <Button variant='outline' size='sm' onClick={addRoomRule}>
                 添加
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -671,27 +656,17 @@ export function SettingsTab() {
                   </a>
                   <span style={{ color: '#999', fontSize: '11px', fontFamily: 'monospace' }}>{uid}</span>
                 </span>
-                <button
-                  type='button'
-                  onClick={() => removeFromBlacklist(uid)}
-                  style={{
-                    cursor: 'pointer',
-                    background: 'transparent',
-                    color: 'red',
-                    border: 'none',
-                    borderRadius: '2px',
-                  }}
-                >
+                <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => removeFromBlacklist(uid)}>
                   移出
-                </button>
+                </Button>
               </div>
             ))
           )}
         </div>
         {blacklistEntries.length > 0 && (
-          <button type='button' onClick={clearBlacklist}>
+          <Button variant='outline' size='sm' onClick={clearBlacklist}>
             清空名单
-          </button>
+          </Button>
         )}
       </div>
 
@@ -705,99 +680,76 @@ export function SettingsTab() {
       <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>其他设置</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '.5em' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='danmakuDirectMode'
-              type='checkbox'
-              checked={danmakuDirectMode.value}
-              onInput={e => {
-                danmakuDirectMode.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='danmakuDirectMode'>+1模式（在聊天消息旁显示偷弹幕和+1按钮）</label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em', paddingLeft: '1.5em' }}>
-            <input
+          <Checkbox
+            id='danmakuDirectMode'
+            checked={danmakuDirectMode.value}
+            onInput={e => {
+              danmakuDirectMode.value = e.currentTarget.checked
+            }}
+            label='+1模式（在聊天消息旁显示偷弹幕和+1按钮）'
+          />
+          <div style={{ paddingLeft: '1.5em' }}>
+            <Checkbox
               id='danmakuDirectConfirm'
-              type='checkbox'
               checked={danmakuDirectConfirm.value}
               disabled={!danmakuDirectMode.value}
               onInput={e => {
                 danmakuDirectConfirm.value = e.currentTarget.checked
               }}
+              label='+1弹幕发送前需确认（防误触）'
             />
-            <label htmlFor='danmakuDirectConfirm' style={{ color: danmakuDirectMode.value ? undefined : '#999' }}>
-              +1弹幕发送前需确认（防误触）
-            </label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em', paddingLeft: '1.5em' }}>
-            <input
+          </div>
+          <div style={{ paddingLeft: '1.5em' }}>
+            <Checkbox
               id='danmakuDirectAlwaysShow'
-              type='checkbox'
               checked={danmakuDirectAlwaysShow.value}
               disabled={!danmakuDirectMode.value}
               onInput={e => {
                 danmakuDirectAlwaysShow.value = e.currentTarget.checked
               }}
+              label='总是显示偷/+1按钮'
             />
-            <label htmlFor='danmakuDirectAlwaysShow' style={{ color: danmakuDirectMode.value ? undefined : '#999' }}>
-              总是显示偷/+1按钮
-            </label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='forceScrollDanmaku'
-              type='checkbox'
-              checked={forceScrollDanmaku.value}
-              onInput={e => {
-                forceScrollDanmaku.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='forceScrollDanmaku'>脚本载入时强制配置弹幕位置为滚动方向</label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='unlockLiveBlock'
-              type='checkbox'
-              checked={unlockLiveBlock.value}
-              onInput={e => {
-                unlockLiveBlock.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='unlockLiveBlock'>直播间拉黑解锁（刷新生效，仅布局解锁）</label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='unlockSpaceBlock'
-              type='checkbox'
-              checked={unlockSpaceBlock.value}
-              onInput={e => {
-                unlockSpaceBlock.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='unlockSpaceBlock'>空间拉黑解锁（刷新生效，仅布局解锁）</label>
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-            <input
-              id='optimizeLayout'
-              type='checkbox'
-              checked={optimizeLayout.value}
-              onInput={e => {
-                optimizeLayout.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='optimizeLayout'>优化布局</label>
-          </span>
+          </div>
+          <Checkbox
+            id='forceScrollDanmaku'
+            checked={forceScrollDanmaku.value}
+            onInput={e => {
+              forceScrollDanmaku.value = e.currentTarget.checked
+            }}
+            label='脚本载入时强制配置弹幕位置为滚动方向'
+          />
+          <Checkbox
+            id='unlockLiveBlock'
+            checked={unlockLiveBlock.value}
+            onInput={e => {
+              unlockLiveBlock.value = e.currentTarget.checked
+            }}
+            label='直播间拉黑解锁（刷新生效，仅布局解锁）'
+          />
+          <Checkbox
+            id='unlockSpaceBlock'
+            checked={unlockSpaceBlock.value}
+            onInput={e => {
+              unlockSpaceBlock.value = e.currentTarget.checked
+            }}
+            label='空间拉黑解锁（刷新生效，仅布局解锁）'
+          />
+          <Checkbox
+            id='optimizeLayout'
+            checked={optimizeLayout.value}
+            onInput={e => {
+              optimizeLayout.value = e.currentTarget.checked
+            }}
+            label='优化布局'
+          />
         </div>
       </div>
 
       <div style={{ margin: '.5em 0', paddingBottom: '1em' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>日志设置</div>
         <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label htmlFor='maxLogLines' style={{ color: '#666' }}>
-            最大日志行数:
-          </label>
-          <input
+          <Label htmlFor='maxLogLines'>最大日志行数:</Label>
+          <Input
             id='maxLogLines'
             type='number'
             min='1'

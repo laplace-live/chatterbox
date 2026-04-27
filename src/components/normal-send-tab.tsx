@@ -6,6 +6,8 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { aiEvasion, fasongText, maxLength, msgSendInterval, normalSendPanelOpen } from '../lib/store'
 import { processMessages } from '../lib/utils'
+import { Checkbox } from './ui/checkbox'
+import { Textarea } from './ui/textarea'
 
 export function NormalSendTab() {
   const sendMessage = async () => {
@@ -68,7 +70,7 @@ export function NormalSendTab() {
     >
       <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>常规发送</summary>
       <div style={{ margin: '.5em 0', position: 'relative' }}>
-        <textarea
+        <Textarea
           value={fasongText.value}
           onInput={e => {
             fasongText.value = e.currentTarget.value
@@ -80,13 +82,7 @@ export function NormalSendTab() {
             }
           }}
           placeholder='输入弹幕内容… (Enter 发送)'
-          style={{
-            boxSizing: 'border-box',
-            height: '50px',
-            minHeight: '40px',
-            width: '100%',
-            resize: 'vertical',
-          }}
+          style={{ height: '50px' }}
         />
         <div
           style={{
@@ -101,17 +97,14 @@ export function NormalSendTab() {
         </div>
       </div>
       <div style={{ margin: '.5em 0' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='aiEvasion'
-            type='checkbox'
-            checked={aiEvasion.value}
-            onInput={e => {
-              aiEvasion.value = e.currentTarget.checked
-            }}
-          />
-          <label for='aiEvasion'>AI规避（发送失败时自动检测敏感词并重试）</label>
-        </span>
+        <Checkbox
+          id='aiEvasion'
+          checked={aiEvasion.value}
+          onInput={e => {
+            aiEvasion.value = e.currentTarget.checked
+          }}
+          label='AI规避（发送失败时自动检测敏感词并重试）'
+        />
       </div>
     </details>
   )

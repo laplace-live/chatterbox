@@ -1,13 +1,16 @@
 import type { ComponentChildren, CSSProperties, InputHTMLAttributes } from 'preact'
 
+import { Label } from './label'
 import { ensureUiStyles } from './styles'
 
 type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'style' | 'class' | 'className'>
 
 export interface CheckboxProps extends CheckboxBase {
-  // Optional inline label. When provided, the checkbox is wrapped in a
-  // <span> with a sibling <label htmlFor={id}>, mirroring the
-  // span/input/label triplet used elsewhere in this codebase.
+  // Optional inline label. When provided, the input is rendered nested
+  // inside a <label>, so clicking the label text always toggles the
+  // checkbox even when no `id` is supplied (HTML allows both explicit
+  // `htmlFor` association and implicit nesting; we use both, which is
+  // valid and resolves to the same element).
   label?: ComponentChildren
   style?: CSSProperties
   class?: string
@@ -49,18 +52,19 @@ export function Checkbox({
   if (label === undefined || label === null || label === false) return input
 
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+    <Label
+      htmlFor={id}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '.25em',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        color: disabled ? '#999' : undefined,
+        userSelect: 'none',
+      }}
+    >
       {input}
-      <label
-        htmlFor={id}
-        style={{
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          color: disabled ? '#999' : undefined,
-          userSelect: 'none',
-        }}
-      >
-        {label}
-      </label>
-    </span>
+      {label}
+    </Label>
   )
 }

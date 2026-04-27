@@ -11,12 +11,16 @@ import {
   cachedRoomId,
   persistAutoBlendState,
 } from '../lib/store'
+import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 
 function NumberInput({
   value,
   min,
   max,
-  width = '40px',
+  width = '50px',
   onChange,
 }: {
   value: number
@@ -26,7 +30,7 @@ function NumberInput({
   onChange: (n: number) => void
 }) {
   return (
-    <input
+    <Input
       type='number'
       autocomplete='off'
       min={String(min)}
@@ -60,23 +64,23 @@ export function AutoBlendControls() {
       </summary>
 
       <div style={{ margin: '.5em 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.25em' }}>
-        <button type='button' onClick={toggleEnabled}>
+        <Button variant={autoBlendEnabled.value ? 'destructive' : 'default'} size='sm' onClick={toggleEnabled}>
           {autoBlendEnabled.value ? '停止融入' : '开始融入'}
-        </button>
+        </Button>
       </div>
 
       <div
         style={{
-          margin: '.5em 0',
+          margin: '.5rem 0',
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '.5em',
+          gap: '.25rem 0.5rem',
           alignItems: 'center',
           color: autoBlendEnabled.value ? undefined : '#999',
         }}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <span>触发：</span>
+        <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          触发：
           <NumberInput
             value={autoBlendUniqueUsers.value}
             min={1}
@@ -84,7 +88,9 @@ export function AutoBlendControls() {
               autoBlendUniqueUsers.value = v
             }}
           />
-          <span>人在</span>
+        </Label>
+        <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          人在
           <NumberInput
             value={autoBlendWindowSec.value}
             min={3}
@@ -92,7 +98,9 @@ export function AutoBlendControls() {
               autoBlendWindowSec.value = v
             }}
           />
-          <span>秒内重复</span>
+        </Label>
+        <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          秒内重复
           <NumberInput
             value={autoBlendMinOccurrences.value}
             min={autoBlendUniqueUsers.value}
@@ -100,22 +108,11 @@ export function AutoBlendControls() {
               autoBlendMinOccurrences.value = v
             }}
           />
-          <span>次</span>
-        </span>
-      </div>
+          次
+        </Label>
 
-      <div
-        style={{
-          margin: '.5em 0',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '.5em',
-          alignItems: 'center',
-          color: autoBlendEnabled.value ? undefined : '#999',
-        }}
-      >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <span>跟车</span>
+        <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          跟车
           <NumberInput
             value={autoBlendSendCount.value}
             min={1}
@@ -124,10 +121,10 @@ export function AutoBlendControls() {
               autoBlendSendCount.value = v
             }}
           />
-          <span>次</span>
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <span>自动融入冷却</span>
+          次
+        </Label>
+        <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          自动融入冷却
           <NumberInput
             value={autoBlendCooldownSec.value}
             min={4}
@@ -136,8 +133,8 @@ export function AutoBlendControls() {
               autoBlendCooldownSec.value = v
             }}
           />
-          <span>秒</span>
-        </span>
+          秒
+        </Label>
       </div>
 
       <div
@@ -148,45 +145,36 @@ export function AutoBlendControls() {
           gap: '.75em',
         }}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='autoBlendIncludeReply'
-            type='checkbox'
-            checked={autoBlendIncludeReply.value}
-            onInput={e => {
-              autoBlendIncludeReply.value = e.currentTarget.checked
-            }}
-          />
-          <label for='autoBlendIncludeReply'>包含 @ 回复弹幕</label>
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='autoBlendUseReplacements'
-            type='checkbox'
-            checked={autoBlendUseReplacements.value}
-            onInput={e => {
-              autoBlendUseReplacements.value = e.currentTarget.checked
-            }}
-          />
-          <label for='autoBlendUseReplacements'>应用替换规则</label>
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
-          <input
-            id='persistAutoBlendState'
-            type='checkbox'
-            disabled={cachedRoomId.value === null}
-            checked={cachedRoomId.value !== null && !!persistAutoBlendState.value[String(cachedRoomId.value)]}
-            onInput={e => {
-              const roomId = cachedRoomId.value
-              if (roomId === null) return
-              persistAutoBlendState.value = {
-                ...persistAutoBlendState.value,
-                [String(roomId)]: e.currentTarget.checked,
-              }
-            }}
-          />
-          <label for='persistAutoBlendState'>保持当前直播间自动融入开关状态</label>
-        </span>
+        <Checkbox
+          id='autoBlendIncludeReply'
+          checked={autoBlendIncludeReply.value}
+          onInput={e => {
+            autoBlendIncludeReply.value = e.currentTarget.checked
+          }}
+          label='包含 @ 回复弹幕'
+        />
+        <Checkbox
+          id='autoBlendUseReplacements'
+          checked={autoBlendUseReplacements.value}
+          onInput={e => {
+            autoBlendUseReplacements.value = e.currentTarget.checked
+          }}
+          label='应用替换规则'
+        />
+        <Checkbox
+          id='persistAutoBlendState'
+          disabled={cachedRoomId.value === null}
+          checked={cachedRoomId.value !== null && !!persistAutoBlendState.value[String(cachedRoomId.value)]}
+          onInput={e => {
+            const roomId = cachedRoomId.value
+            if (roomId === null) return
+            persistAutoBlendState.value = {
+              ...persistAutoBlendState.value,
+              [String(roomId)]: e.currentTarget.checked,
+            }
+          }}
+          label='保持当前直播间自动融入开关状态'
+        />
       </div>
 
       <div style={{ color: '#999', fontSize: '12px', lineHeight: 1.5 }}>监测当前直播间弹幕，自动跟车热门弹幕</div>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import { logLines, maxLogLines } from '../lib/log'
 import { logPanelOpen } from '../lib/store'
+import { Textarea } from './ui/textarea'
 
 export function LogPanel() {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -19,7 +20,7 @@ export function LogPanel() {
       style={{ marginTop: '.25em' }}
     >
       <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>日志</summary>
-      <textarea
+      <Textarea
         ref={ref}
         readOnly
         value={logLines.value.join('\n')}

@@ -2,6 +2,8 @@ import { signal } from '@preact/signals'
 import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { Button } from './button'
+
 interface ConfirmOptions {
   title?: string
   body?: ComponentChildren
@@ -85,12 +87,12 @@ export function AlertDialog() {
       {p.title && <p style={{ margin: '0 0 .75em', wordBreak: 'break-all' }}>{p.title}</p>}
       {p.body && <div style={{ margin: '0 0 .75em', wordBreak: 'break-all' }}>{p.body}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.5em' }}>
-        <button type='button' onClick={() => close(false)}>
+        <Button variant='outline' size='sm' onClick={() => close(false)}>
           {p.cancelText ?? '取消'}
-        </button>
-        <button type='button' onClick={() => close(true)}>
+        </Button>
+        <Button size='sm' onClick={() => close(true)}>
           {p.confirmText ?? '确认'}
-        </button>
+        </Button>
       </div>
     </dialog>
   )
