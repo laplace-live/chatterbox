@@ -1,3 +1,4 @@
+import { cn } from '../lib/cn'
 import { activeTab, dialogOpen, optimizeLayout } from '../lib/store'
 import { AboutTab } from './about-tab'
 import { AutoBlendControls } from './auto-blend-controls'
@@ -14,94 +15,63 @@ export function Configurator() {
   const visible = dialogOpen.value
   const optimized = optimizeLayout.value
 
+  // Three layout shapes for the dialog:
+  // 1. Hidden when `dialogOpen` is false.
+  // 2. Visible + optimized: full-height flex column with hidden overflow
+  //    (children opt back into scroll where appropriate).
+  // 3. Visible + non-optimized: legacy block layout that grows to its
+  //    content up to the viewport height.
+  const dialogClass = cn(
+    'lc-fixed lc-right-1 lc-bottom-[calc(4px_+_30px)] lc-z-[2147483647]',
+    'lc-bg-bg1 lc-rounded lc-min-w-[50px] lc-w-[300px]',
+    'lc-shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
+    !visible && 'lc-hidden',
+    visible && optimized && 'lc-flex lc-flex-col lc-h-[calc(100vh_-_110px)] lc-overflow-hidden',
+    visible && !optimized && 'lc-block lc-max-h-[calc(100vh_-_110px)] lc-overflow-y-auto'
+  )
+
+  // All four tab panels share the visibility/layout shape; only fasong
+  // skips overflow-auto because its children handle their own scrolling
+  // (the meme list has its own scroll container).
+  const panelClass = (active: boolean, withOverflow: boolean) =>
+    cn(
+      // `<Tabs />` already lives inside the dialog, so panel-level horizontal
+      // padding belongs here on the per-tab wrapper rather than the dialog.
+      'lc-px-[10px]',
+      !active && 'lc-hidden',
+      active && optimized && 'lc-flex lc-flex-col lc-flex-1 lc-min-h-0',
+      active && !optimized && 'lc-block',
+      active && optimized && withOverflow && 'lc-overflow-y-auto'
+    )
+
   return (
-    <div
-      id='laplace-chatterbox-dialog'
-      style={{
-        position: 'fixed',
-        right: '4px',
-        bottom: 'calc(4px + 30px)',
-        zIndex: 2147483647,
-        background: 'var(--bg1, #fff)',
-        display: visible ? (optimized ? 'flex' : 'block') : 'none',
-        flexDirection: optimized ? 'column' : undefined,
-        boxShadow: '0 0 0 1px var(--Ga2, rgba(0, 0, 0, .2))',
-        borderRadius: '4px',
-        minWidth: '50px',
-        height: optimized ? 'calc(100vh - 110px)' : undefined,
-        maxHeight: optimized ? undefined : 'calc(100vh - 110px)',
-        overflowY: optimized ? 'hidden' : 'auto',
-        width: '300px',
-      }}
-    >
+    <div id='laplace-chatterbox-dialog' class={dialogClass}>
       <Tabs />
 
-      <div
-        style={{
-          display: tab === 'fasong' ? (optimized ? 'flex' : 'block') : 'none',
-          flexDirection: optimized ? 'column' : undefined,
-          flex: optimized ? 1 : undefined,
-          paddingInline: '10px',
-          minHeight: optimized ? 0 : undefined,
-        }}
-      >
+      <div class={panelClass(tab === 'fasong', false)}>
         <AutoSendControls />
-
-        <div style={{ margin: '.25rem 0' }}>
+        <div class='lc-my-1'>
           <AutoBlendControls />
         </div>
-
-        <div
-          style={{
-            margin: '.25rem 0',
-            ...(optimized && { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }),
-          }}
-        >
+        <div class={cn('lc-my-1', optimized && 'lc-flex lc-flex-col lc-flex-1 lc-min-h-0')}>
           <MemesList />
         </div>
         <NormalSendTab />
       </div>
 
-      <div
-        style={{
-          display: tab === 'tongchuan' ? (optimized ? 'flex' : 'block') : 'none',
-          flexDirection: optimized ? 'column' : undefined,
-          flex: optimized ? 1 : undefined,
-          paddingInline: '10px',
-          minHeight: optimized ? 0 : undefined,
-          overflowY: optimized ? 'auto' : undefined,
-        }}
-      >
+      <div class={panelClass(tab === 'tongchuan', true)}>
         <SttTab />
       </div>
 
-      <div
-        style={{
-          display: tab === 'settings' ? (optimized ? 'flex' : 'block') : 'none',
-          flexDirection: optimized ? 'column' : undefined,
-          flex: optimized ? 1 : undefined,
-          paddingInline: '10px',
-          minHeight: optimized ? 0 : undefined,
-          overflowY: optimized ? 'auto' : undefined,
-        }}
-      >
+      <div class={panelClass(tab === 'settings', true)}>
         <SettingsTab />
       </div>
 
-      <div
-        style={{
-          display: tab === 'about' ? (optimized ? 'flex' : 'block') : 'none',
-          flexDirection: optimized ? 'column' : undefined,
-          flex: optimized ? 1 : undefined,
-          paddingInline: '10px',
-          minHeight: optimized ? 0 : undefined,
-          overflowY: optimized ? 'auto' : undefined,
-        }}
-      >
+      <div class={panelClass(tab === 'about', true)}>
         <AboutTab />
       </div>
 
-      <div style={{ paddingInline: '10px', paddingBlockEnd: '5px' }}>
+      <div class='lc-px-[10px] lc-pb-[5px]'>
         <LogPanel />
       </div>
     </div>

@@ -74,12 +74,12 @@ export function AutoSendControls() {
     >
       <AccordionTrigger>独轮车{sendMsg.value ? ' 🟢' : ''}</AccordionTrigger>
       <AccordionContent>
-        <div style={{ margin: '.5em 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.25em' }}>
+        <div class='lc-my-2 lc-flex lc-items-center lc-flex-wrap lc-gap-1'>
           <Button variant={sendMsg.value ? 'destructive' : 'default'} size='sm' onClick={toggleSend}>
             {sendMsg.value ? '停车' : '开车'}
           </Button>
           <NativeSelect
-            style={{ width: '16ch' }}
+            className='lc-w-[16ch]'
             value={String(idx)}
             onChange={e => {
               activeTemplateIndex.value = parseInt(e.currentTarget.value, 10)
@@ -103,10 +103,10 @@ export function AutoSendControls() {
           value={currentTemplate}
           onInput={e => updateTemplate(e.currentTarget.value)}
           placeholder='在这输入弹幕，每行一句话，超过可发送字数的会自动进行分割'
-          style={{ height: '80px' }}
+          className='lc-h-[80px]'
         />
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5em', margin: '.5em 0' }}>
+        <div class='lc-flex lc-flex-wrap lc-gap-2 lc-my-2'>
           <div>
             <span>{msgCount} 条，</span>
             <span>间隔</span>
@@ -114,7 +114,7 @@ export function AutoSendControls() {
               type='number'
               min='0'
               autocomplete='off'
-              style={{ width: '50px' }}
+              className='lc-w-[50px]'
               value={msgSendInterval.value}
               onInput={e => {
                 const v = parseInt(e.currentTarget.value, 10)
@@ -127,7 +127,7 @@ export function AutoSendControls() {
               type='number'
               min='1'
               autocomplete='off'
-              style={{ width: '50px' }}
+              className='lc-w-[50px]'
               value={maxLength.value}
               onInput={e => {
                 const v = parseInt(e.currentTarget.value, 10)

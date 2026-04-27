@@ -1,10 +1,16 @@
 import preact from '@preact/preset-vite'
+import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
 import monkey, { util } from 'vite-plugin-monkey'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    // UnoCSS must run before the framework plugin so it can scan the JSX
+    // sources before they're transformed to plain JS. The emitted CSS is
+    // referenced via `import 'virtual:uno.css'` in the entry and inlined
+    // into the userscript by vite-plugin-monkey via GM_addStyle.
+    UnoCSS(),
     preact(),
     monkey({
       entry: 'src/main.tsx',

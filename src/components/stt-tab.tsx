@@ -26,6 +26,13 @@ import { NativeSelect } from './ui/native-select'
 
 const SONIOX_FLUSH_DELAY_MS = 5000
 
+// Each visible block in this tab is wrapped in this section shape (vertical
+// rhythm + bottom divider). Repeated across API key / recognition / translation
+// settings.
+const SECTION_CLASS = 'lc-my-2 lc-pb-2 lc-border-b lc-border-b-solid lc-border-b-ga2'
+const HEADING_CLASS = 'lc-font-bold lc-mb-2'
+const ROW_CLASS = 'lc-flex lc-gap-2 lc-items-center lc-flex-wrap lc-mb-2'
+
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
   const state = useSignal<'stopped' | 'starting' | 'running' | 'stopping'>('stopped')
@@ -262,13 +269,13 @@ export function SttTab() {
 
   return (
     <>
-      <div style={{ margin: '.5em 0', paddingBottom: '.5em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>Soniox API 设置</div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>Soniox API 设置</div>
+        <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
             placeholder='输入 Soniox API Key'
-            style={{ flex: 1, minWidth: '150px' }}
+            className='lc-flex-1 lc-min-w-[150px]'
             value={sonioxApiKey.value}
             onInput={e => {
               sonioxApiKey.value = e.currentTarget.value
@@ -284,18 +291,18 @@ export function SttTab() {
             {apiKeyVisible.value ? '隐藏' : '显示'}
           </Button>
         </div>
-        <div style={{ marginBlock: '.5em', color: '#666', fontSize: '0.9em' }}>
+        <div class='lc-my-2 lc-text-[#666] lc-text-[.9em]'>
           前往{' '}
-          <a href='https://soniox.com/' target='_blank' style={{ color: '#288bb8' }} rel='noopener'>
+          <a href='https://soniox.com/' target='_blank' class='lc-text-link' rel='noopener'>
             Soniox
           </a>{' '}
           注册账号并获取 API Key
         </div>
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '.5em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>语音识别设置</div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>语音识别设置</div>
+        <div class={ROW_CLASS}>
           <span>语言提示：</span>
           {(['zh', 'en', 'ja', 'ko'] as const).map(lang => {
             const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
@@ -314,7 +321,7 @@ export function SttTab() {
             id='sonioxMaxLength'
             type='number'
             min='1'
-            style={{ width: '50px' }}
+            className='lc-w-[50px]'
             value={sonioxMaxLength.value}
             onInput={e => {
               const v = parseInt(e.currentTarget.value, 10) || 1
@@ -323,7 +330,7 @@ export function SttTab() {
           />
           <span>字自动分段</span>
         </div>
-        <div style={{ display: 'flex', gap: '.75em', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div class='lc-flex lc-gap-3 lc-items-center lc-flex-wrap'>
           <Checkbox
             id='sonioxAutoSend'
             checked={sonioxAutoSend.value}
@@ -343,9 +350,9 @@ export function SttTab() {
         </div>
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '.5em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>实时翻译设置</div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>实时翻译设置</div>
+        <div class={ROW_CLASS}>
           <Checkbox
             id='sonioxTranslationEnabled'
             checked={sonioxTranslationEnabled.value}
@@ -355,11 +362,11 @@ export function SttTab() {
             label='启用实时翻译'
           />
         </div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div class='lc-flex lc-gap-2 lc-items-center lc-flex-wrap'>
           <Label htmlFor='sonioxTranslationTarget'>翻译目标语言：</Label>
           <NativeSelect
             id='sonioxTranslationTarget'
-            style={{ minWidth: '80px' }}
+            className='lc-min-w-[80px]'
             value={sonioxTranslationTarget.value}
             onChange={e => {
               sonioxTranslationTarget.value = e.currentTarget.value
@@ -370,11 +377,11 @@ export function SttTab() {
             <option value='ja'>日本語</option>
           </NativeSelect>
         </div>
-        <div style={{ marginTop: '.5em', color: '#666', fontSize: '0.9em' }}>启用后将发送翻译结果而非原始识别文字</div>
+        <div class='lc-mt-2 lc-text-[#666] lc-text-[.9em]'>启用后将发送翻译结果而非原始识别文字</div>
       </div>
 
-      <div style={{ margin: '.5em 0' }}>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
+      <div class='lc-my-2'>
+        <div class={ROW_CLASS}>
           <Button
             variant={state.value === 'running' ? 'destructive' : 'default'}
             size='sm'
@@ -383,23 +390,16 @@ export function SttTab() {
           >
             {btnText}
           </Button>
+          {/* statusColor cycles through three values driven by external SDK
+              callbacks (stopped/info, running/success, error). Keeping it as
+              an inline color avoids enumerating the states as classes. */}
           <span style={{ color: statusColor.value }}>{statusText.value}</span>
         </div>
-        <div style={{ marginBlock: '.5em' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '.25em' }}>实时识别结果：</div>
-          <div
-            style={{
-              padding: '.5em',
-              background: 'var(--bg2, #f5f5f5)',
-              borderRadius: '4px',
-              minHeight: '40px',
-              maxHeight: '100px',
-              overflowY: 'auto',
-              wordBreak: 'break-all',
-            }}
-          >
+        <div class='lc-my-2'>
+          <div class='lc-font-bold lc-mb-1'>实时识别结果：</div>
+          <div class='lc-p-2 lc-bg-bg2 lc-rounded lc-min-h-10 lc-max-h-[100px] lc-overflow-y-auto lc-break-all'>
             <span>{finalText.value}</span>
-            <span style={{ color: '#999' }}>{nonFinalText.value}</span>
+            <span class='lc-text-ga4'>{nonFinalText.value}</span>
           </div>
         </div>
       </div>

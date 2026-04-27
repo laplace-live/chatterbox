@@ -1,53 +1,32 @@
-import type { ComponentChildren, CSSProperties, SelectHTMLAttributes } from 'preact'
+import type { SelectHTMLAttributes } from 'preact'
 
-import { ensureUiStyles } from './styles'
+import { cn } from '../../lib/cn'
 
 // `size` on a native <select> turns it into a multi-line list-box of N rows
 // (e.g. <select size={5}>). Drop it from the surface API to avoid confusion
 // with shadcn-style `size` props on other components.
-type NativeSelectBase = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size' | 'style' | 'class' | 'className'>
+type NativeSelectBase = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size' | 'class' | 'className'>
 
 export interface NativeSelectProps extends NativeSelectBase {
-  style?: CSSProperties
-  class?: string
   className?: string
-  children?: ComponentChildren
 }
 
-export function NativeSelect({
-  disabled,
-  style,
-  class: className,
-  className: classNameAlt,
-  children,
-  ...props
-}: NativeSelectProps) {
-  ensureUiStyles()
-
-  const cls = ['lpc-ui-select', className, classNameAlt].filter(Boolean).join(' ')
-
+export function NativeSelect({ disabled, className, children, ...props }: NativeSelectProps) {
   return (
     <select
       disabled={disabled}
-      class={cls}
-      style={{
-        boxSizing: 'border-box',
+      class={cn(
+        'lc-box-border',
         // Right-side padding leaves room for the native dropdown arrow.
-        padding: '1px 4px 1px 2px',
-        border: '1px solid var(--Ga4, #999)',
-        borderRadius: '4px',
-        background: 'var(--bg1, #fff)',
-        color: 'inherit',
-        outline: 'none',
-        fontSize: 'inherit',
-        fontFamily: 'inherit',
-        lineHeight: 1,
-        minHeight: '20px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.6 : 1,
-        transition: 'border-color .12s ease',
-        ...style,
-      }}
+        'lc-pr-1 lc-pl-0.5 lc-py-px',
+        'lc-border lc-border-solid lc-border-ga4 lc-rounded',
+        'lc-bg-bg1 lc-text-inherit',
+        'lc-outline-none lc-leading-none lc-min-h-5',
+        'lc-cursor-pointer disabled:lc-cursor-not-allowed disabled:lc-opacity-60',
+        'lc-transition',
+        'focus:lc-border-brand',
+        className
+      )}
       {...props}
     >
       {children}

@@ -1,5 +1,6 @@
 import { render } from 'preact'
 
+import 'virtual:uno.css'
 import './lib/fetch-hijack'
 
 import { App } from './components/app'

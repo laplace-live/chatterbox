@@ -1,3 +1,4 @@
+import { cn } from '../lib/cn'
 import {
   autoBlendCooldownSec,
   autoBlendEnabled,
@@ -17,17 +18,18 @@ import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 
+// Each Label wraps a hint + NumberInput pair, laid out as an inline flex row.
+const FIELD_LABEL_CLASS = 'lc-inline-flex lc-items-center lc-gap-1'
+
 function NumberInput({
   value,
   min,
   max,
-  width = '50px',
   onChange,
 }: {
   value: number
   min: number
   max?: number
-  width?: string
   onChange: (n: number) => void
 }) {
   return (
@@ -36,7 +38,7 @@ function NumberInput({
       autocomplete='off'
       min={String(min)}
       max={max !== undefined ? String(max) : undefined}
-      style={{ width }}
+      className={'lc-w-[50px]'}
       value={value}
       onInput={e => {
         let v = parseInt(e.currentTarget.value, 10)
@@ -62,23 +64,23 @@ export function AutoBlendControls() {
     >
       <AccordionTrigger>自动融入{autoBlendEnabled.value ? ' 🟣' : ''}</AccordionTrigger>
       <AccordionContent>
-        <div style={{ margin: '.5em 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.25em' }}>
+        <div class='lc-my-2 lc-flex lc-items-center lc-flex-wrap lc-gap-1'>
           <Button variant={autoBlendEnabled.value ? 'destructive' : 'default'} size='sm' onClick={toggleEnabled}>
             {autoBlendEnabled.value ? '停止融入' : '开始融入'}
           </Button>
         </div>
 
         <div
-          style={{
-            margin: '.5rem 0',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '.25rem 0.5rem',
-            alignItems: 'center',
-            color: autoBlendEnabled.value ? undefined : '#999',
-          }}
+          class={cn(
+            'lc-my-2 lc-flex lc-flex-wrap lc-items-center lc-gap-y-1 lc-gap-x-2',
+            // Grey out the field labels when blend is off — applied at the
+            // group level so the inline NumberInputs (which don't inherit
+            // because they style themselves explicitly) and the surrounding
+            // Chinese hint text both dim together.
+            !autoBlendEnabled.value && 'lc-text-ga4'
+          )}
         >
-          <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          <Label className={FIELD_LABEL_CLASS}>
             触发：
             <NumberInput
               value={autoBlendUniqueUsers.value}
@@ -88,7 +90,7 @@ export function AutoBlendControls() {
               }}
             />
           </Label>
-          <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          <Label className={FIELD_LABEL_CLASS}>
             人在
             <NumberInput
               value={autoBlendWindowSec.value}
@@ -98,7 +100,7 @@ export function AutoBlendControls() {
               }}
             />
           </Label>
-          <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          <Label className={FIELD_LABEL_CLASS}>
             秒内重复
             <NumberInput
               value={autoBlendMinOccurrences.value}
@@ -110,7 +112,7 @@ export function AutoBlendControls() {
             次
           </Label>
 
-          <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          <Label className={FIELD_LABEL_CLASS}>
             跟车
             <NumberInput
               value={autoBlendSendCount.value}
@@ -122,12 +124,11 @@ export function AutoBlendControls() {
             />
             次
           </Label>
-          <Label style={{ display: 'inline-flex', alignItems: 'center', gap: '.25em' }}>
+          <Label className={FIELD_LABEL_CLASS}>
             自动融入冷却
             <NumberInput
               value={autoBlendCooldownSec.value}
               min={4}
-              width='50px'
               onChange={v => {
                 autoBlendCooldownSec.value = v
               }}
@@ -136,14 +137,7 @@ export function AutoBlendControls() {
           </Label>
         </div>
 
-        <div
-          style={{
-            margin: '.5em 0',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '.75em',
-          }}
-        >
+        <div class='lc-my-2 lc-flex lc-flex-wrap lc-gap-3'>
           <Checkbox
             id='autoBlendIncludeReply'
             checked={autoBlendIncludeReply.value}
@@ -176,7 +170,7 @@ export function AutoBlendControls() {
           />
         </div>
 
-        <div style={{ color: '#999', fontSize: '12px', lineHeight: 1.5 }}>监测当前直播间弹幕，自动跟车热门弹幕</div>
+        <div class='lc-text-ga4 lc-text-xs lc-leading-[1.5]'>监测当前直播间弹幕，自动跟车热门弹幕</div>
       </AccordionContent>
     </AccordionItem>
   )

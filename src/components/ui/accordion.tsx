@@ -1,6 +1,6 @@
-import type { ComponentChildren, CSSProperties, HTMLAttributes } from 'preact'
+import type { HTMLAttributes } from 'preact'
 
-import { ensureUiStyles } from './styles'
+import { cn } from '../../lib/cn'
 
 // === Accordion ============================================================
 //
@@ -8,20 +8,15 @@ import { ensureUiStyles } from './styles'
 // Each AccordionItem manages its own open state; the wrapper is purely
 // layout. For a single collapsible panel, use AccordionItem directly.
 
-type AccordionBase = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'class' | 'className'>
+type AccordionBase = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'className'>
 
 export interface AccordionProps extends AccordionBase {
-  style?: CSSProperties
-  class?: string
   className?: string
-  children?: ComponentChildren
 }
 
-export function Accordion({ style, class: className, className: classNameAlt, children, ...props }: AccordionProps) {
-  ensureUiStyles()
-  const cls = ['lpc-ui-accordion', className, classNameAlt].filter(Boolean).join(' ')
+export function Accordion({ className, children, ...props }: AccordionProps) {
   return (
-    <div class={cls} style={{ display: 'flex', flexDirection: 'column', ...style }} {...props}>
+    <div class={cn('lc-flex lc-flex-col', className)} {...props}>
       {children}
     </div>
   )
@@ -35,36 +30,22 @@ export function Accordion({ style, class: className, className: classNameAlt, ch
 // If `open` is undefined the element is uncontrolled (browser handles the
 // toggle, `onOpenChange` still fires).
 
-type AccordionItemBase = Omit<HTMLAttributes<HTMLDetailsElement>, 'style' | 'class' | 'className' | 'open' | 'onToggle'>
+type AccordionItemBase = Omit<HTMLAttributes<HTMLDetailsElement>, 'class' | 'className' | 'open' | 'onToggle'>
 
 export interface AccordionItemProps extends AccordionItemBase {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  style?: CSSProperties
-  class?: string
   className?: string
-  children?: ComponentChildren
 }
 
-export function AccordionItem({
-  open,
-  onOpenChange,
-  style,
-  class: className,
-  className: classNameAlt,
-  children,
-  ...props
-}: AccordionItemProps) {
-  ensureUiStyles()
-  const cls = ['lpc-ui-accordion-item', className, classNameAlt].filter(Boolean).join(' ')
+export function AccordionItem({ open, onOpenChange, className, children, ...props }: AccordionItemProps) {
   return (
     <details
       open={open}
       onToggle={e => {
         onOpenChange?.(e.currentTarget.open)
       }}
-      class={cls}
-      style={style}
+      class={cn(className) || undefined}
       {...props}
     >
       {children}
@@ -75,51 +56,34 @@ export function AccordionItem({
 // === AccordionTrigger =====================================================
 //
 // Renders a <summary> with the children on the left and a chevron on the
-// right. The chevron rotates 180° when the parent <details> is open via the
-// CSS rule injected by ensureUiStyles().
+// right. The chevron rotates 180° when the parent <details> has the `open`
+// attribute, expressed as the arbitrary variant `[details[open]_&]:` —
+// which compiles to the CSS selector `details[open] .chevron`.
 
-type AccordionTriggerBase = Omit<HTMLAttributes<HTMLElement>, 'style' | 'class' | 'className'>
+type AccordionTriggerBase = Omit<HTMLAttributes<HTMLElement>, 'class' | 'className'>
 
 export interface AccordionTriggerProps extends AccordionTriggerBase {
-  style?: CSSProperties
-  class?: string
   className?: string
-  children?: ComponentChildren
 }
 
-export function AccordionTrigger({
-  style,
-  class: className,
-  className: classNameAlt,
-  children,
-  ...props
-}: AccordionTriggerProps) {
-  ensureUiStyles()
-  const cls = ['lpc-ui-accordion-trigger', className, classNameAlt].filter(Boolean).join(' ')
+export function AccordionTrigger({ className, children, ...props }: AccordionTriggerProps) {
   return (
     <summary
-      class={cls}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '.5em',
-        cursor: 'pointer',
-        userSelect: 'none',
-        fontWeight: 'bold',
-        background: 'var(--Ga1, #eee)',
-        padding: '2px 4px',
-        borderRadius: '2px',
-        // Belt-and-suspenders with the CSS rule: hides the default
-        // disclosure triangle in browsers that respect `list-style: none`.
-        listStyle: 'none',
-        ...style,
-      }}
+      class={cn(
+        'lc-flex lc-items-center lc-justify-between lc-gap-2',
+        'lc-cursor-pointer lc-select-none lc-font-bold',
+        'lc-bg-ga1 lc-px-1 lc-py-0.5 lc-rounded-sm',
+        // Hide the disclosure triangle two ways: `list-style: none` for browsers
+        // that respect it, and the WebKit-specific pseudo-element for Safari.
+        'lc-list-none',
+        '[&::-webkit-details-marker]:lc-hidden',
+        className
+      )}
       {...props}
     >
-      <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+      <span class='lc-flex-1 lc-min-w-0'>{children}</span>
       <svg
-        class='lpc-ui-accordion-chevron'
+        class={'lc-shrink-0 lc-transition-transform [details[open]_&]:lc-rotate-180'}
         xmlns='http://www.w3.org/2000/svg'
         width='12'
         height='12'
@@ -129,7 +93,6 @@ export function AccordionTrigger({
         stroke-width='3'
         stroke-linecap='round'
         stroke-linejoin='round'
-        style={{ flexShrink: 0, transition: 'transform .15s ease' }}
         aria-hidden='true'
       >
         <path d='m6 9 6 6 6-6' />
@@ -144,26 +107,15 @@ export function AccordionTrigger({
 // add padding / spacing in one place if they want, without touching the
 // trigger.
 
-type AccordionContentBase = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'class' | 'className'>
+type AccordionContentBase = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'className'>
 
 export interface AccordionContentProps extends AccordionContentBase {
-  style?: CSSProperties
-  class?: string
   className?: string
-  children?: ComponentChildren
 }
 
-export function AccordionContent({
-  style,
-  class: className,
-  className: classNameAlt,
-  children,
-  ...props
-}: AccordionContentProps) {
-  ensureUiStyles()
-  const cls = ['lpc-ui-accordion-content', className, classNameAlt].filter(Boolean).join(' ')
+export function AccordionContent({ className, children, ...props }: AccordionContentProps) {
   return (
-    <div class={cls} style={style} {...props}>
+    <div class={cn(className) || undefined} {...props}>
       {children}
     </div>
   )

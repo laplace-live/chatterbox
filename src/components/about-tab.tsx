@@ -1,20 +1,6 @@
 import { VERSION } from '../lib/const'
 
-const SECTION_STYLE = {
-  margin: '.5em 0',
-  paddingBottom: '1em',
-  borderBottom: '1px solid var(--Ga2, #eee)',
-} as const
-
-const HEADING_STYLE = {
-  fontWeight: 'bold',
-  marginBottom: '.5em',
-} as const
-
-const LINK_STYLE = {
-  color: '#288bb8',
-  textDecoration: 'none',
-} as const
+const LINK_CLASS = 'lc-text-link lc-no-underline'
 
 interface ExternalService {
   name: string
@@ -64,58 +50,50 @@ const EXTERNAL_SERVICES: ExternalService[] = [
 export function AboutTab() {
   return (
     <>
-      <div style={SECTION_STYLE}>
-        <div style={HEADING_STYLE}>LAPLACE Chatterbox 弹幕助手</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '.25em', color: '#666' }}>
+      <div class={'lc-my-2 lc-pb-4 lc-border-b lc-border-b-solid lc-border-b-ga2'}>
+        <div class={'lc-font-bold lc-mb-2'}>LAPLACE Chatterbox 弹幕助手</div>
+        <div class='lc-flex lc-flex-col lc-gap-1 lc-text-[#666]'>
           <span>版本: {VERSION}</span>
           <span>
             作者:{' '}
-            <a href='https://laplace.live' target='_blank' rel='noopener' style={LINK_STYLE}>
+            <a href='https://laplace.live' target='_blank' rel='noopener' class={LINK_CLASS}>
               LAPLACE Live!
             </a>
           </span>
           <span>许可证: AGPL-3.0</span>
           <span>
             源代码:{' '}
-            <a href='https://github.com/laplace-live/chatterbox' target='_blank' rel='noopener' style={LINK_STYLE}>
+            <a href='https://github.com/laplace-live/chatterbox' target='_blank' rel='noopener' class={LINK_CLASS}>
               GitHub
             </a>
           </span>
         </div>
       </div>
 
-      <div style={{ ...SECTION_STYLE, borderBottom: 'none' }}>
-        <div style={HEADING_STYLE}>隐私说明</div>
-        <div style={{ color: '#666', marginBottom: '.75em' }}>
+      {/* Same section spacing as above but without the divider on the last block. */}
+      <div class='lc-my-2 lc-pb-4'>
+        <div class={'lc-font-bold lc-mb-2'}>隐私说明</div>
+        <div class='lc-text-[#666] lc-mb-3'>
           本脚本在运行时可能会与以下外部服务通信。不同功能触发的请求不同，请按需启用。
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '.75em' }}>
+        <div class='lc-flex lc-flex-col lc-gap-3'>
           {EXTERNAL_SERVICES.map(service => (
-            <div
-              key={service.name}
-              style={{
-                padding: '.5em',
-                borderRadius: '4px',
-                background: 'var(--Ga1_s, rgba(0,0,0,.03))',
-              }}
-            >
-              <div style={{ fontWeight: 'bold', marginBottom: '.25em' }}>
+            <div key={service.name} class='lc-p-2 lc-rounded lc-bg-ga1s'>
+              <div class='lc-font-bold lc-mb-1'>
                 {service.url ? (
-                  <a href={service.url} target='_blank' rel='noopener' style={LINK_STYLE}>
+                  <a href={service.url} target='_blank' rel='noopener' class={LINK_CLASS}>
                     {service.name}
                   </a>
                 ) : (
                   service.name
                 )}
               </div>
-              <div style={{ fontSize: '.9em', color: '#666', fontFamily: 'monospace', marginBottom: '.25em' }}>
-                {service.host}
+              <div class='lc-text-[.9em] lc-text-[#666] lc-font-mono lc-mb-1'>{service.host}</div>
+              <div class='lc-text-[.9em] lc-mb-1'>
+                <span class='lc-text-brand'>触发条件:</span> {service.trigger}
               </div>
-              <div style={{ fontSize: '.9em', marginBottom: '.25em' }}>
-                <span style={{ color: '#36a185' }}>触发条件:</span> {service.trigger}
-              </div>
-              <div style={{ fontSize: '.9em', color: '#555' }}>{service.description}</div>
+              <div class='lc-text-[.9em] lc-text-[#555]'>{service.description}</div>
             </div>
           ))}
         </div>

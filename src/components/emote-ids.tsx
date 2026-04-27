@@ -1,13 +1,15 @@
 import { useSignal } from '@preact/signals'
 
+import { cn } from '../lib/cn'
 import { cachedEmoticonPackages } from '../lib/store'
+import { Button } from './ui/button'
 
 export function EmoteIds() {
   const packages = cachedEmoticonPackages.value
   const copiedId = useSignal<string | null>(null)
 
   if (packages.length === 0) {
-    return <div style={{ color: '#999' }}>表情数据加载中…</div>
+    return <div class='lc-text-ga4'>表情数据加载中…</div>
   }
 
   const handleCopy = async (unique: string) => {
@@ -26,19 +28,12 @@ export function EmoteIds() {
   return (
     <>
       {packages.map(pkg => (
-        <div key={pkg.pkg_id} style={{ marginBottom: '.75em' }}>
-          <div
-            style={{
-              fontWeight: 'bold',
-              marginBottom: '.25em',
-              color: '#666',
-              fontSize: '11px',
-            }}
-          >
+        <div key={pkg.pkg_id} class='lc-mb-3'>
+          <div class='lc-font-bold lc-mb-1 lc-text-[#666] lc-text-[11px]'>
             {pkg.pkg_name}
-            <span style={{ fontWeight: 'normal', marginLeft: '.5em' }}>({pkg.emoticons.length})</span>
+            <span class='lc-font-normal lc-ml-2'>({pkg.emoticons.length})</span>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          <div class='lc-flex lc-flex-wrap lc-gap-1'>
             {pkg.emoticons.map(emo => {
               const isCopied = copiedId.value === emo.emoticon_unique
               // `perm === 0` means the server has marked this emote as locked
@@ -52,61 +47,40 @@ export function EmoteIds() {
                 titleParts.push(lockText ? `🔒 该表情需要 ${lockText} 才能发送` : '🔒 该表情已被平台锁定')
               }
               return (
-                <button
+                <Button
                   type='button'
+                  variant={isCopied ? 'default' : 'outline'}
                   key={emo.emoticon_id}
                   title={titleParts.join('\n')}
                   onClick={() => void handleCopy(emo.emoticon_unique)}
-                  style={{
-                    position: 'relative',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '2px',
-                    border: '1px solid var(--Ga2, #ddd)',
-                    borderRadius: '3px',
-                    background: isCopied ? '#36a185' : 'var(--bg2, #f5f5f5)',
-                    color: isCopied ? '#fff' : '#555',
-                    cursor: 'pointer',
-                    fontSize: '10px',
-                    lineHeight: 1.6,
-                    transition: 'background .15s, color .15s',
-                  }}
+                  className={cn('lc-relative lc-flex-col lc-p-1 ')}
                 >
                   <img
                     src={emo.url}
                     alt={emo.emoji}
-                    style={{
-                      width: '48px',
-                      height: '48px',
-                      objectFit: 'contain', // Locked emotes stay clickable (so the user can still copy
-                      // the unique text) but are dimmed to signal that direct
-                      // sending will be blocked downstream.
-                      opacity: isLocked && !isCopied ? 0.5 : 1,
-                    }}
+                    // Locked emotes stay clickable (so the user can still copy
+                    // the unique text) but are dimmed to signal that direct
+                    // sending will be blocked downstream.
+                    class={cn('lc-size-18 lc-object-contain', isLocked && !isCopied && 'lc-opacity-50')}
                     loading='lazy'
                   />
                   {isCopied ? '已复制' : emo.emoji}
                   {isLocked && !isCopied && (
                     <span
-                      style={{
-                        position: 'absolute',
-                        top: '1px',
-                        right: '1px',
-                        padding: '2px',
-                        background: emo.unlock_show_color || 'rgba(0, 0, 0, 0.6)',
-                        color: '#fff',
-                        fontSize: '9px',
-                        lineHeight: '1',
-                        borderRadius: '2px',
-                        pointerEvents: 'none',
-                        whiteSpace: 'nowrap',
-                      }}
+                      class={cn(
+                        'lc-absolute lc-top-px lc-right-px lc-p-0.5 lc-text-[10px]',
+                        'lc-text-white lc-text-[9px] lc-leading-none lc-rounded-sm',
+                        'lc-pointer-events-none lc-whitespace-nowrap'
+                      )}
+                      // Per-instance background — the API supplies this color
+                      // per emote (e.g. event/special unlock badges) so it
+                      // can't be encoded as a static class.
+                      style={{ background: emo.unlock_show_color || 'rgba(0, 0, 0, 0.6)' }}
                     >
                       {lockText || '🔒'}
                     </span>
                   )}
-                </button>
+                </Button>
               )
             })}
           </div>

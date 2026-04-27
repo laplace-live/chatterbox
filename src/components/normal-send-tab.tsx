@@ -71,7 +71,7 @@ export function NormalSendTab() {
     >
       <AccordionTrigger>常规发送</AccordionTrigger>
       <AccordionContent>
-        <div style={{ margin: '.5em 0', position: 'relative' }}>
+        <div class='lc-my-2 lc-relative'>
           <Textarea
             value={fasongText.value}
             onInput={e => {
@@ -84,21 +84,13 @@ export function NormalSendTab() {
               }
             }}
             placeholder='输入弹幕内容… (Enter 发送)'
-            style={{ height: '50px' }}
+            className='lc-h-[50px]'
           />
-          <div
-            style={{
-              position: 'absolute',
-              right: '8px',
-              bottom: '6px',
-              color: '#999',
-              pointerEvents: 'none',
-            }}
-          >
+          <div class='lc-absolute lc-right-2 lc-bottom-1.5 lc-text-ga4 lc-pointer-events-none'>
             {fasongText.value.length}
           </div>
         </div>
-        <div style={{ margin: '.5em 0' }}>
+        <div class='lc-my-2'>
           <Checkbox
             id='aiEvasion'
             checked={aiEvasion.value}

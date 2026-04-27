@@ -1,9 +1,9 @@
-import type { ComponentChildren, CSSProperties, InputHTMLAttributes } from 'preact'
+import type { ComponentChildren, InputHTMLAttributes } from 'preact'
 
+import { cn } from '../../lib/cn'
 import { Label } from './label'
-import { ensureUiStyles } from './styles'
 
-type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'style' | 'class' | 'className'>
+type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'class' | 'className'>
 
 export interface CheckboxProps extends CheckboxBase {
   // Optional inline label. When provided, the input is rendered nested
@@ -12,39 +12,29 @@ export interface CheckboxProps extends CheckboxBase {
   // `htmlFor` association and implicit nesting; we use both, which is
   // valid and resolves to the same element).
   label?: ComponentChildren
-  style?: CSSProperties
-  class?: string
   className?: string
 }
 
-export function Checkbox({
-  label,
-  id,
-  disabled,
-  style,
-  class: className,
-  className: classNameAlt,
-  ...props
-}: CheckboxProps) {
-  ensureUiStyles()
+const LABEL_WRAP_CLASS = 'lc-inline-flex lc-items-center lc-gap-1 lc-cursor-pointer'
 
-  const cls = ['lpc-ui-checkbox', className, classNameAlt].filter(Boolean).join(' ')
-
+export function Checkbox({ label, id, disabled, className, ...props }: CheckboxProps) {
   const input = (
     <input
       type='checkbox'
       id={id}
       disabled={disabled}
-      class={cls}
-      style={{
-        accentColor: '#36a185',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        margin: 0,
-        // Override the dialog-wide `input { border: 1px solid }` rule that
-        // would otherwise paint a black square around the native checkbox.
-        border: 'none',
-        ...style,
-      }}
+      class={cn(
+        'lc-accent-brand lc-m-0',
+        'lc-cursor-pointer disabled:lc-cursor-not-allowed',
+        // Override the dialog-wide `input { border: 1px solid }` rule from
+        // app.tsx that would otherwise paint a black square around the native
+        // checkbox.
+        'lc-border-none',
+        // Replaces the previous `.lc-ui-checkbox:focus-visible` rule from
+        // styles.ts.
+        'focus-visible:lc-outline focus-visible:lc-outline-2 focus-visible:lc-outline-solid focus-visible:lc-outline-brand focus-visible:lc-outline-offset-1',
+        className
+      )}
       {...props}
     />
   )
@@ -52,17 +42,7 @@ export function Checkbox({
   if (label === undefined || label === null || label === false) return input
 
   return (
-    <Label
-      htmlFor={id}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '.25em',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        color: disabled ? '#999' : undefined,
-        userSelect: 'none',
-      }}
-    >
+    <Label htmlFor={id} disabled={!!disabled} className={LABEL_WRAP_CLASS}>
       {input}
       {label}
     </Label>

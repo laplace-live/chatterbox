@@ -1,67 +1,58 @@
-import type { ButtonHTMLAttributes, ComponentChildren, CSSProperties } from 'preact'
+import type { ButtonHTMLAttributes } from 'preact'
 
-import { ensureUiStyles } from './styles'
+import { cn } from '../../lib/cn'
 
 export type ButtonVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link'
 export type ButtonSize = 'sm' | 'default' | 'lg' | 'icon'
 
-// `style` is narrowed from Preact's `Signalish<string | CSSProperties>` to a
-// plain object so we can spread our defaults in. `class` is narrowed similarly
-// for the same reason. Consumers needing a Signal-driven style/class can wrap
-// the component themselves.
-type ButtonBase = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'size' | 'style' | 'class' | 'className'>
+// `class` is omitted to forbid the React-style `class={...}` form (consumers
+// must use `className`). `className` is omitted from the base and re-declared
+// as plain `string` so it can flow into cn() — the inherited Preact type is
+// `Signalish<string | undefined>` which clsx/tailwind-merge can't handle.
+// `style` keeps its inherited Signalish typing; we just forward it.
+type ButtonBase = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'size' | 'class' | 'className'>
 
 export interface ButtonProps extends ButtonBase {
   variant?: ButtonVariant
   size?: ButtonSize
-  style?: CSSProperties
-  class?: string
   className?: string
-  children?: ComponentChildren
 }
 
-const SIZE_STYLES: Record<ButtonSize, CSSProperties> = {
-  sm: { padding: '1px 6px', minHeight: '18px' },
-  default: { padding: '4px 10px', minHeight: '24px' },
-  lg: { padding: '6px 14px', minHeight: '28px' },
-  icon: { padding: '0', width: '24px', height: '24px' },
+// Base classes shared by every variant/size. The hover/active brightness
+// previously lived in styles.ts as `:not(:disabled):hover { filter: ... }`;
+// we now express that via the arbitrary-selector variant so disabled
+// buttons stay un-darkened automatically.
+const BASE_CLASS = [
+  'lc-inline-flex lc-items-center lc-justify-center',
+  'lc-gap-1 lc-rounded',
+  'lc-cursor-pointer disabled:lc-cursor-not-allowed disabled:lc-opacity-50',
+  'lc-leading-[1.2]',
+  'lc-select-none lc-whitespace-nowrap lc-box-border',
+  'lc-transition',
+  '[&:not(:disabled):hover]:lc-brightness-[.96]',
+  '[&:not(:disabled):active]:lc-brightness-[.9]',
+].join(' ')
+
+const SIZE_CLASS: Record<ButtonSize, string> = {
+  sm: 'lc-px-1.5 lc-py-px lc-min-h-[18px]',
+  default: 'lc-px-2.5 lc-py-1 lc-min-h-6',
+  lg: 'lc-px-3.5 lc-py-1.5 lc-min-h-7',
+  icon: 'lc-p-0 lc-w-6 lc-h-6',
 }
 
-const VARIANT_STYLES: Record<ButtonVariant, CSSProperties> = {
-  default: {
-    background: '#36a185',
-    color: '#fff',
-    border: '1px solid #36a185',
-  },
-  secondary: {
-    background: 'var(--Ga1_s, rgba(0,0,0,.04))',
-    color: 'inherit',
-    border: '1px solid var(--Ga4, #999)',
-  },
-  destructive: {
-    background: 'transparent',
-    color: '#d44',
-    border: '1px solid #d44',
-  },
-  outline: {
-    background: 'transparent',
-    color: 'inherit',
-    border: '1px solid var(--Ga4, #999)',
-  },
-  ghost: {
-    background: 'transparent',
-    color: 'inherit',
-    border: '1px solid transparent',
-  },
-  link: {
-    background: 'transparent',
-    color: '#288bb8',
-    border: '1px solid transparent',
-    textDecoration: 'underline',
-    textUnderlineOffset: '2px',
-    padding: '0',
-    minHeight: 'auto',
-  },
+// All variants set `border` + `border-solid` explicitly because preflight
+// is disabled — without the style declaration the width-only `border`
+// utility wouldn't render anything.
+const VARIANT_CLASS: Record<ButtonVariant, string> = {
+  default: 'lc-bg-brand lc-text-white lc-border lc-border-solid lc-border-brand',
+  secondary: 'lc-bg-ga1s lc-text-inherit lc-border lc-border-solid lc-border-ga4',
+  destructive: 'lc-bg-transparent lc-text-danger lc-border lc-border-solid lc-border-danger',
+  outline: 'lc-bg-transparent lc-text-inherit lc-border lc-border-solid lc-border-ga4',
+  ghost: 'lc-bg-transparent lc-text-inherit lc-border lc-border-solid lc-border-transparent',
+  // `lc-p-0` / `lc-min-h-[auto]` win over the size class's `lc-px-2.5 lc-py-1
+  // lc-min-h-6` because cn() (tailwind-merge) recognises `p` as superseding
+  // `px`/`py`, and `min-h` as a single group where last wins.
+  link: 'lc-bg-transparent lc-text-link lc-border lc-border-solid lc-border-transparent lc-underline lc-underline-offset-2 lc-p-0 lc-min-h-[auto]',
 }
 
 export function Button({
@@ -69,42 +60,17 @@ export function Button({
   size = 'default',
   type = 'button',
   disabled,
-  style,
-  class: className,
-  className: classNameAlt,
+  className,
   children,
   ...props
 }: ButtonProps) {
-  ensureUiStyles()
-
-  const cls = ['lpc-ui-button', className, classNameAlt].filter(Boolean).join(' ')
-
   return (
     <button
       type={type}
       disabled={disabled}
-      class={cls}
+      class={cn(BASE_CLASS, SIZE_CLASS[size], VARIANT_CLASS[variant], className)}
       data-variant={variant}
       data-size={size}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '.25em',
-        borderRadius: '4px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        fontSize: 'inherit',
-        fontFamily: 'inherit',
-        lineHeight: 1.2,
-        userSelect: 'none',
-        whiteSpace: 'nowrap',
-        boxSizing: 'border-box',
-        transition: 'filter .12s ease',
-        ...SIZE_STYLES[size],
-        ...VARIANT_STYLES[variant],
-        ...style,
-      }}
       {...props}
     >
       {children}

@@ -29,6 +29,25 @@ import { NativeSelect } from './ui/native-select'
 
 const SYNC_INTERVAL = 10 * 60 * 1000
 
+// Section visual rhythm shared across every block (heading + body + bottom
+// divider). The last section drops the divider via SECTION_NO_BORDER.
+const SECTION_CLASS = 'lc-my-2 lc-pb-4 lc-border-b lc-border-b-solid lc-border-b-ga2'
+const SECTION_NO_BORDER = 'lc-my-2 lc-pb-4'
+const HEADING_CLASS = 'lc-font-bold lc-mb-2'
+const ROW_CLASS = 'lc-flex lc-gap-2 lc-items-center lc-flex-wrap lc-mb-2'
+const HINT_CLASS = 'lc-my-2 lc-text-[#666]'
+const EMPTY_CLASS = 'lc-text-ga4'
+const LINK_CLASS = 'lc-text-link lc-no-underline'
+
+// Each rule / blacklist row shares the same divider-separated layout.
+const LIST_ROW_CLASS = 'lc-flex lc-items-center lc-gap-2 lc-py-[.2em] lc-border-b lc-border-b-solid lc-border-b-ga2'
+const LIST_ROW_TEXT = 'lc-flex-1 lc-break-all lc-font-mono'
+const ADD_ROW_CLASS = 'lc-flex lc-gap-1 lc-items-center lc-flex-wrap'
+const FILL_INPUT_CLASS = 'lc-flex-1 lc-min-w-[80px]'
+
+// Used as the destructive-action color on `ghost` Buttons in lists.
+const DELETE_BTN_CLASS = 'lc-text-[red]'
+
 interface RemoteKeywords {
   global?: { keywords?: Record<string, string> }
   rooms?: Array<{ room: string; keywords?: Record<string, string> }>
@@ -413,67 +432,61 @@ export function SettingsTab() {
 
   return (
     <>
-      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>
           云端规则替换{' '}
           <a
             href='https://github.com/laplace-live/public/blob/master/artifacts/livesrtream-keywords.json'
             target='_blank'
-            style={{ color: '#288bb8', textDecoration: 'none' }}
+            class={LINK_CLASS}
             rel='noopener'
           >
             我要贡献规则
           </a>
         </div>
-        <div style={{ marginBlock: '.5em', color: '#666' }}>每10分钟会自动同步云端替换规则</div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
+        <div class={HINT_CLASS}>每10分钟会自动同步云端替换规则</div>
+        <div class={ROW_CLASS}>
           <Button variant='outline' size='sm' disabled={syncing.value} onClick={() => void syncRemote()}>
             {syncing.value ? '同步中…' : '同步'}
           </Button>
           <Button variant='outline' size='sm' disabled={testingRemote.value} onClick={() => void testRemote()}>
             {testingRemote.value ? '测试中…' : '测试云端词库'}
           </Button>
+          {/* Status text colour cycles through neutral/success/error driven by
+              the sync state machine; keeping it as inline color avoids
+              enumerating each state as a class. */}
           <span style={{ color: syncStatusColor.value }}>{syncStatus.value}</span>
         </div>
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
-          <div style={{ fontWeight: 'bold' }}>本地全局规则</div>
+      <div class={SECTION_CLASS}>
+        <div class={ROW_CLASS}>
+          <div class='lc-font-bold'>本地全局规则</div>
           <Button variant='outline' size='sm' disabled={testingLocal.value} onClick={() => void testLocal()}>
             {testingLocal.value ? '测试中…' : '测试本地词库'}
           </Button>
         </div>
-        <div style={{ marginBlock: '.5em', color: '#666' }}>适用于所有直播间，优先级高于云端规则</div>
-        <div style={{ marginBottom: '.5em', maxHeight: '160px', overflowY: 'auto' }}>
+        <div class={HINT_CLASS}>适用于所有直播间，优先级高于云端规则</div>
+        <div class='lc-mb-2 lc-max-h-[160px] lc-overflow-y-auto'>
           {globalRules.length === 0 ? (
-            <div style={{ color: '#999' }}>暂无全局替换规则，请在下方添加</div>
+            <div class={EMPTY_CLASS}>暂无全局替换规则，请在下方添加</div>
           ) : (
             globalRules.map((rule, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '.5em',
-                  padding: '.2em',
-                  borderBottom: '1px solid var(--Ga2, #eee)',
-                }}
-              >
-                <span style={{ flex: 1, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+              <div key={i} class={LIST_ROW_CLASS}>
+                <span class={LIST_ROW_TEXT}>
                   {rule.from ?? '(空)'} → {rule.to ?? '(空)'}
                 </span>
-                <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => removeGlobalRule(i)}>
+                <Button variant='ghost' size='sm' className={DELETE_BTN_CLASS} onClick={() => removeGlobalRule(i)}>
                   删除
                 </Button>
               </div>
             ))
           )}
         </div>
-        <div style={{ display: 'flex', gap: '.25em', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div class={ADD_ROW_CLASS}>
           <Input
             placeholder='替换前'
-            style={{ flex: 1, minWidth: '80px' }}
+            className={FILL_INPUT_CLASS}
             value={globalReplaceFrom.value}
             onInput={e => {
               globalReplaceFrom.value = e.currentTarget.value
@@ -488,7 +501,7 @@ export function SettingsTab() {
           <span>→</span>
           <Input
             placeholder='替换后'
-            style={{ flex: 1, minWidth: '80px' }}
+            className={FILL_INPUT_CLASS}
             value={globalReplaceTo.value}
             onInput={e => {
               globalReplaceTo.value = e.currentTarget.value
@@ -506,16 +519,16 @@ export function SettingsTab() {
         </div>
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>本地直播间规则</div>
-        <div style={{ marginBlock: '.5em', color: '#666' }}>仅在对应直播间生效；优先级高于全局规则</div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>本地直播间规则</div>
+        <div class={HINT_CLASS}>仅在对应直播间生效；优先级高于全局规则</div>
+        <div class={ROW_CLASS}>
           <NativeSelect
             value={editingRoomId.value}
             onChange={e => {
               editingRoomId.value = e.currentTarget.value
             }}
-            style={{ minWidth: '120px' }}
+            className='lc-min-w-[120px]'
           >
             <option value='' disabled>
               选择直播间
@@ -527,10 +540,10 @@ export function SettingsTab() {
               </option>
             ))}
           </NativeSelect>
-          <div style={{ display: 'flex', gap: '.25em', alignItems: 'center' }}>
+          <div class='lc-flex lc-gap-1 lc-items-center'>
             <Input
               placeholder='房间号'
-              style={{ width: '80px' }}
+              className='lc-w-[80px]'
               value={newRoomId.value}
               onInput={e => {
                 newRoomId.value = e.currentTarget.value.replace(/\D/g, '')
@@ -547,7 +560,12 @@ export function SettingsTab() {
             </Button>
           </div>
           {editingRoomId.value && editingRoomId.value !== currentRoomStr && (
-            <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => deleteRoom(editingRoomId.value)}>
+            <Button
+              variant='ghost'
+              size='sm'
+              className={DELETE_BTN_CLASS}
+              onClick={() => deleteRoom(editingRoomId.value)}
+            >
               删除此房间
             </Button>
           )}
@@ -555,35 +573,26 @@ export function SettingsTab() {
 
         {editingRoomId.value ? (
           <>
-            <div style={{ marginBottom: '.5em', maxHeight: '160px', overflowY: 'auto' }}>
+            <div class='lc-mb-2 lc-max-h-[160px] lc-overflow-y-auto'>
               {editingRules.length === 0 ? (
-                <div style={{ color: '#999' }}>暂无此房间的替换规则，请在下方添加</div>
+                <div class={EMPTY_CLASS}>暂无此房间的替换规则，请在下方添加</div>
               ) : (
                 editingRules.map((rule, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '.5em',
-                      padding: '.2em',
-                      borderBottom: '1px solid var(--Ga2, #eee)',
-                    }}
-                  >
-                    <span style={{ flex: 1, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                  <div key={i} class={LIST_ROW_CLASS}>
+                    <span class={LIST_ROW_TEXT}>
                       {rule.from ?? '(空)'} → {rule.to ?? '(空)'}
                     </span>
-                    <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => removeRoomRule(i)}>
+                    <Button variant='ghost' size='sm' className={DELETE_BTN_CLASS} onClick={() => removeRoomRule(i)}>
                       删除
                     </Button>
                   </div>
                 ))
               )}
             </div>
-            <div style={{ display: 'flex', gap: '.25em', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div class={ADD_ROW_CLASS}>
               <Input
                 placeholder='替换前'
-                style={{ flex: 1, minWidth: '80px' }}
+                className={FILL_INPUT_CLASS}
                 value={roomReplaceFrom.value}
                 onInput={e => {
                   roomReplaceFrom.value = e.currentTarget.value
@@ -598,7 +607,7 @@ export function SettingsTab() {
               <span>→</span>
               <Input
                 placeholder='替换后'
-                style={{ flex: 1, minWidth: '80px' }}
+                className={FILL_INPUT_CLASS}
                 value={roomReplaceTo.value}
                 onInput={e => {
                   roomReplaceTo.value = e.currentTarget.value
@@ -616,47 +625,31 @@ export function SettingsTab() {
             </div>
           </>
         ) : (
-          <div style={{ color: '#999' }}>请选择或添加一个直播间</div>
+          <div class={EMPTY_CLASS}>请选择或添加一个直播间</div>
         )}
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>
           自动融入黑名单
-          {blacklistEntries.length > 0 && (
-            <span style={{ color: '#999', fontWeight: 'normal' }}> ({blacklistEntries.length})</span>
-          )}
+          {blacklistEntries.length > 0 && <span class='lc-text-ga4 lc-font-normal'> ({blacklistEntries.length})</span>}
         </div>
-        <div style={{ marginBlock: '.5em', color: '#666' }}>
+        <div class={HINT_CLASS}>
           名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 / 移出名单。
         </div>
-        <div style={{ marginBottom: '.5em', maxHeight: '200px', overflowY: 'auto' }}>
+        <div class='lc-mb-2 lc-max-h-[200px] lc-overflow-y-auto'>
           {blacklistEntries.length === 0 ? (
-            <div style={{ color: '#999' }}>暂无黑名单用户</div>
+            <div class={EMPTY_CLASS}>暂无黑名单用户</div>
           ) : (
             blacklistEntries.map(([uid, uname]) => (
-              <div
-                key={uid}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '.5em',
-                  padding: '.2em',
-                  borderBottom: '1px solid var(--Ga2, #eee)',
-                }}
-              >
-                <span style={{ flex: 1, wordBreak: 'break-all', display: 'flex', alignItems: 'baseline', gap: '.5em' }}>
-                  <a
-                    href={`https://space.bilibili.com/${uid}`}
-                    target='_blank'
-                    rel='noopener'
-                    style={{ color: '#288bb8', textDecoration: 'none' }}
-                  >
+              <div key={uid} class={LIST_ROW_CLASS}>
+                <span class='lc-flex-1 lc-break-all lc-flex lc-items-baseline lc-gap-2'>
+                  <a href={`https://space.bilibili.com/${uid}`} target='_blank' rel='noopener' class={LINK_CLASS}>
                     {uname || '(无昵称)'}
                   </a>
-                  <span style={{ color: '#999', fontSize: '11px', fontFamily: 'monospace' }}>{uid}</span>
+                  <span class='lc-text-ga4 lc-text-[11px] lc-font-mono'>{uid}</span>
                 </span>
-                <Button variant='ghost' size='sm' style={{ color: 'red' }} onClick={() => removeFromBlacklist(uid)}>
+                <Button variant='ghost' size='sm' className={DELETE_BTN_CLASS} onClick={() => removeFromBlacklist(uid)}>
                   移出
                 </Button>
               </div>
@@ -670,16 +663,16 @@ export function SettingsTab() {
         )}
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>表情（复制后可在独轮车或常规发送中直接发送）</div>
-        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>表情（复制后可在独轮车或常规发送中直接发送）</div>
+        <div class='lc-max-h-[200px] lc-overflow-y-auto'>
           <EmoteIds />
         </div>
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>其他设置</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '.5em' }}>
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>其他设置</div>
+        <div class='lc-flex lc-flex-col lc-gap-2'>
           <Checkbox
             id='danmakuDirectMode'
             checked={danmakuDirectMode.value}
@@ -688,7 +681,7 @@ export function SettingsTab() {
             }}
             label='+1模式（在聊天消息旁显示偷弹幕和+1按钮）'
           />
-          <div style={{ paddingLeft: '1.5em' }}>
+          <div class='lc-pl-[1.5em]'>
             <Checkbox
               id='danmakuDirectConfirm'
               checked={danmakuDirectConfirm.value}
@@ -699,7 +692,7 @@ export function SettingsTab() {
               label='+1弹幕发送前需确认（防误触）'
             />
           </div>
-          <div style={{ paddingLeft: '1.5em' }}>
+          <div class='lc-pl-[1.5em]'>
             <Checkbox
               id='danmakuDirectAlwaysShow'
               checked={danmakuDirectAlwaysShow.value}
@@ -745,16 +738,16 @@ export function SettingsTab() {
         </div>
       </div>
 
-      <div style={{ margin: '.5em 0', paddingBottom: '1em' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '.5em' }}>日志设置</div>
-        <div style={{ display: 'flex', gap: '.5em', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div class={SECTION_NO_BORDER}>
+        <div class={HEADING_CLASS}>日志设置</div>
+        <div class='lc-flex lc-gap-2 lc-items-center lc-flex-wrap'>
           <Label htmlFor='maxLogLines'>最大日志行数:</Label>
           <Input
             id='maxLogLines'
             type='number'
             min='1'
             max='1000'
-            style={{ width: '80px' }}
+            className='lc-w-[80px]'
             value={maxLogLines.value}
             onChange={e => {
               let v = parseInt(e.currentTarget.value, 10)
@@ -763,7 +756,7 @@ export function SettingsTab() {
               maxLogLines.value = v
             }}
           />
-          <span style={{ color: '#999', fontSize: '0.9em' }}>(1-1000)</span>
+          <span class='lc-text-ga4 lc-text-[.9em]'>(1-1000)</span>
         </div>
       </div>
     </>

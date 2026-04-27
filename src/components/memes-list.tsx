@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals'
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken } from '../lib/api'
+import { cn } from '../lib/cn'
 import { BASE_URL } from '../lib/const'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
@@ -128,103 +129,48 @@ function MemeItem({
   return (
     <div
       data-meme-id={meme.id}
-      style={{
-        padding: '.4em 0',
-        borderBottom: '1px solid var(--Ga2, #eee)',
-        display: 'flex',
-        gap: '.4em',
-        alignItems: 'flex-start',
-      }}
+      class='lc-py-[.4em] lc-flex lc-gap-[.4em] lc-items-start lc-border-b lc-border-b-solid lc-border-b-ga2'
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div class='lc-flex-1 lc-min-w-0'>
         {meme.tags.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.2em', marginBottom: '.2em' }}>
+          <div class='lc-flex lc-flex-wrap lc-gap-[.2em] lc-mb-[.2em]'>
             {meme.tags.map(tag => {
               const bgColor = (tag.color && TAG_COLORS[tag.color]) ?? '#888'
               return (
-                <button
+                <Button
                   type='button'
                   key={tag.id}
                   onClick={() => onTagClick(tag.name)}
                   title={`按「${tag.name}」筛选`}
-                  style={{
-                    appearance: 'none',
-                    border: 'none',
-                    outline: 'none',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '.15em',
-                    padding: '0 .35em',
-                    borderRadius: '2px',
-                    fontSize: '10px',
-                    lineHeight: 1.6,
-                    color: '#fff',
-                    background: bgColor,
-                    fontFamily: 'inherit',
-                    transition: 'filter .15s',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.filter = 'brightness(1.1)'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.filter = ''
-                  }}
+                  variant='ghost'
+                  className='lc-text-sm lc-px-1 lc-py-0 lc-text-white'
+                  // Tag color is data-driven (per-meme) so it can't be a
+                  // static class; UnoCSS would have to safelist every
+                  // possible value otherwise.
+                  style={{ background: bgColor }}
                 >
                   {tag.emoji ?? ''}
                   {tag.name}
-                </button>
+                </Button>
               )
             })}
           </div>
         )}
-        <button
+        <Button
           type='button'
           onClick={() => void handleSend()}
           title='点击发送'
-          style={{
-            appearance: 'none',
-            outline: 'none',
-            border: 'none',
-            background: 'none',
-            textAlign: 'left',
-            cursor: 'pointer',
-            wordBreak: 'break-all',
-            lineHeight: 1.4,
-            whiteSpace: 'pre-wrap',
-            borderRadius: '2px',
-            transition: 'background .15s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'var(--bg2, #f0f0f0)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = ''
-          }}
+          variant='ghost'
+          className='lc-whitespace-pre-wrap lc-text-left lc-p-0 hover:lc-text-brand'
         >
           {meme.content}
-        </button>
+        </Button>
       </div>
-      <div
-        style={{
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '.15em',
-        }}
-      >
-        <button
-          type='button'
-          title='复制到剪贴板'
-          onClick={() => void handleCopy()}
-          style={{ fontSize: '11px !important', cursor: 'pointer', padding: '.1em .4em' }}
-        >
+      <div class='lc-shrink-0 lc-flex lc-flex-col lc-items-center lc-gap-[.15em]'>
+        <Button size='sm' variant='outline' title='复制到剪贴板' onClick={() => void handleCopy()}>
           {copyLabel.value}
-        </button>
-        {meme.copyCount > 0 && (
-          <span style={{ fontSize: '10px !important', color: '#999', lineHeight: 1 }}>{meme.copyCount}次</span>
-        )}
+        </Button>
+        {meme.copyCount > 0 && <span class={'lc-text-[10px] lc-text-ga4'}>{meme.copyCount}次</span>}
       </div>
     </div>
   )
@@ -237,7 +183,7 @@ export function MemesList() {
   const sortBy = useSignal<MemeSortBy>('lastCopiedAt')
   const filterText = useSignal('')
   const status = useSignal('')
-  const statusColor = useSignal('#666')
+  const isError = useSignal(false)
   const loading = useSignal(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const prevRectsRef = useRef<Map<number, DOMRect>>(new Map())
@@ -257,7 +203,7 @@ export function MemesList() {
 
   const loadMemes = async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) loading.value = true
-    statusColor.value = '#666'
+    isError.value = false
 
     try {
       const roomId = await ensureRoomId()
@@ -275,7 +221,7 @@ export function MemesList() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       status.value = `加载失败: ${msg}`
-      statusColor.value = '#f44'
+      isError.value = true
     } finally {
       if (!silent) loading.value = false
     }
@@ -342,7 +288,7 @@ export function MemesList() {
       </AccordionItem>
       {memesPanelOpen.value && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.5em', marginTop: '.5em', marginBottom: '.5em' }}>
+          <div class='lc-flex lc-items-center lc-gap-2 lc-my-2'>
             <NativeSelect
               value={sortBy.value}
               onChange={e => {
@@ -357,12 +303,12 @@ export function MemesList() {
             <Button variant='outline' size='sm' disabled={loading.value} onClick={() => void loadMemes()}>
               {loading.value ? '加载中…' : '刷新'}
             </Button>
-            <span style={{ color: statusColor.value }}>{status.value}</span>
+            <span class={isError.value ? 'lc-text-[#f44]' : 'lc-text-[#666]'}>{status.value}</span>
             <a
               href={`https://laplace.live/memes${cachedStreamerUid.value ? `?contribute=${cachedStreamerUid.value}` : ''}`}
               target='_blank'
               rel='noopener'
-              style={{ color: '#288bb8', textDecoration: 'none', fontSize: '12px' }}
+              class='lc-text-link lc-no-underline'
             >
               贡献烂梗
             </a>
@@ -375,18 +321,18 @@ export function MemesList() {
               onInput={e => {
                 filterText.value = e.currentTarget.value
               }}
-              style={{ width: '100%', marginBottom: '.5em' }}
+              className='lc-w-full lc-mb-2'
             />
           )}
           <div
             ref={containerRef}
-            style={{
-              overflowY: 'auto',
-              marginLeft: '-10px',
-              marginRight: '-10px',
-              paddingInline: '10px',
-              ...(optimizeLayout.value ? { flex: 1, minHeight: 0 } : { maxHeight: '240px' }),
-            }}
+            class={cn(
+              // Negative horizontal margin extends the scroll container to
+              // the dialog's outer edge while the inner padding keeps content
+              // visually aligned with the rest of the panel.
+              'lc-overflow-y-auto -lc-mx-[10px] lc-px-[10px]',
+              optimizeLayout.value ? 'lc-flex-1 lc-min-h-0' : 'lc-max-h-[240px]'
+            )}
           >
             {memes.value
               .filter(m => {

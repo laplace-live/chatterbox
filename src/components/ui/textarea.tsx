@@ -1,13 +1,11 @@
-import type { CSSProperties, TextareaHTMLAttributes } from 'preact'
+import type { TextareaHTMLAttributes } from 'preact'
 import { forwardRef } from 'preact/compat'
 
-import { ensureUiStyles } from './styles'
+import { cn } from '../../lib/cn'
 
-type TextareaBase = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'style' | 'class' | 'className'>
+type TextareaBase = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'class' | 'className'>
 
 export interface TextareaProps extends TextareaBase {
-  style?: CSSProperties
-  class?: string
   className?: string
 }
 
@@ -17,37 +15,25 @@ export interface TextareaProps extends TextareaBase {
 // `createElement`, so without forwardRef the ref silently never reaches
 // the DOM and `ref.current` stays null.
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { disabled, style, class: className, className: classNameAlt, ...props },
+  { disabled, className, ...props },
   ref
 ) {
-  ensureUiStyles()
-
-  const cls = ['lpc-ui-textarea', className, classNameAlt].filter(Boolean).join(' ')
-
   return (
     <textarea
       ref={ref}
       disabled={disabled}
-      class={cls}
-      style={{
-        boxSizing: 'border-box',
-        padding: '2px 4px',
-        border: '1px solid var(--Ga4, #999)',
-        borderRadius: '4px',
-        background: 'var(--bg1, #fff)',
-        color: 'inherit',
-        outline: 'none',
-        fontSize: 'inherit',
-        fontFamily: 'inherit',
-        lineHeight: 1.4,
-        resize: 'vertical',
-        minHeight: '40px',
-        width: '100%',
-        cursor: disabled ? 'not-allowed' : 'text',
-        opacity: disabled ? 0.6 : 1,
-        transition: 'border-color .12s ease',
-        ...style,
-      }}
+      class={cn(
+        'lc-box-border lc-w-full',
+        'lc-px-1 lc-py-0.5',
+        'lc-border lc-border-solid lc-border-ga4 lc-rounded',
+        'lc-bg-bg1 lc-text-inherit',
+        'lc-outline-none lc-leading-[1.4]',
+        'lc-resize-y lc-min-h-10',
+        'lc-cursor-text disabled:lc-cursor-not-allowed disabled:lc-opacity-60',
+        'lc-transition',
+        'focus:lc-border-brand',
+        className
+      )}
       {...props}
     />
   )
