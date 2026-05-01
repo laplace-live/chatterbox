@@ -9,7 +9,7 @@
         "@soniox/speech-to-text-web": "^1.4.0",
         "clsx": "^2.1.1",
         "preact": "^10.29.1",
-        "tailwind-merge": "^2.6.0",
+        "tailwind-merge": "^2.6.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.13",
