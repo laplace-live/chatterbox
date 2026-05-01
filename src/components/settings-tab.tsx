@@ -35,7 +35,7 @@ const SECTION_CLASS = 'lc-my-2 lc-pb-4 lc-border-b lc-border-b-solid lc-border-b
 const SECTION_NO_BORDER = 'lc-my-2 lc-pb-4'
 const HEADING_CLASS = 'lc-font-bold lc-mb-2'
 const ROW_CLASS = 'lc-flex lc-gap-2 lc-items-center lc-flex-wrap lc-mb-2'
-const HINT_CLASS = 'lc-my-2 lc-text-[#666]'
+const HINT_CLASS = 'lc-my-2 lc-text-ga6'
 const EMPTY_CLASS = 'lc-text-ga4'
 const LINK_CLASS = 'lc-text-link lc-no-underline'
 
@@ -632,7 +632,7 @@ export function SettingsTab() {
       <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>
           自动融入黑名单
-          {blacklistEntries.length > 0 && <span class='lc-text-ga4 lc-font-normal'> ({blacklistEntries.length})</span>}
+          {blacklistEntries.length > 0 && <span class='lc-text-ga6 lc-font-normal'> ({blacklistEntries.length})</span>}
         </div>
         <div class={HINT_CLASS}>
           名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 / 移出名单。
@@ -647,7 +647,7 @@ export function SettingsTab() {
                   <a href={`https://space.bilibili.com/${uid}`} target='_blank' rel='noopener' class={LINK_CLASS}>
                     {uname || '(无昵称)'}
                   </a>
-                  <span class='lc-text-ga4 lc-text-[11px] lc-font-mono'>{uid}</span>
+                  <span class='lc-text-ga6 lc-text-[11px] lc-font-mono'>{uid}</span>
                 </span>
                 <Button variant='ghost' size='sm' className={DELETE_BTN_CLASS} onClick={() => removeFromBlacklist(uid)}>
                   移出
@@ -756,7 +756,7 @@ export function SettingsTab() {
               maxLogLines.value = v
             }}
           />
-          <span class='lc-text-ga4 lc-text-[.9em]'>(1-1000)</span>
+          <span class='lc-text-ga6 lc-text-[.9em]'>(1-1000)</span>
         </div>
       </div>
     </>

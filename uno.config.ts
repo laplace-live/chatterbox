@@ -57,6 +57,8 @@ export default defineConfig({
       ga2: 'var(--Ga2, #eee)',
       ga3: 'var(--Ga3, #ddd)',
       ga4: 'var(--Ga4, #999)',
+      ga5: 'var(--Ga5, #9499A0)',
+      ga6: 'var(--Ga6, #797F87)',
       bg1: 'var(--bg1, #fff)',
       bg2: 'var(--bg2, #f5f5f5)',
 

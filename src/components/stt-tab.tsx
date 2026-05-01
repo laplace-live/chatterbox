@@ -399,7 +399,7 @@ export function SttTab() {
           <div class='lc-font-bold lc-mb-1'>实时识别结果：</div>
           <div class='lc-p-2 lc-bg-bg2 lc-rounded lc-min-h-10 lc-max-h-[100px] lc-overflow-y-auto lc-break-all'>
             <span>{finalText.value}</span>
-            <span class='lc-text-ga4'>{nonFinalText.value}</span>
+            <span class='lc-text-ga6'>{nonFinalText.value}</span>
           </div>
         </div>
       </div>

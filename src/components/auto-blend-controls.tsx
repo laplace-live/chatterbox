@@ -1,5 +1,7 @@
+import { autoBlendStatus, CANDIDATE_LIMIT } from '../lib/auto-blend'
 import { cn } from '../lib/cn'
 import {
+  autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
   autoBlendIncludeReply,
@@ -25,11 +27,13 @@ function NumberInput({
   value,
   min,
   max,
+  disabled,
   onChange,
 }: {
   value: number
   min: number
   max?: number
+  disabled?: boolean
   onChange: (n: number) => void
 }) {
   return (
@@ -40,6 +44,7 @@ function NumberInput({
       max={max !== undefined ? String(max) : undefined}
       className={'lc-w-[50px]'}
       value={value}
+      disabled={disabled}
       onInput={e => {
         let v = parseInt(e.currentTarget.value, 10)
         if (Number.isNaN(v) || v < min) v = min
@@ -47,6 +52,75 @@ function NumberInput({
         onChange(v)
       }}
     />
+  )
+}
+
+/**
+ * Live "融入候选" leaderboard plus chat-velocity / cooldown readout. Shown
+ * only while 自动融入 is running, so the user can see:
+ *
+ * - which danmaku are accumulating toward the trigger,
+ * - the room's current CPM (chats per minute), which drives adaptive
+ *   cooldown when it's enabled,
+ * - what the next cooldown will be (or how much of the current one is
+ *   left).
+ *
+ * Each candidate row colours `n/threshold` in `text-brand` once the
+ * threshold is met, making it obvious at a glance which axis (人 vs 条) is
+ * the bottleneck — since a candidate must hit BOTH thresholds before
+ * triggering, you'll typically see one number green and the other neutral.
+ */
+function AutoBlendStatus() {
+  const { candidates, cooldownRemainingSec, chatsPerMinute, cooldownEffectiveSec } = autoBlendStatus.value
+  const userThreshold = autoBlendUniqueUsers.value
+  const countThreshold = autoBlendMinOccurrences.value
+  const auto = autoBlendCooldownAuto.value
+
+  return (
+    <div class='lc-my-2 lc-rounded-sm lc-bg-ga1 lc-px-2 lc-py-1.5 lc-flex lc-flex-col lc-gap-1'>
+      <div class='lc-text-ga6 lc-flex lc-items-center lc-justify-between lc-gap-2'>
+        <span class='lc-shrink-0'>候选 (前 {CANDIDATE_LIMIT})</span>
+        <span class='lc-min-w-0 lc-truncate lc-text-right'>
+          <span>弹幕 {chatsPerMinute} 条/分</span>
+          {cooldownRemainingSec > 0 ? (
+            <>
+              <span> · </span>
+              <span class='lc-text-brand'>冷却中 {cooldownRemainingSec} 秒</span>
+            </>
+          ) : (
+            // Only surface the would-be cooldown when auto is on — the
+            // manual value is already visible in the input above, so
+            // restating it here would just be noise.
+            auto && (
+              <>
+                <span> · </span>
+                <span>冷却 {cooldownEffectiveSec} 秒</span>
+              </>
+            )
+          )}
+        </span>
+      </div>
+      {candidates.length === 0 ? (
+        <div class='lc-text-ga6'>{cooldownRemainingSec > 0 ? '冷却中，暂停统计' : '暂无统计'}</div>
+      ) : (
+        candidates.map((entry, i) => (
+          <div key={entry.text} class='lc-flex lc-items-center lc-gap-2 lc-leading-tight' title={entry.text}>
+            <span class='lc-text-ga6 lc-w-3 lc-text-right lc-shrink-0'>{i + 1}</span>
+            <span class='lc-flex-1 lc-min-w-0 lc-truncate'>{entry.text}</span>
+            <span class='lc-shrink-0 lc-text-[11px] lc-text-ga6 lc-font-mono'>
+              <span class={entry.uniqueUsers >= userThreshold ? 'lc-text-brand' : ''}>
+                {entry.uniqueUsers}/{userThreshold}
+              </span>
+              <span> 人 </span>
+              <span class={entry.totalCount >= countThreshold ? 'lc-text-brand' : ''}>
+                {entry.totalCount}/{countThreshold}
+              </span>
+              <span> 条</span>
+            </span>
+          </div>
+        ))
+      )}
+    </div>
   )
 }
 
@@ -129,6 +203,7 @@ export function AutoBlendControls() {
             <NumberInput
               value={autoBlendCooldownSec.value}
               min={4}
+              disabled={autoBlendCooldownAuto.value}
               onChange={v => {
                 autoBlendCooldownSec.value = v
               }}
@@ -155,6 +230,14 @@ export function AutoBlendControls() {
             label='应用替换规则'
           />
           <Checkbox
+            id='autoBlendCooldownAuto'
+            checked={autoBlendCooldownAuto.value}
+            onInput={e => {
+              autoBlendCooldownAuto.value = e.currentTarget.checked
+            }}
+            label='自动冷却（按弹幕速率）'
+          />
+          <Checkbox
             id='persistAutoBlendState'
             disabled={cachedRoomId.value === null}
             checked={cachedRoomId.value !== null && !!persistAutoBlendState.value[String(cachedRoomId.value)]}
@@ -170,7 +253,7 @@ export function AutoBlendControls() {
           />
         </div>
 
-        <div class='lc-text-ga4 lc-text-sm lc-leading-[1.5]'>监测当前直播间弹幕，自动跟车热门弹幕</div>
+        {autoBlendEnabled.value && <AutoBlendStatus />}
       </AccordionContent>
     </AccordionItem>
   )

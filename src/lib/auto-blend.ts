@@ -1,3 +1,5 @@
+import { signal } from '@preact/signals'
+
 import { ensureRoomId, getCsrfToken, getDedeUid, setRandomDanmakuColor } from './api'
 import { subscribeDanmaku } from './danmaku-stream'
 import { formatLockedEmoticonReject, isEmoticonUnique, isLockedEmoticon } from './emoticon'
@@ -5,6 +7,7 @@ import { appendLog } from './log'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
+  autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
   autoBlendIncludeReply,
@@ -29,7 +32,74 @@ interface Counter {
   lastSeenAt: number
 }
 
+/** A single row in the live "融入候选" leaderboard surfaced in the UI. */
+export interface AutoBlendCandidate {
+  text: string
+  uniqueUsers: number
+  totalCount: number
+}
+
+/** UI-facing live status: top-N candidates + room rhythm + cooldown info. */
+export interface AutoBlendStatusValue {
+  candidates: AutoBlendCandidate[]
+  /** Seconds left in the post-trigger freeze, or 0 when not cooling down. */
+  cooldownRemainingSec: number
+  /** Rounded chats-per-minute of the room (excluding our own self-echoes). */
+  chatsPerMinute: number
+  /**
+   * Cooldown that WOULD be engaged if `triggerSend` fired right now. Reflects
+   * the user's fixed `autoBlendCooldownSec` when auto-cooldown is off, or
+   * the live CPM-derived value when it's on.
+   */
+  cooldownEffectiveSec: number
+}
+
+/** How many candidates to surface in the UI leaderboard. */
+export const CANDIDATE_LIMIT = 3
+/**
+ * How often the UI snapshot is refreshed. 500 ms gives a snappy feel for the
+ * leaderboard while keeping the cooldown countdown's per-second resolution
+ * cheap (we re-emit at most twice per second).
+ */
+const SNAPSHOT_INTERVAL_MS = 500
+
+// === CPM (chats-per-minute) tracking ====================================
+//
+// We sample the room's velocity over a sliding window so the user — and the
+// adaptive-cooldown formula — can react to bursts vs. lulls in close to real
+// time. 30 s is short enough that a sudden surge bumps CPM within a few
+// seconds, but long enough to smooth out the choppiness of single-message
+// noise.
+const CPM_WINDOW_SEC = 30
+// Floor on the extrapolation window: with a fresh tracker that's only seen
+// one or two messages we'd otherwise compute absurd CPMs (a single message
+// 100 ms in extrapolates to 600/min). 2 s caps the early-startup bias to a
+// sane upper bound while still giving useful readings before the full
+// 30 s window has filled.
+const CPM_MIN_WINDOW_MS = 2000
+
+// === Adaptive cooldown bounds ===========================================
+//
+// COOLDOWN_FLOOR_SEC matches the user's "2 second a chat at most" intent —
+// even on the busiest rooms we won't fire more often than this. Ceiling
+// keeps quiet rooms from waiting forever between sends.
+const COOLDOWN_FLOOR_SEC = 2
+const COOLDOWN_CEILING_SEC = 60
+// "Stealth factor" K satisfies: at the chosen cooldown, exactly K/60 other
+// messages will land between our sends. K=300 → ~5 messages between sends
+// at any chat speed, which empirically reads as "blended in" without
+// monopolizing fast rooms or feeling robotic in slow ones.
+const COOLDOWN_STEALTH_K = 300
+
 const counters = new Map<string, Counter>()
+/**
+ * Monotonic timestamps (ms) of every non-self danmaku observed since
+ * `startAutoBlend`. Pruned to the last `CPM_WINDOW_SEC` on every read.
+ * We track even messages that don't qualify as candidates (blacklisted
+ * users, locked emotes, replies, in-cooldown traffic) because CPM is a
+ * proxy for ROOM activity, not for trigger-eligible activity.
+ */
+const messageTimestamps: number[] = []
 // Global hard cooldown: while `Date.now() < cooldownUntil`, EVERY incoming
 // danmaku is discarded (not counted, not recorded). Engaged after a successful
 // trigger so post-trigger noise (echoes of our own send, copycat trends, the
@@ -38,9 +108,21 @@ const counters = new Map<string, Counter>()
 let cooldownUntil = 0
 
 let unsubscribe: (() => void) | null = null
-let cleanupTimer: ReturnType<typeof setInterval> | null = null
+let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
 let isSending = false
+
+/**
+ * Live snapshot consumed by `AutoBlendControls` so the user can see which
+ * danmaku are currently accumulating toward the trigger, the room's chat
+ * velocity, and how long the post-trigger cooldown still has to run.
+ */
+export const autoBlendStatus = signal<AutoBlendStatusValue>({
+  candidates: [],
+  cooldownRemainingSec: 0,
+  chatsPerMinute: 0,
+  cooldownEffectiveSec: 0,
+})
 
 function pruneExpired(now: number): void {
   const windowMs = autoBlendWindowSec.value * 1000
@@ -49,13 +131,111 @@ function pruneExpired(now: number): void {
   }
 }
 
+function pruneOldTimestamps(now: number): void {
+  const cutoff = now - CPM_WINDOW_SEC * 1000
+  let i = 0
+  while (i < messageTimestamps.length && messageTimestamps[i] < cutoff) i++
+  if (i > 0) messageTimestamps.splice(0, i)
+}
+
+/**
+ * Current chats-per-minute. Extrapolates from the actual span of the
+ * tracked timestamps so a fresh tracker reaches a realistic reading within
+ * seconds rather than waiting the full 30 s window to fill — capped by
+ * `CPM_MIN_WINDOW_MS` to prevent single-message readings from spiking.
+ */
+function getCurrentCpm(now: number): number {
+  pruneOldTimestamps(now)
+  const n = messageTimestamps.length
+  if (n === 0) return 0
+  const spanMs = now - messageTimestamps[0]
+  const windowMs = Math.max(CPM_MIN_WINDOW_MS, Math.min(spanMs, CPM_WINDOW_SEC * 1000))
+  return Math.round((n * 60_000) / windowMs)
+}
+
+/**
+ * Map a CPM reading to a cooldown in seconds via `K / cpm`, clamped to the
+ * floor / ceiling. Quiet rooms (cpm == 0) get the ceiling so we don't
+ * immediately re-fire when chat goes silent right after a trigger.
+ */
+function computeAutoCooldownSec(cpm: number): number {
+  if (cpm <= 0) return COOLDOWN_CEILING_SEC
+  const auto = Math.round(COOLDOWN_STEALTH_K / cpm)
+  return Math.min(COOLDOWN_CEILING_SEC, Math.max(COOLDOWN_FLOOR_SEC, auto))
+}
+
+/** The cooldown that would be engaged if `triggerSend` fired right now. */
+function getEffectiveCooldownSec(now: number): number {
+  if (!autoBlendCooldownAuto.value) return autoBlendCooldownSec.value
+  return computeAutoCooldownSec(getCurrentCpm(now))
+}
+
+function candidatesEqual(a: AutoBlendCandidate[], b: AutoBlendCandidate[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (x.text !== y.text || x.uniqueUsers !== y.uniqueUsers || x.totalCount !== y.totalCount) return false
+  }
+  return true
+}
+
+/**
+ * Recompute the UI snapshot and write it to `autoBlendStatus`, but only if it
+ * actually changed (to avoid spurious component re-renders during quiet
+ * moments when the timer keeps ticking but no danmaku have arrived).
+ */
+function emitStatus(now: number): void {
+  const cooldownRemainingSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000))
+  const chatsPerMinute = getCurrentCpm(now)
+  const cooldownEffectiveSec = autoBlendCooldownAuto.value
+    ? computeAutoCooldownSec(chatsPerMinute)
+    : autoBlendCooldownSec.value
+
+  const candidates: AutoBlendCandidate[] = []
+  for (const [text, c] of counters) {
+    candidates.push({ text, uniqueUsers: c.uniqueUids.size, totalCount: c.totalCount })
+  }
+  // Primary sort by total occurrences (the volume threshold), tie-broken by
+  // unique users (the diversity threshold), then by text for a stable order
+  // when both are equal — the leaderboard otherwise jitters between equal-
+  // weight entries on every tick.
+  candidates.sort(
+    (a, b) => b.totalCount - a.totalCount || b.uniqueUsers - a.uniqueUsers || a.text.localeCompare(b.text, 'zh-Hans-CN')
+  )
+  if (candidates.length > CANDIDATE_LIMIT) candidates.length = CANDIDATE_LIMIT
+
+  const prev = autoBlendStatus.peek()
+  if (
+    prev.cooldownRemainingSec === cooldownRemainingSec &&
+    prev.chatsPerMinute === chatsPerMinute &&
+    prev.cooldownEffectiveSec === cooldownEffectiveSec &&
+    candidatesEqual(prev.candidates, candidates)
+  ) {
+    return
+  }
+
+  autoBlendStatus.value = { candidates, cooldownRemainingSec, chatsPerMinute, cooldownEffectiveSec }
+}
+
 function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): void {
   if (!autoBlendEnabled.value) return
 
-  // Global hard cooldown: short-circuit BEFORE any text/uid work so the freeze
-  // is truly global — no counters touched, no echoes leaking through, no work
-  // done on incoming events at all.
+  // Self-echo: always ignore. Our own auto-blend sends bounce back through
+  // the MutationObserver and would otherwise inflate CPM (skewing adaptive
+  // cooldown) and pollute candidate counters. Lifted above the cooldown
+  // gate so it's filtered even during the freeze. The post-send cooldown
+  // is the backup that catches echoes when uid extraction fails.
+  if (uid && myUid && uid === myUid) return
+
   const now = Date.now()
+  // Track every observed (non-self) message for CPM, including those that
+  // get filtered out below (blacklisted, locked emote, reply, in cooldown).
+  // CPM is meant to reflect ROOM activity, not trigger-eligible activity.
+  messageTimestamps.push(now)
+
+  // Global hard cooldown: short-circuit BEFORE any further text work so the
+  // freeze is truly global — no counters touched, no echoes leaking through.
   if (now < cooldownUntil) return
 
   const text = rawText.trim()
@@ -63,9 +243,6 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): v
   if (isReply && !autoBlendIncludeReply.value) return
 
   if (uid) {
-    // Always exclude self by uid; the global cooldown after our own send is
-    // the backup that catches echoes when uid extraction fails.
-    if (myUid && uid === myUid) return
     // User-level blacklist set via the right-click menu in chat. Discard
     // entirely so the user neither contributes to unique-user counts nor
     // bumps totalCount toward the threshold.
@@ -123,7 +300,12 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   // Engage the global hard cooldown up front (before the await) and wipe all
   // pending counters so nothing accumulates during the freeze and nothing
   // fires the instant the freeze ends with stale, half-built trends.
-  cooldownUntil = Date.now() + autoBlendCooldownSec.value * 1000
+  // Cooldown duration is whatever the user-or-auto policy resolves to RIGHT
+  // NOW — read fresh (not from the snapshot signal) so a bursty room gets
+  // an aggressive cooldown the moment it actually triggers, even if the
+  // last 500 ms snapshot tick read a slower CPM.
+  const cooldownNow = Date.now()
+  cooldownUntil = cooldownNow + getEffectiveCooldownSec(cooldownNow) * 1000
   counters.clear()
   try {
     const csrfToken = getCsrfToken()
@@ -179,20 +361,31 @@ export function startAutoBlend(): void {
     onMessage: ev => recordDanmaku(ev.text, ev.uid, ev.isReply),
   })
 
-  if (cleanupTimer === null) {
-    cleanupTimer = setInterval(() => pruneExpired(Date.now()), 5000)
+  // Single timer drives both the safety-net prune (in case the room goes
+  // quiet and no `recordDanmaku` calls fire to prune from the inside) AND
+  // the live UI snapshot. 500 ms is fast enough for a responsive
+  // leaderboard / cooldown countdown but slow enough that the per-tick
+  // sort+slice over a small Map is negligible.
+  if (snapshotTimer === null) {
+    snapshotTimer = setInterval(() => {
+      const now = Date.now()
+      pruneExpired(now)
+      emitStatus(now)
+    }, SNAPSHOT_INTERVAL_MS)
   }
 }
 
 export function stopAutoBlend(): void {
-  if (cleanupTimer) {
-    clearInterval(cleanupTimer)
-    cleanupTimer = null
+  if (snapshotTimer) {
+    clearInterval(snapshotTimer)
+    snapshotTimer = null
   }
   if (unsubscribe) {
     unsubscribe()
     unsubscribe = null
   }
   counters.clear()
+  messageTimestamps.length = 0
   cooldownUntil = 0
+  autoBlendStatus.value = { candidates: [], cooldownRemainingSec: 0, chatsPerMinute: 0, cooldownEffectiveSec: 0 }
 }

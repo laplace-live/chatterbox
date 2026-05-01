@@ -86,7 +86,7 @@ export function NormalSendTab() {
             placeholder='输入弹幕内容… (Enter 发送)'
             className='lc-h-[50px]'
           />
-          <div class='lc-absolute lc-right-2 lc-bottom-1.5 lc-text-ga4 lc-pointer-events-none'>
+          <div class='lc-absolute lc-right-2 lc-bottom-1.5 lc-text-ga6 lc-pointer-events-none'>
             {fasongText.value.length}
           </div>
         </div>

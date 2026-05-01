@@ -3,12 +3,11 @@ import { useSignal } from '@preact/signals'
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken } from '../lib/api'
-import { cn } from '../lib/cn'
 import { BASE_URL } from '../lib/const'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
-import { cachedStreamerUid, maxLength, memesPanelOpen, msgSendInterval, optimizeLayout } from '../lib/store'
+import { cachedStreamerUid, maxLength, memesPanelOpen, msgSendInterval } from '../lib/store'
 import { processMessages } from '../lib/utils'
 import { AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -143,7 +142,7 @@ function MemeItem({
                   onClick={() => onTagClick(tag.name)}
                   title={`按「${tag.name}」筛选`}
                   variant='ghost'
-                  className='lc-text-sm lc-px-1 lc-py-0 lc-text-white'
+                  className='lc-text-sm lc-px-1! lc-py-0! lc-text-white'
                   // Tag color is data-driven (per-meme) so it can't be a
                   // static class; UnoCSS would have to safelist every
                   // possible value otherwise.
@@ -170,7 +169,7 @@ function MemeItem({
         <Button size='sm' variant='outline' title='复制到剪贴板' onClick={() => void handleCopy()}>
           {copyLabel.value}
         </Button>
-        {meme.copyCount > 0 && <span class={'lc-text-[10px] lc-text-ga4'}>{meme.copyCount}次</span>}
+        {meme.copyCount > 0 && <span class={'lc-text-[10px] lc-text-ga6'}>{meme.copyCount}次</span>}
       </div>
     </div>
   )
@@ -326,13 +325,13 @@ export function MemesList() {
           )}
           <div
             ref={containerRef}
-            class={cn(
-              // Negative horizontal margin extends the scroll container to
-              // the dialog's outer edge while the inner padding keeps content
-              // visually aligned with the rest of the panel.
-              'lc-overflow-y-auto -lc-mx-[10px] lc-px-[10px]',
-              optimizeLayout.value ? 'lc-flex-1 lc-min-h-0' : 'lc-max-h-[240px]'
-            )}
+            // Negative horizontal margin extends the scroll container to the
+            // dialog's outer edge while the inner padding keeps content
+            // visually aligned with the rest of the panel. Fixed max-height
+            // (rather than flex-1) keeps the meme list from monopolizing the
+            // 发送 tab's now-scrollable viewport when other accordions are
+            // expanded.
+            class='lc-overflow-y-auto -lc-mx-[10px] lc-px-[10px] lc-max-h-[240px]'
           >
             {memes.value
               .filter(m => {

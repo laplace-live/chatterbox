@@ -9,7 +9,7 @@ export function EmoteIds() {
   const copiedId = useSignal<string | null>(null)
 
   if (packages.length === 0) {
-    return <div class='lc-text-ga4'>表情数据加载中…</div>
+    return <div class='lc-text-ga6'>表情数据加载中…</div>
   }
 
   const handleCopy = async (unique: string) => {

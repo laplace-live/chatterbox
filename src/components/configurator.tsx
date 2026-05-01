@@ -30,44 +30,46 @@ export function Configurator() {
     visible && !optimized && 'lc-block lc-max-h-[calc(100vh_-_110px)] lc-overflow-y-auto'
   )
 
-  // All four tab panels share the visibility/layout shape; only fasong
-  // skips overflow-auto because its children handle their own scrolling
-  // (the meme list has its own scroll container).
-  const panelClass = (active: boolean, withOverflow: boolean) =>
+  // All four tab panels share the visibility/layout shape: in optimized
+  // mode the panel itself owns the vertical scroll (since the dialog is
+  // overflow-hidden), and in legacy mode the dialog scrolls and the panel
+  // grows naturally. Fasong's meme list still has its own internal scroll
+  // container (capped at lc-max-h-[240px]) so a long meme list doesn't
+  // monopolize the panel viewport.
+  const panelClass = (active: boolean) =>
     cn(
       // `<Tabs />` already lives inside the dialog, so panel-level horizontal
       // padding belongs here on the per-tab wrapper rather than the dialog.
       'lc-px-[10px]',
       !active && 'lc-hidden',
-      active && optimized && 'lc-flex lc-flex-col lc-flex-1 lc-min-h-0',
-      active && !optimized && 'lc-block',
-      active && optimized && withOverflow && 'lc-overflow-y-auto'
+      active && optimized && 'lc-flex-1 lc-min-h-0 lc-overflow-y-auto',
+      active && !optimized && 'lc-block'
     )
 
   return (
     <div id='laplace-chatterbox-dialog' class={dialogClass}>
       <Tabs />
 
-      <div class={panelClass(tab === 'fasong', false)}>
+      <div class={panelClass(tab === 'fasong')}>
         <AutoSendControls />
         <div class='lc-my-1'>
           <AutoBlendControls />
         </div>
-        <div class={cn('lc-my-1', optimized && 'lc-flex lc-flex-col lc-flex-1 lc-min-h-0')}>
+        <div class='lc-my-1'>
           <MemesList />
         </div>
         <NormalSendTab />
       </div>
 
-      <div class={panelClass(tab === 'tongchuan', true)}>
+      <div class={panelClass(tab === 'tongchuan')}>
         <SttTab />
       </div>
 
-      <div class={panelClass(tab === 'settings', true)}>
+      <div class={panelClass(tab === 'settings')}>
         <SettingsTab />
       </div>
 
-      <div class={panelClass(tab === 'about', true)}>
+      <div class={panelClass(tab === 'about')}>
         <AboutTab />
       </div>
 

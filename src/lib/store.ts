@@ -38,6 +38,11 @@ export const autoBlendWindowSec = gmSignal('autoBlendWindowSec', 15) // y
 export const autoBlendMinOccurrences = gmSignal('autoBlendMinOccurrences', 3) // z
 export const autoBlendSendCount = gmSignal('autoBlendSendCount', 1) // a
 export const autoBlendCooldownSec = gmSignal('autoBlendCooldownSec', 10) // b
+// When true, b is computed live from the room's chat velocity (CPM): the
+// faster the chat, the shorter the cooldown (floored at 2 s for the busiest
+// rooms, ceilinged at 60 s for nearly-silent ones). The fixed
+// `autoBlendCooldownSec` value is ignored while this is on.
+export const autoBlendCooldownAuto = gmSignal('autoBlendCooldownAuto', false)
 export const autoBlendIncludeReply = gmSignal('autoBlendIncludeReply', false)
 export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', true)
 // Per-room opt-in to remember 自动融入 on/off state across reloads.
