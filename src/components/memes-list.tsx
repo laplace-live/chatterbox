@@ -243,14 +243,11 @@ export function MemesList() {
       const dy = prev.top - curr.top
       if (Math.abs(dy) < 1) continue
 
-      node.style.transform = `translateY(${dy}px)`
-      node.style.transition = ''
+      for (const anim of node.getAnimations()) anim.cancel()
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          node.style.transition = 'transform .3s ease'
-          node.style.transform = ''
-        })
+      node.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], {
+        duration: 300,
+        easing: 'ease',
       })
     }
   }, [memes.value])
