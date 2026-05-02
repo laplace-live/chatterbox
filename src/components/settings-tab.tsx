@@ -5,6 +5,7 @@ import { ensureRoomId, getCsrfToken, sendDanmaku } from '../lib/api'
 import { BASE_URL } from '../lib/const'
 import { appendLog, maxLogLines } from '../lib/log'
 import { buildReplacementMap } from '../lib/replacement'
+import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/settings-io'
 import {
   autoBlendUserBlacklist,
   cachedRoomId,
@@ -430,6 +431,49 @@ export function SettingsTab() {
     appendLog('🚲 已清空融入黑名单')
   }
 
+  // Hidden file input that the import button drives via .click(). We keep
+  // it mounted (rather than constructing one ad-hoc) so the picker stays
+  // anchored inside the dialog and we can reset .value after each pick.
+  const importFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleExport = () => {
+    try {
+      const count = exportSettings()
+      appendLog(`💾 已导出 ${count} 项设置`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      appendLog(`❌ 导出设置失败：${msg}`)
+    }
+  }
+
+  const handleImportClick = () => {
+    importFileInputRef.current?.click()
+  }
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const text = await file.text()
+      const parsed = parseSettingsFile(text)
+      const count = Object.keys(parsed.data).length
+      const exportedAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('zh-CN') : '未知时间'
+      // Confirm AFTER parsing so we can show real numbers, and so an
+      // unparsable file fails fast without nagging the user.
+      const ok = confirm(
+        `即将导入 ${count} 项设置（导出于 ${exportedAt}）。\n\n此操作将覆盖当前所有设置且无法撤销，导入完成后页面会自动刷新，是否继续？`
+      )
+      if (!ok) return
+      applySettingsFile(parsed)
+      // Signals from gmSignal cache their initial value at module load,
+      // so reload to pick up the freshly written GM values. Reload before
+      // any signal write-back can clobber the imported data.
+      location.reload()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert(`导入设置失败：${msg}`)
+      appendLog(`❌ 导入设置失败：${msg}`)
+    }
+  }
+
   return (
     <>
       <div class={SECTION_CLASS}>
@@ -738,7 +782,7 @@ export function SettingsTab() {
         </div>
       </div>
 
-      <div class={SECTION_NO_BORDER}>
+      <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>日志设置</div>
         <div class='lc-flex lc-gap-2 lc-items-center lc-flex-wrap'>
           <Label htmlFor='maxLogLines'>最大日志行数:</Label>
@@ -757,6 +801,36 @@ export function SettingsTab() {
             }}
           />
           <span class='lc-text-ga6 lc-text-[.9em]'>(1-1000)</span>
+        </div>
+      </div>
+
+      <div class={SECTION_NO_BORDER}>
+        <div class={HEADING_CLASS}>导入 / 导出设置</div>
+        <div class={HINT_CLASS}>
+          导出当前所有设置（包括替换规则、自动融入黑名单等）为 JSON 文件。导入会覆盖当前所有设置。
+        </div>
+        <div class={ROW_CLASS}>
+          <Button variant='outline' size='sm' onClick={handleExport}>
+            导出设置
+          </Button>
+          <Button variant='outline' size='sm' onClick={handleImportClick}>
+            导入设置
+          </Button>
+          {/* The picker itself is hidden; the import button drives it via
+              .click(). Resetting .value after each pick lets the user
+              re-select the same file (e.g. after editing it). */}
+          <input
+            ref={importFileInputRef}
+            type='file'
+            accept='application/json,.json'
+            class='lc-hidden'
+            onChange={e => {
+              const input = e.currentTarget
+              const file = input.files?.[0]
+              input.value = ''
+              if (file) void handleImportFile(file)
+            }}
+          />
         </div>
       </div>
     </>
