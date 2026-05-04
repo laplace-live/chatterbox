@@ -1,6 +1,6 @@
 import { useSignal } from '@preact/signals'
 import { SonioxClient } from '@soniox/speech-to-text-web'
-import { useRef } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
@@ -9,6 +9,7 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   sonioxApiKey,
+  sonioxAudioDeviceId,
   sonioxAutoSend,
   sonioxLanguageHints,
   sonioxMaxLength,
@@ -40,6 +41,7 @@ export function SttTab() {
   const statusColor = useSignal('#666')
   const finalText = useSignal('')
   const nonFinalText = useSignal('')
+  const audioDevices = useSignal<MediaDeviceInfo[]>([])
 
   const clientRef = useRef<SonioxClient | null>(null)
   const accFinal = useRef('')
@@ -47,6 +49,50 @@ export function SttTab() {
   const sendBuffer = useRef('')
   const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFlushing = useRef(false)
+
+  const enumerateMics = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      audioDevices.value = devices.filter(d => d.kind === 'audioinput')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      appendLog(`🔴 枚举麦克风失败：${msg}`)
+    }
+  }
+
+  // Browsers hide device labels until the page has been granted microphone
+  // permission at least once. Calling getUserMedia briefly forces the prompt
+  // (or returns instantly if already granted), then we re-enumerate to pick
+  // up the now-visible labels.
+  const requestMicPermission = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      appendLog('🔴 当前浏览器不支持麦克风访问')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      for (const track of stream.getTracks()) track.stop()
+      await enumerateMics()
+    } catch (err) {
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        appendLog('❌ 麦克风权限被拒绝，请在浏览器地址栏左侧的权限设置中允许使用麦克风')
+      } else if (name === 'NotFoundError') {
+        appendLog('❌ 未找到麦克风设备')
+      } else {
+        const msg = err instanceof Error ? err.message : String(err)
+        appendLog(`🔴 麦克风权限请求失败：${msg}`)
+      }
+    }
+  }
+
+  useEffect(() => {
+    void enumerateMics()
+    const onChange = () => void enumerateMics()
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange)
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', onChange)
+  }, [])
 
   const resetState = () => {
     state.value = 'stopped'
@@ -147,6 +193,17 @@ export function SttTab() {
         const translationEnabled = sonioxTranslationEnabled.value
         const translationTarget = sonioxTranslationTarget.value
 
+        // Validate the saved device is still present; auto-fall back to
+        // system default (and persist the reset) if the user unplugged it
+        // since they last picked it.
+        const savedDeviceId = sonioxAudioDeviceId.value
+        const deviceStillAvailable = !savedDeviceId || audioDevices.value.some(d => d.deviceId === savedDeviceId)
+        if (savedDeviceId && !deviceStillAvailable) {
+          appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
+          sonioxAudioDeviceId.value = ''
+        }
+        const effectiveDeviceId = deviceStillAvailable ? savedDeviceId : ''
+
         const startConfig: Parameters<SonioxClient['start']>[0] = {
           model: 'stt-rt-v3',
           languageHints: hints,
@@ -224,6 +281,20 @@ export function SttTab() {
         if (translationEnabled) {
           startConfig.translation = { type: 'one_way', target_language: translationTarget }
         }
+        if (effectiveDeviceId) {
+          // Mirror the SDK's internal defaults (raw mono, no DSP) so that
+          // adding a deviceId doesn't silently flip echo cancellation /
+          // noise suppression / AGC back to the browser's "true" defaults
+          // — Soniox recommends raw audio for best transcription quality.
+          startConfig.audioConstraints = {
+            deviceId: { exact: effectiveDeviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1,
+            sampleRate: 44100,
+          }
+        }
         client.start(startConfig)
       } catch (err) {
         console.error('Soniox startup error:', err)
@@ -266,6 +337,13 @@ export function SttTab() {
           : '开始同传'
 
   const hints = sonioxLanguageHints.value
+  const devices = audioDevices.value
+  // Labels are blanked by the browser until the page has been granted
+  // microphone permission. We use the presence of any non-empty label as a
+  // proxy for "permission already granted, no need to nag the user".
+  const hasMicLabels = devices.some(d => d.label)
+  const savedDeviceId = sonioxAudioDeviceId.value
+  const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
   return (
     <>
@@ -302,6 +380,37 @@ export function SttTab() {
 
       <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>语音识别设置</div>
+        <div class={ROW_CLASS}>
+          <Label htmlFor='sonioxAudioDevice'>设备</Label>
+          <NativeSelect
+            id='sonioxAudioDevice'
+            className='lc-flex-1 lc-min-w-[150px] lc-pr-5'
+            value={savedDeviceId}
+            onChange={e => {
+              sonioxAudioDeviceId.value = e.currentTarget.value
+            }}
+          >
+            <option value=''>系统默认</option>
+            {devices.map((d, i) => (
+              <option key={d.deviceId || `mic-${i}`} value={d.deviceId}>
+                {d.label || `麦克风 ${i + 1}`}
+              </option>
+            ))}
+            {/* Surface a stale id so the user can see *something* is
+                selected and switch away — without this the <select> would
+                silently fall back to "系统默认" while the underlying
+                stored id remains unchanged. */}
+            {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
+          </NativeSelect>
+          {!hasMicLabels && (
+            <Button variant='outline' size='sm' onClick={() => void requestMicPermission()}>
+              授权
+            </Button>
+          )}
+          <Button variant='outline' size='sm' onClick={() => void enumerateMics()}>
+            刷新
+          </Button>
+        </div>
         <div class={ROW_CLASS}>
           <span>语言提示：</span>
           {(['zh', 'en', 'ja', 'ko'] as const).map(lang => {
