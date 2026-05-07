@@ -45,6 +45,11 @@ export const autoBlendCooldownSec = gmSignal('autoBlendCooldownSec', 10) // b
 export const autoBlendCooldownAuto = gmSignal('autoBlendCooldownAuto', false)
 export const autoBlendIncludeReply = gmSignal('autoBlendIncludeReply', false)
 export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', true)
+// When true, drop incoming danmaku that exactly match the last text we
+// auto-sent so a chat that keeps repeating the same line after our
+// cooldown can't trigger another duplicate auto-send. Tracked only across
+// the lifetime of one startAutoBlend session (cleared on stop).
+export const autoBlendAvoidRepeat = gmSignal('autoBlendAvoidRepeat', false)
 // Per-room opt-in to remember 自动融入 on/off state across reloads.
 export const persistAutoBlendState = gmSignal<Record<string, boolean>>('persistAutoBlendState', {})
 // Cross-room blacklist: danmaku from these uids are never counted toward

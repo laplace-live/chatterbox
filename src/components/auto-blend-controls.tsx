@@ -1,6 +1,7 @@
 import { autoBlendStatus, CANDIDATE_LIMIT } from '../lib/auto-blend'
 import { cn } from '../lib/cn'
 import {
+  autoBlendAvoidRepeat,
   autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
@@ -236,6 +237,14 @@ export function AutoBlendControls() {
               autoBlendCooldownAuto.value = e.currentTarget.checked
             }}
             label='自动冷却（按弹幕速率）'
+          />
+          <Checkbox
+            id='autoBlendAvoidRepeat'
+            checked={autoBlendAvoidRepeat.value}
+            onInput={e => {
+              autoBlendAvoidRepeat.value = e.currentTarget.checked
+            }}
+            label='不重复上次自动发送'
           />
           <Checkbox
             id='persistAutoBlendState'

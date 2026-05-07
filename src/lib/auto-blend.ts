@@ -7,6 +7,7 @@ import { appendLog } from './log'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
+  autoBlendAvoidRepeat,
   autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
@@ -111,6 +112,13 @@ let unsubscribe: (() => void) | null = null
 let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
 let isSending = false
+// Last trend text we successfully auto-sent (post-trim, pre-replacement —
+// i.e. the same string used as the counters Map key). When
+// `autoBlendAvoidRepeat` is on, identical incoming danmaku are dropped in
+// `recordDanmaku` so the trend can't re-fire. Cleared on stopAutoBlend;
+// overwritten on every successful trigger so consecutive distinct trends
+// fire normally.
+let lastAutoSentText: string | null = null
 
 /**
  * Live snapshot consumed by `AutoBlendControls` so the user can see which
@@ -242,6 +250,12 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): v
   if (!text) return
   if (isReply && !autoBlendIncludeReply.value) return
 
+  // User opt-in: don't let an exact repeat of our last auto-send re-trigger
+  // us. Dropped before any counter updates so the blocked text also stays
+  // out of the candidate leaderboard — anything still matching is, by
+  // definition, the trend we just acted on.
+  if (autoBlendAvoidRepeat.value && lastAutoSentText !== null && text === lastAutoSentText) return
+
   if (uid) {
     // User-level blacklist set via the right-click menu in chat. Discard
     // entirely so the user neither contributes to unique-user counts nor
@@ -324,6 +338,13 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
+    // Record what we're acting on BEFORE the loop so `autoBlendAvoidRepeat`
+    // takes effect even if some repeats inside the burst fail — the user's
+    // intent ("don't re-fire on this trend") doesn't depend on every send
+    // succeeding. Tracked unconditionally; only consulted when the option
+    // is on, so flipping it off doesn't require us to keep this updated.
+    lastAutoSentText = originalText
+
     for (let i = 0; i < repeatCount; i++) {
       let toSend = replaced
       if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend)
@@ -387,5 +408,6 @@ export function stopAutoBlend(): void {
   counters.clear()
   messageTimestamps.length = 0
   cooldownUntil = 0
+  lastAutoSentText = null
   autoBlendStatus.value = { candidates: [], cooldownRemainingSec: 0, chatsPerMinute: 0, cooldownEffectiveSec: 0 }
 }
