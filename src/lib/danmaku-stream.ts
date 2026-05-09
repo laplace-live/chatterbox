@@ -20,6 +20,20 @@ export interface DanmakuEvent {
   uid: string | null
   /** Whether `data-replymid` is non-zero (i.e. a reply danmaku). */
   isReply: boolean
+  /**
+   * True when B站 renders this danmaku as an inline "大表情" / fan-club
+   * cheering emote — DOM marker is `.danmaku-item-right.emoticon.bulge`
+   * containing an `<img>`. Distinct from regular cached emotes
+   * (`.emoticon` without `.bulge`), which carry an `emoticon_unique`
+   * matching `data-danmaku` and survive a faithful re-send.
+   *
+   * For 大表情 messages, `data-danmaku` is the emote's *display name*
+   * (e.g. "应援", "干杯") — NOT an `emoticon_unique` — so naïvely
+   * re-sending the text would land as plain text instead of the emote.
+   * Consumers (auto-blend) use this together with `isEmoticonUnique` to
+   * decide whether the message is faithfully reproducible from text alone.
+   */
+  hasLargeEmote: boolean
 }
 
 export interface DanmakuSubscription {
@@ -63,12 +77,21 @@ export function extractDanmakuInfo(node: HTMLElement): DanmakuEvent | null {
   // we still work on hypothetical future layouts where the attributes move.
   const uname = node.dataset.uname ?? node.querySelector<HTMLElement>('[data-uname]')?.dataset.uname ?? null
   const uid = node.dataset.uid ?? node.querySelector<HTMLElement>('[data-uid]')?.dataset.uid ?? null
+  // Specifically target `.bulge` (大表情 / cheering emotes) — NOT every
+  // emote rendering. Regular cached emotes (`.emoticon` without `.bulge`)
+  // also have an inline `<img>` but their `data-danmaku` is a real
+  // `emoticon_unique` so they re-send faithfully and shouldn't be
+  // flagged. Conflating the two would over-eagerly drop legitimate
+  // emote trends during the brief window before `cachedEmoticonPackages`
+  // loads (when `isEmoticonUnique` returns false for everything).
+  const hasLargeEmote = node.querySelector('.danmaku-item-right.emoticon.bulge img') !== null
   return {
     node,
     text,
     uname,
     uid,
     isReply: replymid !== '0',
+    hasLargeEmote,
   }
 }
 

@@ -227,7 +227,7 @@ function emitStatus(now: number): void {
   autoBlendStatus.value = { candidates, cooldownRemainingSec, chatsPerMinute, cooldownEffectiveSec }
 }
 
-function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): void {
+function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, hasLargeEmote: boolean): void {
   if (!autoBlendEnabled.value) return
 
   // Self-echo: always ignore. Our own auto-blend sends bounce back through
@@ -282,6 +282,18 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): v
   // seconds. The `triggerSend` safety net below still catches the rare race
   // where the emoticon cache loads AFTER counters started accumulating.
   if (isLockedEmoticon(text)) return
+
+  // 大表情 / fan-club cheering emote (DOM marker `.bulge`). Always dropped
+  // — we can never re-send these faithfully. `data-danmaku` for a 大表情
+  // is its visible display name (e.g. "应援", "干杯"), which is the
+  // emoticon's `emoji` field — NOT its `emoticon_unique`. The send-time
+  // check `isEmoticonUnique(text)` keys off `emoticon_unique` (opaque
+  // IDs like `room_xxx_yyy`) so it always returns false for a 大表情
+  // display name, even when we DO have access to the package. So letting
+  // a 大表情 trend through would always fall back to plain-text send,
+  // surfacing in OUR chat as raw "应援" while everyone else sees the
+  // emote button — the bug this guard exists to prevent.
+  if (hasLargeEmote) return
 
   pruneExpired(now)
 
@@ -390,7 +402,7 @@ export function startAutoBlend(): void {
   myUid = getDedeUid() ?? null
 
   unsubscribe = subscribeDanmaku({
-    onMessage: ev => recordDanmaku(ev.text, ev.uid, ev.isReply),
+    onMessage: ev => recordDanmaku(ev.text, ev.uid, ev.isReply, ev.hasLargeEmote),
   })
 
   // Single timer drives both the safety-net prune (in case the room goes
