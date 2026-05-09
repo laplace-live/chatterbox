@@ -56,7 +56,7 @@ function ensureLiveBlockIndicator(): void {
     const el = document.createElement('div')
     el.id = LIVE_BLOCK_INDICATOR_ID
     el.title = 'LAPLACE 弹幕助手已解除该直播间的部分拉黑限制'
-    el.textContent = '🔓 拉黑已解锁'
+    el.textContent = '✽ 拉黑已解锁'
     el.style.cssText = [
       'display: inline-flex',
       'align-items: center',
@@ -113,7 +113,7 @@ function ensureSpaceBlockBanner(): void {
     if (document.getElementById(SPACE_BLOCK_BANNER_ID)) return
     const el = document.createElement('div')
     el.id = SPACE_BLOCK_BANNER_ID
-    el.textContent = '🔓 LAPLACE 弹幕助手已解除该用户的部分拉黑限制'
+    el.textContent = '✽ LAPLACE 弹幕助手已解除该用户的部分拉黑限制'
     el.style.cssText = [
       'background: rgb(228 243 240)',
       'color: rgb(0 82 63)',
