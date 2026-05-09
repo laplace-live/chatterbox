@@ -21,6 +21,18 @@ const DIALOG_MIN_WIDTH = 280
 const DIALOG_MAX_WIDTH = 900
 const DIALOG_VIEWPORT_MARGIN = 40
 
+// Single source of truth for "what width is this dialog allowed to be right
+// now?". Used at three call sites — render, drag start, and drag move — so
+// they can't drift apart. In particular: capturing `dialogWidth.value`
+// directly at drag start would anchor the gesture to a stored value the
+// user can't see (e.g. 800 px persisted from a wider session, but the
+// viewport caps the visible width at 360), making the first ~hundreds of
+// pixels of drag a no-op against the clamp.
+function clampWidth(raw: number): number {
+  const viewportMax = Math.min(DIALOG_MAX_WIDTH, window.innerWidth - DIALOG_VIEWPORT_MARGIN)
+  return Math.max(DIALOG_MIN_WIDTH, Math.min(raw, viewportMax))
+}
+
 export function Configurator() {
   const tab = activeTab.value
   const visible = dialogOpen.value
@@ -29,10 +41,7 @@ export function Configurator() {
   // overflow a now-narrower viewport. Drag writes are also clamped, so
   // once the user resizes anything the persisted value rejoins the
   // viewport-aware envelope automatically.
-  const width = Math.max(
-    DIALOG_MIN_WIDTH,
-    Math.min(dialogWidth.value, Math.min(DIALOG_MAX_WIDTH, window.innerWidth - DIALOG_VIEWPORT_MARGIN))
-  )
+  const width = clampWidth(dialogWidth.value)
 
   // Three layout shapes for the dialog:
   // 1. Hidden when `dialogOpen` is false.
@@ -115,9 +124,9 @@ export function Configurator() {
  *   of the drag so the cursor stays `ew-resize` over arbitrary B站 DOM and
  *   so dragging fast doesn't accidentally select chat text behind the
  *   dialog. Both are cleared in the same handler that releases capture.
- * - MAX is recomputed inside the move handler so resizing the browser
- *   window mid-drag tightens the upper bound live, matching what the user
- *   sees on screen.
+ * - `clampWidth` re-reads `window.innerWidth` on every call, so resizing
+ *   the browser window mid-drag tightens the upper bound live and matches
+ *   what the user sees on screen.
  */
 function ResizeHandle() {
   // `TargetedPointerEvent<HTMLDivElement>` (Preact's typed wrapper) narrows
@@ -133,7 +142,12 @@ function ResizeHandle() {
 
     const target = e.currentTarget
     const startX = e.clientX
-    const startWidth = dialogWidth.value
+    // Anchor on the width the dialog is ACTUALLY rendered at, not the raw
+    // persisted value. Otherwise a stored 800 with a viewport-clamped
+    // visible 360 would force the user to drag 440+ px before any visual
+    // change occurs (the delta would just chip away at the gap between
+    // 800 and the clamp).
+    const startWidth = clampWidth(dialogWidth.value)
 
     target.setPointerCapture(e.pointerId)
 
@@ -145,11 +159,11 @@ function ResizeHandle() {
     const onMove = (ev: PointerEvent) => {
       // Right-anchored panel: leftward motion (negative ev.clientX delta)
       // must INCREASE width, hence `startX - currentX` rather than the
-      // usual `currentX - startX`.
+      // usual `currentX - startX`. `clampWidth` re-reads `window.innerWidth`
+      // each call so resizing the browser mid-drag tightens the upper
+      // bound live, matching what the user sees on screen.
       const delta = startX - ev.clientX
-      const viewportMax = Math.min(DIALOG_MAX_WIDTH, window.innerWidth - DIALOG_VIEWPORT_MARGIN)
-      const next = Math.max(DIALOG_MIN_WIDTH, Math.min(viewportMax, startWidth + delta))
-      dialogWidth.value = next
+      dialogWidth.value = clampWidth(startWidth + delta)
     }
 
     const onEnd = (ev: PointerEvent) => {
