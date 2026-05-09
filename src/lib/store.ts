@@ -29,6 +29,11 @@ export const autoBlendPanelOpen = gmSignal('autoBlendPanelOpen', true)
 export const normalSendPanelOpen = gmSignal('normalSendPanelOpen', true)
 export const memesPanelOpen = gmSignal('memesPanelOpen', true)
 export const dialogOpen = gmSignal('dialogOpen', false)
+// Persisted width (in CSS px) of the floating panel. Default 300 matches the
+// pre-resize hard-coded `lc-w-[300px]`. The resize handle clamps writes to
+// [DIALOG_MIN_WIDTH, viewport-aware max] so a corrupted GM value can't render
+// an unusably narrow / off-screen dialog.
+export const dialogWidth = gmSignal('dialogWidth', 300)
 
 // Auto-blend (自动融入): when x distinct users send the same danmaku z+ times
 // within y seconds, auto-send it a times, then freeze the entire detector
