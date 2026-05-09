@@ -41,17 +41,17 @@ function removeSpaceBlockBanner(): void {
 
 /**
  * Pill-style indicator inside the livestream header's right cluster
- * (`.right-ctnr`). Prepending INTO the cluster keeps the pill inside its
+ * (`.right-section`). Prepending INTO the cluster keeps the pill inside its
  * existing flex layout, so we don't have to mirror whatever justify/gap
  * rules the header is using in the parent.
  *
- * Self-healing: if `.right-ctnr` isn't in the DOM yet (we run at
+ * Self-healing: if `.right-section` isn't in the DOM yet (we run at
  * document-start, B站 mounts the header later), a one-shot MutationObserver
  * waits for it.
  */
 function ensureLiveBlockIndicator(): void {
   if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
-  const inject = (ctnr: HTMLElement): void => {
+  const inject = (targetEl: HTMLElement): void => {
     if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
     const el = document.createElement('div')
     el.id = LIVE_BLOCK_INDICATOR_ID
@@ -62,6 +62,7 @@ function ensureLiveBlockIndicator(): void {
       'align-items: center',
       'align-self: center',
       'padding: 0 4px',
+      'margin-right: 5px',
       'background: rgb(0 186 143)',
       'color: #fff',
       'border-radius: 4px',
@@ -71,11 +72,11 @@ function ensureLiveBlockIndicator(): void {
       'flex-shrink: 0',
       'cursor: default',
     ].join(';')
-    ctnr.prepend(el)
+    targetEl.prepend(el)
   }
-  const ctnr = document.querySelector<HTMLElement>('.right-ctnr')
-  if (ctnr) {
-    inject(ctnr)
+  const targetEl = document.querySelector<HTMLElement>('.right-section')
+  if (targetEl) {
+    inject(targetEl)
     return
   }
   // Cancel any earlier pending observer so we keep at most one alive.
@@ -83,7 +84,7 @@ function ensureLiveBlockIndicator(): void {
   liveBlockObserver = new MutationObserver(() => {
     // The user can flip `unlockLiveBlock` off in the configurator
     // between us setting up this observer and B站 finally mounting
-    // `.right-ctnr`. Re-read the signal so we don't inject behind the
+    // `.right-section`. Re-read the signal so we don't inject behind the
     // user's back. The `effect(...)` below also disconnects on toggle-off
     // — this check is a defensive fallback for cases where the observer
     // fires before the effect microtask runs.
@@ -91,7 +92,7 @@ function ensureLiveBlockIndicator(): void {
       disconnectLiveBlockObserver()
       return
     }
-    const c = document.querySelector<HTMLElement>('.right-ctnr')
+    const c = document.querySelector<HTMLElement>('.right-section')
     if (!c) return
     disconnectLiveBlockObserver()
     inject(c)
@@ -179,7 +180,7 @@ function applyTransforms(url: string, data: any): void {
   if (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
     // Clear the previous room's pill before deciding whether to inject
-    // one for the current room. Bilibili reuses `.right-ctnr` across SPA
+    // one for the current room. Bilibili reuses `.right-section` across SPA
     // navigations, so a stale "已解锁" pill would otherwise linger when
     // the new room isn't blocking us.
     removeLiveBlockIndicator()
