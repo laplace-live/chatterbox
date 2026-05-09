@@ -7,6 +7,7 @@ import { appendLog, maxLogLines } from '../lib/log'
 import { buildReplacementMap } from '../lib/replacement'
 import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/settings-io'
 import {
+  autoBlendMessageBlacklist,
   autoBlendUserBlacklist,
   cachedRoomId,
   danmakuDirectAlwaysShow,
@@ -74,6 +75,8 @@ export function SettingsTab() {
   const roomReplaceTo = useSignal('')
   const editingRoomId = useSignal(cachedRoomId.value !== null ? String(cachedRoomId.value) : '')
   const newRoomId = useSignal('')
+
+  const messageBlacklistInput = useSignal('')
 
   const updateRemoteStatus = () => {
     const rk = remoteKeywords.value
@@ -431,6 +434,45 @@ export function SettingsTab() {
     appendLog('🚲 已清空融入黑名单')
   }
 
+  // Sort lexicographically (zh-Hans-CN locale) so the list is stable across
+  // adds — the underlying Record key order is insertion-defined and would
+  // otherwise reshuffle every time the user added an entry.
+  const messageBlacklistEntries = Object.keys(autoBlendMessageBlacklist.value).sort((a, b) =>
+    a.localeCompare(b, 'zh-Hans-CN')
+  )
+
+  const addToMessageBlacklist = () => {
+    // Match the same trim semantics auto-blend uses to key counters; an
+    // entry added with a trailing space would otherwise never match an
+    // incoming danmaku.
+    const text = messageBlacklistInput.value.trim()
+    if (!text) {
+      appendLog('⚠️ 消息黑名单内容不能为空')
+      return
+    }
+    if (text in autoBlendMessageBlacklist.value) {
+      appendLog(`🚲 已在融入消息黑名单：${text}`)
+      messageBlacklistInput.value = ''
+      return
+    }
+    autoBlendMessageBlacklist.value = { ...autoBlendMessageBlacklist.value, [text]: 1 }
+    appendLog(`🚲 已加入融入消息黑名单：${text}`)
+    messageBlacklistInput.value = ''
+  }
+
+  const removeFromMessageBlacklist = (text: string) => {
+    const next = { ...autoBlendMessageBlacklist.value }
+    delete next[text]
+    autoBlendMessageBlacklist.value = next
+    appendLog(`🚲 已解除融入消息黑名单：${text}`)
+  }
+
+  const clearMessageBlacklist = () => {
+    if (!confirm(`确定清空 ${messageBlacklistEntries.length} 条黑名单消息？`)) return
+    autoBlendMessageBlacklist.value = {}
+    appendLog('🚲 已清空融入消息黑名单')
+  }
+
   // Hidden file input that the import button drives via .click(). We keep
   // it mounted (rather than constructing one ad-hoc) so the picker stays
   // anchored inside the dialog and we can reset .value after each pick.
@@ -705,6 +747,62 @@ export function SettingsTab() {
             清空名单
           </Button>
         )}
+      </div>
+
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>
+          自动融入消息黑名单
+          {messageBlacklistEntries.length > 0 && (
+            <span class='lc-text-ga6 lc-font-normal'> ({messageBlacklistEntries.length})</span>
+          )}
+        </div>
+        <div class={HINT_CLASS}>
+          与名单中弹幕完全一致的消息不会计入「自动融入」统计（精确匹配）。在弹幕框点击弹幕可将该消息加入 /
+          移出名单，或在下方手动添加。
+        </div>
+        <div class='lc-mb-2 lc-max-h-[200px] lc-overflow-y-auto'>
+          {messageBlacklistEntries.length === 0 ? (
+            <div class={EMPTY_CLASS}>暂无黑名单消息</div>
+          ) : (
+            messageBlacklistEntries.map(text => (
+              <div key={text} class={LIST_ROW_CLASS}>
+                <span class={LIST_ROW_TEXT}>{text}</span>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className={DELETE_BTN_CLASS}
+                  onClick={() => removeFromMessageBlacklist(text)}
+                >
+                  移出
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+        <div class={ADD_ROW_CLASS}>
+          <Input
+            placeholder='输入弹幕内容（精确匹配）'
+            className={FILL_INPUT_CLASS}
+            value={messageBlacklistInput.value}
+            onInput={e => {
+              messageBlacklistInput.value = e.currentTarget.value
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.isComposing) {
+                e.preventDefault()
+                addToMessageBlacklist()
+              }
+            }}
+          />
+          <Button variant='outline' size='sm' onClick={addToMessageBlacklist}>
+            添加
+          </Button>
+          {messageBlacklistEntries.length > 0 && (
+            <Button variant='outline' size='sm' onClick={clearMessageBlacklist}>
+              清空名单
+            </Button>
+          )}
+        </div>
       </div>
 
       <div class={SECTION_CLASS}>

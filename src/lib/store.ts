@@ -56,6 +56,13 @@ export const persistAutoBlendState = gmSignal<Record<string, boolean>>('persistA
 // auto-blend triggers. Stored as uid → uname so the username can be shown
 // in logs / future management UI even after the user leaves the room.
 export const autoBlendUserBlacklist = gmSignal<Record<string, string>>('autoBlendUserBlacklist', {})
+// Cross-room message blacklist: any danmaku whose trimmed text matches an
+// entry here is dropped before it can contribute to a candidate. Keyed by
+// the same trimmed text that `auto-blend` uses as its counter key, so a
+// row in the live "候选" leaderboard maps 1:1 to a blacklist entry. The
+// value is unused (always `1`) — the key is the entire payload; we use a
+// Record (not a Set) for cheap GM-storage round-tripping via JSON.
+export const autoBlendMessageBlacklist = gmSignal<Record<string, 1>>('autoBlendMessageBlacklist', {})
 
 // Soniox settings
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
