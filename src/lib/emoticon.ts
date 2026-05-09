@@ -58,3 +58,52 @@ export function formatLockedEmoticonReject(msg: string, label: string): string {
   const reason = reqText ? `需要 ${reqText}` : '权限不足'
   return `🔒 ${label}：${msg} 已被平台锁定（${reason}），已阻止发送`
 }
+
+/**
+ * Heuristic regex for B站 `emoticon_unique` IDs: one or more lowercase
+ * letters followed by one or more `_<digits>` segments. Catches the three
+ * observed families:
+ *
+ * - `room_<roomId>_<emoticonId>`     room-exclusive (streamer's pack)
+ * - `official_<emoticonId>`          site-wide (站内通用)
+ * - `upower_<roomId>_<emoticonId>`   charge-tier emotes
+ *
+ * Conservative on purpose so regular chat — even text that happens to
+ * contain underscores or digits — won't match: pure ID-shaped strings
+ * (`abc_123`) are exceedingly rare in real Chinese-language chat, and the
+ * cost of a false-match is "user gets a log instead of a send" rather than
+ * a silent failure.
+ */
+const EMOTICON_UNIQUE_PATTERN = /^[a-z]+(_\d+)+$/
+
+/**
+ * `true` when `msg` looks like an `emoticon_unique` ID but isn't present in
+ * the current room's cached emoticon packages. Sending such a string lands
+ * as plain text — B站 just echoes the raw ID back into chat, so something
+ * like `room_1713546334_108382` shows up verbatim instead of the intended
+ * emote (almost always because the template was copied from another
+ * streamer's room). All three send paths use this as a hard reject.
+ *
+ * Returns `false` when:
+ * - the string is a known emoticon (`isEmoticonUnique` → true): the
+ *   existing emoticon-send path already handles it correctly,
+ * - the string doesn't match the ID shape: it's regular text, send as-is,
+ * - the cache hasn't loaded yet (`cachedEmoticonPackages` empty): we can't
+ *   distinguish "unavailable" from "still loading", so we let it through
+ *   rather than false-reject legitimate room emotes during the brief
+ *   startup window.
+ */
+export function isUnavailableEmoticon(msg: string): boolean {
+  if (!EMOTICON_UNIQUE_PATTERN.test(msg)) return false
+  if (cachedEmoticonPackages.value.length === 0) return false
+  return !isEmoticonUnique(msg)
+}
+
+/**
+ * Builds the user-facing log line for an unavailable-emoticon rejection.
+ * Same call-site/label shape as `formatLockedEmoticonReject` so all three
+ * send paths log consistently.
+ */
+export function formatUnavailableEmoticonReject(msg: string, label: string): string {
+  return `🚫 ${label}：${msg} 不在当前房间表情包内，已阻止发送`
+}

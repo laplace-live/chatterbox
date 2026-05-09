@@ -2,7 +2,13 @@ import type { DanmakuConfigResponse } from '../types'
 
 import { ensureRoomId, fetchEmoticons, getCsrfToken, getSpmPrefix, setDanmakuMode, setRandomDanmakuColor } from './api'
 import { BASE_URL } from './const'
-import { formatLockedEmoticonReject, isEmoticonUnique, isLockedEmoticon } from './emoticon'
+import {
+  formatLockedEmoticonReject,
+  formatUnavailableEmoticonReject,
+  isEmoticonUnique,
+  isLockedEmoticon,
+  isUnavailableEmoticon,
+} from './emoticon'
 import { appendLog } from './log'
 import { applyReplacements, buildReplacementMap } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
@@ -159,6 +165,22 @@ export async function loop(): Promise<void> {
           if (isLockedEmoticon(message)) {
             const skipLabel = total > 1 ? `自动表情 [${i + 1}/${total}]` : '自动表情'
             appendLog(formatLockedEmoticonReject(message, skipLabel))
+            const resolvedRandomInterval = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
+            const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
+            if (!ok) {
+              completed = false
+              break
+            }
+            continue
+          }
+
+          // Cross-room emote ID (e.g. `room_1713546334_108382` copied from
+          // another streamer's template). B站 would happily echo it back as
+          // plain text, surfacing the raw ID in chat — block it instead.
+          // Same per-iteration sleep so the round's cadence stays intact.
+          if (isUnavailableEmoticon(message)) {
+            const skipLabel = total > 1 ? `自动表情 [${i + 1}/${total}]` : '自动表情'
+            appendLog(formatUnavailableEmoticonReject(message, skipLabel))
             const resolvedRandomInterval = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
             const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
             if (!ok) {

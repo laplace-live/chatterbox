@@ -2,7 +2,13 @@ import { signal } from '@preact/signals'
 
 import { ensureRoomId, getCsrfToken, getDedeUid, setRandomDanmakuColor } from './api'
 import { subscribeDanmaku } from './danmaku-stream'
-import { formatLockedEmoticonReject, isEmoticonUnique, isLockedEmoticon } from './emoticon'
+import {
+  formatLockedEmoticonReject,
+  formatUnavailableEmoticonReject,
+  isEmoticonUnique,
+  isLockedEmoticon,
+  isUnavailableEmoticon,
+} from './emoticon'
 import { appendLog } from './log'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
@@ -283,6 +289,16 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   // where the emoticon cache loads AFTER counters started accumulating.
   if (isLockedEmoticon(text)) return
 
+  // Cross-room emote IDs (`room_<otherRoom>_<id>`, etc.) seen as raw text
+  // in our chat — usually because a viewer pasted a unique-ID from another
+  // streamer's pack. Sending it would land as plain text, so the trend is
+  // unactionable; drop it from counters for the same reason as locked
+  // emotes (no wasted cooldown, no leaderboard pollution). `isUnavailable
+  // Emoticon` is a no-op until the emoticon cache loads, so legitimate
+  // current-room emote IDs aren't incorrectly filtered during the brief
+  // startup window — `triggerSend` re-checks once cache is reliably ready.
+  if (isUnavailableEmoticon(text)) return
+
   // 大表情 / fan-club cheering emote (DOM marker `.bulge`). Always dropped
   // — we can never re-send these faithfully. `data-danmaku` for a 大表情
   // is its visible display name (e.g. "应援", "干杯"), which is the
@@ -330,6 +346,16 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   if (isLockedEmoticon(originalText)) {
     counters.delete(originalText)
     appendLog(formatLockedEmoticonReject(originalText, '自动融入(表情)'))
+    return
+  }
+
+  // Same race / same handling for cross-room emote IDs that slipped past
+  // the `recordDanmaku` filter while the cache was still loading. By the
+  // time we trigger (multiple matches over a multi-second window), the
+  // cache has reliably loaded and the unavailable-check is meaningful.
+  if (isUnavailableEmoticon(originalText)) {
+    counters.delete(originalText)
+    appendLog(formatUnavailableEmoticonReject(originalText, '自动融入(表情)'))
     return
   }
 

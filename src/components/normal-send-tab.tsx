@@ -1,6 +1,12 @@
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
-import { formatLockedEmoticonReject, isEmoticonUnique, isLockedEmoticon } from '../lib/emoticon'
+import {
+  formatLockedEmoticonReject,
+  formatUnavailableEmoticonReject,
+  isEmoticonUnique,
+  isLockedEmoticon,
+  isUnavailableEmoticon,
+} from '../lib/emoticon'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
@@ -20,6 +26,15 @@ export function NormalSendTab() {
 
     if (isLockedEmoticon(originalMessage)) {
       appendLog(formatLockedEmoticonReject(originalMessage, '手动表情'))
+      fasongText.value = ''
+      return
+    }
+
+    // Cross-room emote ID (e.g. `room_1713546334_108382` pasted from another
+    // streamer's room). B站 would echo the raw ID back into chat as plain
+    // text, so reject before sending.
+    if (isUnavailableEmoticon(originalMessage)) {
+      appendLog(formatUnavailableEmoticonReject(originalMessage, '手动表情'))
       fasongText.value = ''
       return
     }
