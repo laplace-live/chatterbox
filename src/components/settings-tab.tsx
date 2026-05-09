@@ -450,7 +450,10 @@ export function SettingsTab() {
       appendLog('⚠️ 消息黑名单内容不能为空')
       return
     }
-    if (text in autoBlendMessageBlacklist.value) {
+    // `Object.hasOwn` (not `in`) — see auto-blend.ts for the prototype-chain
+    // gotcha. Without this, typing e.g. "toString" would always claim the
+    // entry already exists and silently swallow the input.
+    if (Object.hasOwn(autoBlendMessageBlacklist.value, text)) {
       appendLog(`🚲 已在融入消息黑名单：${text}`)
       messageBlacklistInput.value = ''
       return

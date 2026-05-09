@@ -267,7 +267,12 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean): v
   // Message-level blacklist (exact match on the same trimmed text the
   // counters key off). Drop before any counter / leaderboard work so a
   // blacklisted line never appears as a candidate even at 1/N progress.
-  if (text in autoBlendMessageBlacklist.value) return
+  // `Object.hasOwn` (not `in`) — keys are arbitrary user text, and `in`
+  // walks the prototype chain so it would falsely match every danmaku
+  // whose text happens to be `Object.prototype` property name (e.g.
+  // "toString", "constructor", "valueOf"), silently filtering them
+  // forever even when the blacklist is empty.
+  if (Object.hasOwn(autoBlendMessageBlacklist.value, text)) return
 
   // Locked emotes (fan-club / 舰长 / 提督 / 总督 etc.) can never be
   // auto-sent, so keep them out of `counters` entirely. This stops a popular

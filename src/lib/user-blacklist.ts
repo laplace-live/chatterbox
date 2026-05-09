@@ -116,7 +116,11 @@ function buildUserToggleItem(template: HTMLElement, uid: string, uname: string |
  * the injected class differ.
  */
 function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElement {
-  const isBlacklisted = text in autoBlendMessageBlacklist.value
+  // `Object.hasOwn` (not `in`) because message keys are arbitrary user
+  // text — `in` walks the prototype chain and would report e.g. "toString"
+  // as already-blacklisted on a fresh object, mislabeling the toggle and
+  // making `delete` a no-op (since the inherited property persists).
+  const isBlacklisted = Object.hasOwn(autoBlendMessageBlacklist.value, text)
 
   const div = template.cloneNode(true) as HTMLElement
   div.classList.add(MESSAGE_INJECTED_CLASS)
@@ -131,7 +135,7 @@ function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElemen
     e.stopPropagation()
 
     const next = { ...autoBlendMessageBlacklist.value }
-    if (text in next) {
+    if (Object.hasOwn(next, text)) {
       delete next[text]
       appendLog(`🚲 已解除融入消息黑名单：${text}`)
     } else {
