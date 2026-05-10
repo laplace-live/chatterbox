@@ -6,6 +6,7 @@ import type { LlmModel } from './llm'
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import { gmSignal } from './gm-signal'
 import { appendLog } from './log'
+import { DEFAULT_GLOBAL_PROMPT } from './prompts'
 
 // GM-persisted settings
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
@@ -14,6 +15,22 @@ export const randomColor = gmSignal('randomColor', false)
 export const randomInterval = gmSignal('randomInterval', false)
 export const randomChar = gmSignal('randomChar', false)
 export const aiEvasion = gmSignal('aiEvasion', false)
+// "YOLO" mode for the 常规发送 tab: when on, pressing Enter inside the
+// input box auto-polishes the text via the configured LLM and sends
+// the polished result. When off, Enter sends as-typed (the historical
+// behaviour). Persisted as a global preference rather than per-room
+// because a "polish before send" expectation is about the user's own
+// writing style, not about which streamer they're chatting with.
+export const normalSendYolo = gmSignal('normalSendYolo', false)
+// "YOLO" mode for the 独轮车 (auto-send) loop: when on, every line of
+// the active template is run through the LLM (using the autoSend
+// prompt) BEFORE the round's send loop fires. Off by default so
+// existing users don't suddenly start emitting AI-rewritten danmaku
+// without opting in. Polish happens upfront per round (not per
+// segment), one LLM call per non-emote template line — keeps the
+// per-send `msgSendInterval` cadence untouched (polish time is "round
+// overhead" rather than getting interleaved with sends).
+export const autoSendYolo = gmSignal('autoSendYolo', false)
 export const forceScrollDanmaku = gmSignal('forceScrollDanmaku', false)
 export const optimizeLayout = gmSignal('optimizeLayout', false)
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
@@ -56,6 +73,14 @@ export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', tru
 // cooldown can't trigger another duplicate auto-send. Tracked only across
 // the lifetime of one startAutoBlend session (cleared on stop).
 export const autoBlendAvoidRepeat = gmSignal('autoBlendAvoidRepeat', false)
+// "YOLO" mode for 自动融入: when on, every trend the auto-blend
+// detector triggers on is run through the LLM (using the autoBlend
+// prompt) before sending. Off by default so existing users don't
+// suddenly start emitting AI-rewritten danmaku without opting in.
+// Polish happens once per trigger (not once per repeat) to preserve
+// the existing N-repeat semantics — one trend → N identical sends,
+// just polished now — and to keep LLM costs bounded by triggers.
+export const autoBlendYolo = gmSignal('autoBlendYolo', false)
 // Per-room opt-in to remember 自动融入 on/off state across reloads.
 export const persistAutoBlendState = gmSignal<Record<string, boolean>>('persistAutoBlendState', {})
 // Cross-room blacklist: danmaku from these uids are never counted toward
@@ -82,41 +107,6 @@ export const llmApiBase = gmSignal('llmApiBase', 'https://api.openai.com/v1')
 export const llmApiKey = gmSignal('llmApiKey', '')
 export const llmModel = gmSignal('llmModel', '')
 export const llmModels = gmSignal<LlmModel[]>('llmModels', [])
-
-// LLM prompts. Each scope (the shared "global" baseline + each feature)
-// owns an independent list of prompt drafts and an index into that list,
-// mirroring how `msgTemplates` + `activeTemplateIndex` work for the 独轮车
-// template editor — the user authored the same UX request for prompts.
-// Persisted as separate arrays (not a Record) so a corrupted entry for
-// one scope can't invalidate the others, and so individual signals can be
-// diffed cheaply inside the UI without recomputing untouched siblings.
-//
-// The "global" scope is prepended to every feature's prompt at call time
-// (see `getActiveLlmPrompt` in lib/prompts.ts), so call sites don't have
-// to know about the chain. The feature-specific prompt is what actually
-// triggers an LLM call — global alone never does, since the LLM wouldn't
-// know what task to perform.
-
-// Shipped default for the global scope so the LLM section is useful out
-// of the box rather than presenting an empty editor with only a
-// placeholder for guidance. Goes through the standard PromptManager UI
-// — the user can edit it freely, add more, or delete it outright; the
-// seed-once migration below WON'T put it back if they delete it.
-//
-// Exported in case future UI (e.g. a "restore default" button) wants to
-// reference it. Authored as a multi-line string with bullet points
-// because the Bilibili 弹幕 use case has several independent constraints
-// (length, formatting, sensitive words) that are easier to scan as a
-// list than as run-on prose.
-export const DEFAULT_GLOBAL_PROMPT = [
-  '你是 Bilibili 直播间的弹幕生成助手，输出会被直接当作弹幕发送。请遵循以下基本约定：',
-  '',
-  '- 单条弹幕请控制在 40 字以内，使用自然口语化的中文',
-  '- 不要使用 Markdown、列表、表情符号 / emoji，不要包裹引号或代码块',
-  '- 直接输出最终弹幕文本，不要包含解释、前缀或多余空白',
-  '- 避免敏感词与平台违禁词，避免引战或冒犯性表述',
-  '- 与直播间氛围保持一致，保持友好自然',
-].join('\n')
 
 // Seed the default global prompt for users who don't already have one
 // configured. Tracked via a dedicated `llmPromptsGlobalSeeded` flag

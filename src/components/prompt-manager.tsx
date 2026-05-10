@@ -1,31 +1,6 @@
-import { getGraphemes, trimText } from '../lib/utils'
+import { PromptPicker } from './prompt-picker'
 import { Button } from './ui/button'
-import { NativeSelect } from './ui/native-select'
 import { Textarea } from './ui/textarea'
-
-/** Hard cap on how many graphemes of the first line we surface as a
- *  preview in the picker. Larger than the 10-grapheme cap used by the
- *  独轮车 template editor because LLM prompts in this UI live inside the
- *  full-width Settings tab and tend to start with longer instructions
- *  ("You are a Bilibili danmaku rewriter that…") where 10 chars cuts
- *  before any meaningful disambiguator. */
-const PROMPT_PREVIEW_GRAPHEMES = 24
-
-/**
- * Build the picker label for a single prompt: the first non-empty line,
- * grapheme-trimmed with an ellipsis when over `PROMPT_PREVIEW_GRAPHEMES`.
- * Empty drafts surface as `(空)` so the user can still pick + edit them.
- *
- * Mirrors `getPreview` in `auto-send-controls.tsx` so the two managers
- * read the same way at a glance.
- */
-function getPromptPreview(prompt: string): string {
-  const firstLine = (prompt.split('\n')[0] ?? '').trim()
-  if (!firstLine) return '(空)'
-  return getGraphemes(firstLine).length > PROMPT_PREVIEW_GRAPHEMES
-    ? `${trimText(firstLine, PROMPT_PREVIEW_GRAPHEMES)[0]}…`
-    : firstLine
-}
 
 export interface PromptManagerProps {
   /** All prompt drafts the user has authored for one feature. */
@@ -124,34 +99,21 @@ export function PromptManager({
   return (
     <>
       <div class='lc-flex lc-gap-1 lc-items-center lc-flex-wrap lc-mb-2'>
-        <NativeSelect
+        <PromptPicker
           id={selectId}
-          // Wider than the 16ch picker in 独轮车 because Settings has the
-          // room to breathe and prompt previews benefit from it.
-          className='lc-flex-1 lc-min-w-[160px]'
-          // Empty list disables the picker entirely so users don't see a
-          // greyed-out (空) option masquerading as a real choice.
-          disabled={prompts.length === 0}
-          value={String(safeIndex)}
-          onChange={e => {
-            const v = parseInt(e.currentTarget.value, 10)
-            if (!Number.isNaN(v)) onActiveIndexChange(v)
-          }}
-        >
-          {prompts.length === 0 ? (
-            // Sentinel option so the <select> isn't blank — users see
-            // "暂无提示词" the same way an empty NativeSelect would
-            // show "Choose…" in stock HTML, but with a domain-relevant
-            // hint that points at the 新增 button next to it.
-            <option value=''>暂无提示词，请点击「新增」添加</option>
-          ) : (
-            prompts.map((p, i) => (
-              <option key={i} value={String(i)}>
-                {i + 1}: {getPromptPreview(p)}
-              </option>
-            ))
-          )}
-        </NativeSelect>
+          // Wider than the inline pickers in feature tabs because
+          // Settings has the room to breathe and prompt previews
+          // benefit from it. Default 24-grapheme cap from
+          // `getPromptPreview` is preserved (no `previewGraphemes`
+          // override).
+          className='lc-flex-1 lc-min-w-[160px] lc-truncate'
+          prompts={prompts}
+          activeIndex={activeIndex}
+          onActiveIndexChange={onActiveIndexChange}
+          // Domain-specific empty hint that points at the sibling
+          // 新增 button rather than the generic '(空)' fallback.
+          emptyText='暂无提示词，请点击「新增」添加'
+        />
         <Button variant='outline' size='sm' onClick={addPrompt}>
           新增
         </Button>

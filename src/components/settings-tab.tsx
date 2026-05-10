@@ -994,7 +994,7 @@ export function SettingsTab() {
             全局提示词
           </Label>
           <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
-            会拼接到下方每个功能提示词的前面。常用于设置统一的角色、语气、安全规则等。留空则只发送对应功能的提示词。
+            会拼接到下方每个功能提示词的前面。常用于设置统一的角色、语气、安全规则等。留空则只发送对应功能的提示词
           </div>
           <PromptManager
             selectId='llmPromptGlobal'
@@ -1006,7 +1006,7 @@ export function SettingsTab() {
             onActiveIndexChange={v => {
               llmActivePromptGlobal.value = v
             }}
-            placeholder='例如：你是一个 Bilibili 弹幕助手，回复需保持简短、自然、避免敏感词，并不要使用表情符号…'
+            placeholder='例如：你是一个哔哩哔哩弹幕助手，回复需保持简短、自然、避免敏感词，并不要使用表情符号…'
           />
         </div>
 
@@ -1018,7 +1018,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptNormalSend' className='lc-block lc-font-bold lc-mb-1'>
             常规发送
           </Label>
-          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写。</div>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写</div>
           <PromptManager
             selectId='llmPromptNormalSend'
             prompts={llmPromptsNormalSend.value}
@@ -1029,7 +1029,7 @@ export function SettingsTab() {
             onActiveIndexChange={v => {
               llmActivePromptNormalSend.value = v
             }}
-            placeholder='例如：你是一个 Bilibili 弹幕助手，请将我的输入改写为更适合发送的弹幕…'
+            placeholder='例如：用最少的改动，略微修改原文内容，保证原文意思不变'
           />
         </div>
 
@@ -1038,7 +1038,7 @@ export function SettingsTab() {
             自动融入
           </Label>
           <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
-            用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词。
+            用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词
           </div>
           <PromptManager
             selectId='llmPromptAutoBlend'
@@ -1050,7 +1050,7 @@ export function SettingsTab() {
             onActiveIndexChange={v => {
               llmActivePromptAutoBlend.value = v
             }}
-            placeholder='例如：根据当前直播间正在刷的弹幕趋势，生成一句风格匹配但措辞略有变化的跟随弹幕…'
+            placeholder='例如：你是一个龟龟暖男，把所有输入内容改写成暖男弹幕'
           />
         </div>
 
@@ -1058,9 +1058,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptAutoSend' className='lc-block lc-font-bold lc-mb-1'>
             独轮车
           </Label>
-          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
-            用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写。
-          </div>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写</div>
           <PromptManager
             selectId='llmPromptAutoSend'
             prompts={llmPromptsAutoSend.value}
@@ -1071,7 +1069,7 @@ export function SettingsTab() {
             onActiveIndexChange={v => {
               llmActivePromptAutoSend.value = v
             }}
-            placeholder='例如：基于以下弹幕模板，每次输出时随机调整语气和措辞，避免完全重复…'
+            placeholder='例如：你是一个猫娘，所有弹幕最后都要加「喵～」'
           />
         </div>
       </div>

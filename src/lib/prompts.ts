@@ -25,6 +25,7 @@ import {
   llmPromptsGlobal,
   llmPromptsNormalSend,
 } from './store'
+import { getGraphemes, trimText } from './utils'
 
 /**
  * Discriminator for the three features that own their own prompt list.
@@ -33,6 +34,64 @@ import {
  */
 export type LlmPromptFeature = 'normalSend' | 'autoBlend' | 'autoSend'
 
+/** Default cap on how many graphemes of the first line we surface as a
+ *  preview. 24 fits comfortably in the full-width Settings PromptManager
+ *  picker; inline pickers (e.g. the normal-send tab's quick switcher)
+ *  pass a smaller value so the dropdown doesn't dominate the row. */
+const DEFAULT_PROMPT_PREVIEW_GRAPHEMES = 24
+
+/**
+ * Build a short, human-readable preview of a prompt draft: the first
+ * non-empty line, grapheme-trimmed with an ellipsis when longer than
+ * `maxGraphemes`. Empty drafts surface as `(空)` so they remain
+ * pickable in selectors rather than rendering as a blank row.
+ *
+ * Shared between the settings PromptManager and the inline prompt
+ * switchers in feature tabs so the same draft reads identically
+ * everywhere it's surfaced. Separate from `auto-send-controls`'
+ * `getPreview` (which uses a 10-grapheme cap for the danmaku template
+ * picker) — that helper predates this one and stays local to that
+ * module to avoid bundling a refactor of an unrelated feature here.
+ */
+export function getPromptPreview(prompt: string, maxGraphemes = DEFAULT_PROMPT_PREVIEW_GRAPHEMES): string {
+  const firstLine = (prompt.split('\n')[0] ?? '').trim()
+  if (!firstLine) return '(空)'
+  return getGraphemes(firstLine).length > maxGraphemes ? `${trimText(firstLine, maxGraphemes)[0]}…` : firstLine
+}
+
+// LLM prompts. Each scope (the shared "global" baseline + each feature)
+// owns an independent list of prompt drafts and an index into that list,
+// mirroring how `msgTemplates` + `activeTemplateIndex` work for the 独轮车
+// template editor — the user authored the same UX request for prompts.
+// Persisted as separate arrays (not a Record) so a corrupted entry for
+// one scope can't invalidate the others, and so individual signals can be
+// diffed cheaply inside the UI without recomputing untouched siblings.
+//
+// The "global" scope is prepended to every feature's prompt at call time
+// (see `getActiveLlmPrompt` in lib/prompts.ts), so call sites don't have
+// to know about the chain. The feature-specific prompt is what actually
+// triggers an LLM call — global alone never does, since the LLM wouldn't
+// know what task to perform.
+
+// Shipped default for the global scope so the LLM section is useful out
+// of the box rather than presenting an empty editor with only a
+// placeholder for guidance. Goes through the standard PromptManager UI
+// — the user can edit it freely, add more, or delete it outright; the
+// seed-once migration below WON'T put it back if they delete it.
+//
+// Exported in case future UI (e.g. a "restore default" button) wants to
+// reference it. Authored as a multi-line string with bullet points
+// because the Bilibili 弹幕 use case has several independent constraints
+// (length, formatting, sensitive words) that are easier to scan as a
+// list than as run-on prose.
+export const DEFAULT_GLOBAL_PROMPT = [
+  '你是哔哩哔哩直播间的弹幕优化助手，根据用户的输入内容，完全遵循用户的修改提示，输出相应的内容，并遵循以下基本约定：',
+  '',
+  '- 单条弹幕请控制在 40 字以内，使用自然口语化的中文',
+  '- 不要使用 Markdown、列表、不要包裹引号或代码块',
+  '- 直接输出最终弹幕文本，不要包含解释、前缀或多余空白，结尾不带句号',
+].join('\n')
+
 /**
  * Joiner between the global prompt and the feature prompt. Double newline
  * reads as a paragraph break to most chat models, which is what we want:
@@ -40,7 +99,7 @@ export type LlmPromptFeature = 'normalSend' | 'autoBlend' | 'autoSend'
  * blocks (system-style baseline + task-specific instructions) but should
  * arrive in the same message, not split into multiple turns.
  */
-const PROMPT_SEPARATOR = '\n\n'
+const PROMPT_SEPARATOR = '\n\n以下是用户的修改提示：\n\n'
 
 /**
  * Read the active feature-specific prompt with NO global prefix. Useful

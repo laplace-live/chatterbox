@@ -9,11 +9,13 @@ import {
   isLockedEmoticon,
   isUnavailableEmoticon,
 } from './emoticon'
+import { isLlmReady, polishWithLlm } from './llm-tasks'
 import { appendLog } from './log'
 import { applyReplacements, buildReplacementMap } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
   activeTemplateIndex,
+  autoSendYolo,
   availableDanmakuColors,
   cachedRoomId,
   forceScrollDanmaku,
@@ -140,24 +142,150 @@ export async function loop(): Promise<void> {
       const enableRandomInterval = randomInterval.value
       const enableRandomChar = randomChar.value
 
-      const Msg: string[] = []
-      for (const line of currentTemplate.split('\n').filter(l => l?.trim())) {
-        if (isEmoticonUnique(line.trim())) {
-          Msg.push(line.trim())
-        } else {
-          Msg.push(...processMessages(line, maxLength.value, enableRandomChar))
+      // Pull lines out of the template once so YOLO and the legacy
+      // path share the same parsed input — keeps the two branches
+      // diff-able and avoids re-running the split twice.
+      const rawLines = currentTemplate
+        .split('\n')
+        .map(l => l?.trim() ?? '')
+        .filter(l => l.length > 0)
+
+      // Unified task representation so the send loop has one shape
+      // for both YOLO and non-YOLO. A 'direct' task ships its text
+      // straight to chat; a 'polish' task asks the LLM to rewrite the
+      // text just-in-time (right before the send), then ships the
+      // result. Tasks are pre-built upfront so the per-send `[i+1/N]`
+      // label has a stable denominator — only the polish CALLS are
+      // deferred, not the iteration plan.
+      type SendTask = { kind: 'direct'; text: string } | { kind: 'polish'; text: string }
+
+      const tasks: SendTask[] = []
+      if (autoSendYolo.value) {
+        // YOLO bail is LOUD, not silent: if the user opted into
+        // "polish before send" but the LLM can't deliver, we stop
+        // the loop entirely rather than fall back to raw sending
+        // the unpolished template. Same contract as 常规发送 /
+        // 自动融入 YOLO — silent fallback would surprise the user
+        // who explicitly enabled polish. Checked once here at round
+        // start so we fail fast rather than mid-round; per-segment
+        // failures inside the loop are still recoverable.
+        if (!isLlmReady('autoSend')) {
+          appendLog('❌ 独轮车 YOLO 模式已开启，但 LLM 配置不完整，已自动停止运行')
+          sendMsg.value = false
+          currentAbort = null
+          continue
+        }
+        // Pre-split into the same length-bounded chunks that 超过xx
+        // 字自动分段 produces — each chunk becomes a polish task and
+        // fires its own LLM call. randomChar (soft-hyphen dedup
+        // marker) is SUPPRESSED on this input split: the LLM would
+        // either ignore the U+00AD hyphen or "fix" it as a typo,
+        // and either way the dedup intent gets lost on the polished
+        // output. We re-apply randomChar on the OUTPUT side when the
+        // polish completes — see the polish branch below.
+        for (const line of rawLines) {
+          if (isEmoticonUnique(line)) {
+            tasks.push({ kind: 'direct', text: line })
+          } else {
+            for (const chunk of processMessages(line, maxLength.value, false)) {
+              tasks.push({ kind: 'polish', text: chunk })
+            }
+          }
+        }
+      } else {
+        // Non-YOLO: pre-split with randomChar applied (existing
+        // behaviour, exactly equivalent to the previous Msg-build).
+        for (const line of rawLines) {
+          if (isEmoticonUnique(line)) {
+            tasks.push({ kind: 'direct', text: line })
+          } else {
+            for (const chunk of processMessages(line, maxLength.value, enableRandomChar)) {
+              tasks.push({ kind: 'direct', text: chunk })
+            }
+          }
         }
       }
 
-      const total = Msg.length
+      const total = tasks.length
       let completed = true
-      for (let i = 0; i < total; i++) {
+      // Labelled break target for the inner sub-segment loop —
+      // when polish lengthens text past `maxLength`, one polish task
+      // can produce 2+ send items and the inner loop needs a way to
+      // bail out of BOTH loops on abort/stop.
+      outer: for (let i = 0; i < total; i++) {
         if (signal.aborted) {
           completed = false
           break
         }
-        const message = Msg[i]
-        if (sendMsg.value) {
+        if (!sendMsg.value) break
+
+        const task = tasks[i]
+        let sendItems: string[]
+
+        if (task.kind === 'polish') {
+          try {
+            const polished = await polishWithLlm('autoSend', task.text, { signal })
+            if (!polished.trim()) {
+              // Empty polish counts as a refusal — same call as the
+              // other YOLO surfaces. Sleep before the next iteration
+              // so a streak of empty polishes doesn't spin past the
+              // user's configured cadence.
+              appendLog(`⚠️ 独轮车 AI 返回为空，跳过本段：${task.text}`)
+              const offset = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
+              const ok = await abortableSleep(interval * 1000 - offset, signal)
+              if (!ok) {
+                completed = false
+                break
+              }
+              continue
+            }
+            appendLog(`✨ 独轮车 AI 润色：${task.text} → ${polished}`)
+            // Re-process polished output: it may exceed `maxLength`
+            // (LLM lengthened it), and randomChar (suppressed on the
+            // LLM-input pass) needs to apply now so the transmitted
+            // text retains its dedup-bypass marker. Most polishes
+            // produce 1 item; only longer-than-maxLength outputs
+            // hit the inner loop multiple times.
+            sendItems = processMessages(polished, maxLength.value, enableRandomChar)
+          } catch (err) {
+            // AbortError = user clicked 停车 mid-polish. Propagate
+            // as "round aborted" so the success log doesn't fire.
+            if (err instanceof DOMException && err.name === 'AbortError') {
+              completed = false
+              break
+            }
+            // Per-segment failure isolation: a transient LLM error
+            // shouldn't burn the whole round — log + skip THIS
+            // segment and keep going. Sleep first so a broken LLM
+            // doesn't make the loop spin past the user's cadence.
+            const msg = err instanceof Error ? err.message : String(err)
+            appendLog(`🔴 独轮车 AI 润色失败，跳过本段：${msg}`)
+            const offset = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
+            const ok = await abortableSleep(interval * 1000 - offset, signal)
+            if (!ok) {
+              completed = false
+              break
+            }
+            continue
+          }
+        } else {
+          sendItems = [task.text]
+        }
+
+        // Send each result item from this task — typically 1, but
+        // can be 2+ when polish lengthened a segment past maxLength.
+        // All sub-items share the same `[i+1/total]` label since
+        // they're conceptually one "polish unit"; the round counter
+        // reflects polish units, not sub-items.
+        for (let j = 0; j < sendItems.length; j++) {
+          if (signal.aborted) {
+            completed = false
+            break outer
+          }
+          if (!sendMsg.value) break outer
+
+          const message = sendItems[j]
+
           // Skip locked emotes inside the template instead of letting Bilibili
           // reject them server-side. We still observe the same per-iteration
           // sleep so the user-configured cadence is preserved across the rest
@@ -169,7 +297,7 @@ export async function loop(): Promise<void> {
             const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
             if (!ok) {
               completed = false
-              break
+              break outer
             }
             continue
           }
@@ -185,7 +313,7 @@ export async function loop(): Promise<void> {
             const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
             if (!ok) {
               completed = false
-              break
+              break outer
             }
             continue
           }
@@ -209,7 +337,7 @@ export async function loop(): Promise<void> {
           const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
           if (!ok) {
             completed = false
-            break
+            break outer
           }
         }
       }

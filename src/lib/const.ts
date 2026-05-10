@@ -9,6 +9,27 @@ import { GM_info } from '$'
 export const VERSION = GM_info.script.version
 
 /**
+ * App-identity strings used in outbound HTTP headers (currently only
+ * for LLM API calls — see `lib/llm.ts`). They specifically target
+ * OpenRouter's `HTTP-Referer` + `X-Title` attribution headers, which
+ * surface this project on OpenRouter's public rankings / analytics.
+ *
+ * - `PROJECT_URL` is the canonical GitHub URL so anyone clicking through
+ *   from OpenRouter's leaderboard lands on the actual source rather
+ *   than a generic homepage.
+ * - `PROJECT_NAME` is the project's English handle; matches the GitHub
+ *   repo name and stays ASCII so any dashboard can render it without
+ *   character-set surprises.
+ *
+ * We send these on every LLM request regardless of provider — non-
+ * OpenRouter endpoints just ignore unknown headers, so it costs
+ * nothing and means the attribution is always present whenever the
+ * user happens to be pointing at OpenRouter.
+ */
+export const PROJECT_URL = 'https://github.com/laplace-live/chatterbox'
+export const PROJECT_NAME = 'LAPLACE Chatterbox'
+
+/**
  * API endpoint URLs used by the script.
  */
 export const BASE_URL = {

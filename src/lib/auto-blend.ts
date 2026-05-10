@@ -9,6 +9,7 @@ import {
   isLockedEmoticon,
   isUnavailableEmoticon,
 } from './emoticon'
+import { isLlmReady, polishWithLlm } from './llm-tasks'
 import { appendLog } from './log'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
@@ -25,6 +26,7 @@ import {
   autoBlendUseReplacements,
   autoBlendUserBlacklist,
   autoBlendWindowSec,
+  autoBlendYolo,
   maxLength,
   msgSendInterval,
   randomChar,
@@ -379,9 +381,58 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     const roomId = await ensureRoomId()
 
     const isEmote = isEmoticonUnique(originalText)
+
+    // YOLO polish: rewrite the trend text via the configured LLM
+    // before replacements / send. Applied to the ORIGINAL trend (not
+    // the post-replacement string) so the LLM sees natural Chinese
+    // rather than a sensitive-word substitution like "草 → 曹"; the
+    // replacement pipeline below still gets to clean up anything the
+    // LLM emits that might trip 直播间 filters.
+    //
+    // One polish per trigger, NOT per repeat — preserves the existing
+    // "N identical sends per trigger" semantic and keeps cost bounded
+    // by triggers rather than `autoBlendSendCount`. If the user wants
+    // per-message variation they're better served by 常规发送 YOLO.
+    //
+    // Skipped for emotes (the LLM has nothing useful to do with an
+    // opaque `room_xxx_yyy` ID — output would be plain text and lose
+    // the emote rendering).
+    let yoloed = originalText
+    if (autoBlendYolo.value && !isEmote) {
+      if (!isLlmReady('autoBlend')) {
+        // Cooldown is already engaged by this point — that's fine,
+        // it prevents log-spam from the same trend re-firing every
+        // window while the user is misconfigured. Next trigger after
+        // cooldown will retry with whatever config they fixed.
+        appendLog('🚲 自动融入 YOLO 已开启，但 LLM 配置不完整，本轮跳过')
+        return
+      }
+      try {
+        const polished = await polishWithLlm('autoBlend', originalText)
+        if (!polished.trim()) {
+          // Empty / whitespace-only polish counts as a refusal — bail
+          // rather than sending an empty danmaku (Bilibili would
+          // reject it anyway, and re-emitting the unpolished trend
+          // would defeat the user's "polish before send" intent).
+          appendLog('⚠️ 自动融入 AI 返回为空，本轮跳过')
+          return
+        }
+        appendLog(`✨ 自动融入 AI 润色：${originalText} → ${polished}`)
+        yoloed = polished
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        appendLog(`🔴 自动融入 AI 润色失败：${msg}`)
+        return
+      }
+    }
+
     const useReplacements = autoBlendUseReplacements.value && !isEmote
-    const replaced = useReplacements ? applyReplacements(originalText) : originalText
-    const wasReplaced = useReplacements && originalText !== replaced
+    const replaced = useReplacements ? applyReplacements(yoloed) : yoloed
+    // True when ANY transformation between the original trend and the
+    // pre-randomChar text changed the string — drives the `→` arrow
+    // in the per-send log so YOLO polish, sensitive-word replacement,
+    // or both are equally visible.
+    const wasReplaced = replaced !== originalText
 
     const repeatCount = Math.max(1, autoBlendSendCount.value)
     const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`

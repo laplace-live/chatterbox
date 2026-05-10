@@ -3,6 +3,8 @@ import { effect as signalEffect } from '@preact/signals'
 import { showConfirm } from '../components/ui/alert-dialog'
 import { ensureRoomId, getCsrfToken } from './api'
 import { type DanmakuEvent, subscribeDanmaku } from './danmaku-stream'
+import { isEmoticonUnique } from './emoticon'
+import { isLlmReady, polishWithLlm } from './llm-tasks'
 import { appendLog } from './log'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
@@ -13,6 +15,7 @@ import {
   danmakuDirectMode,
   dialogOpen,
   fasongText,
+  normalSendYolo,
 } from './store'
 
 const MARKER = 'lc-dm-direct'
@@ -96,8 +99,51 @@ function handleSteal(msg: string): void {
 }
 
 async function handleRepeat(msg: string, anchor?: { x: number; y: number }): Promise<void> {
+  // YOLO polish for +1 piggybacks on the 常规发送 toggle (`normalSendYolo`)
+  // rather than getting its own switch — both paths are conceptually
+  // "user-initiated single send", just one is typed and the other is
+  // a quick repeat. Sharing the toggle (and the `normalSend` prompt)
+  // means the user's "polish style for what I send manually" applies
+  // uniformly to both surfaces, which is what the user asked for.
+  //
+  // Polish runs BEFORE the confirm dialog so the dialog body shows
+  // what will ACTUALLY be sent (post-polish, pre-replacement). If we
+  // confirmed the raw text and then quietly swapped it out at send
+  // time, the confirmation would be lying.
+  //
+  // Emote +1 skips polish entirely: the chat-item's `dataset.msg` for
+  // an emote is its `emoticon_unique` (e.g. `room_1713546334_108382`),
+  // an opaque ID. Feeding that to the LLM yields mangled text that
+  // `sendDanmaku` would no longer recognise as an emote — B站 echoes
+  // it back as plain chat text. Same `!isEmote` guard the auto-blend
+  // and loop YOLO paths apply to keep all three surfaces consistent.
+  const isEmote = isEmoticonUnique(msg)
+  let toSend = msg
+  if (normalSendYolo.value && !isEmote) {
+    if (!isLlmReady('normalSend')) {
+      // Refuse rather than fall back to raw send — same contract as
+      // the 常规发送 / 自动融入 YOLO modes. The user opted in; a
+      // silent skip-the-polish would surprise them.
+      appendLog('❌ +1 YOLO 模式已开启，但 LLM 配置不完整，本次跳过')
+      return
+    }
+    try {
+      const polished = await polishWithLlm('normalSend', msg)
+      if (!polished.trim()) {
+        appendLog('⚠️ +1 AI 返回为空，本次跳过')
+        return
+      }
+      appendLog(`✨ +1 AI 润色：${msg} → ${polished}`)
+      toSend = polished
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      appendLog(`🔴 +1 AI 润色失败：${errMsg}`)
+      return
+    }
+  }
+
   if (danmakuDirectConfirm.value) {
-    const confirmed = await showConfirm({ title: '确认发送以下弹幕？', body: msg, confirmText: '发送', anchor })
+    const confirmed = await showConfirm({ title: '确认发送以下弹幕？', body: toSend, confirmText: '发送', anchor })
     if (!confirmed) return
   }
 
@@ -108,8 +154,12 @@ async function handleRepeat(msg: string, anchor?: { x: number; y: number }): Pro
       appendLog('❌ 未找到登录信息，请先登录 Bilibili')
       return
     }
-    const processed = applyReplacements(msg)
+    const processed = applyReplacements(toSend)
     const result = await enqueueDanmaku(processed, roomId, csrfToken, SendPriority.MANUAL)
+    // Display arrow lights up whenever the final text differs from the
+    // original danmaku — captures both the YOLO polish (toSend !== msg)
+    // and the sensitive-word replacement (processed !== toSend) in a
+    // single compact `original → final` line.
     const display = msg !== processed ? `${msg} → ${processed}` : processed
     appendLog(result, '+1', display)
   } catch (err) {

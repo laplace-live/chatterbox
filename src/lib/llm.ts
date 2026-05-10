@@ -7,6 +7,8 @@
  * URL-normalisation and error handling.
  */
 
+import { PROJECT_NAME, PROJECT_URL } from './const'
+
 /**
  * Per-token pricing as returned by the OpenAI-compatible /models endpoint.
  *
@@ -129,6 +131,10 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
       headers: {
         Authorization: `Bearer ${apiKey.trim()}`,
         Accept: 'application/json',
+        'HTTP-Referer': PROJECT_URL,
+        'X-Title': PROJECT_NAME,
+        'X-OpenRouter-Title': PROJECT_NAME,
+        'X-OpenRouter-Categories': 'roleplay',
       },
     })
   } catch (err) {
@@ -185,4 +191,125 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
   // which surfaces freshly added models at unpredictable positions).
   models.sort((a, b) => a.id.localeCompare(b.id))
   return models
+}
+
+/**
+ * One message in an OpenAI-style chat-completion conversation. We only
+ * use `role` + `content` — `name`, `tool_calls`, etc. are unused by the
+ * polish use case and would just be noise in the wire payload.
+ */
+export interface LlmChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatCompletionOptions {
+  base: string
+  apiKey: string
+  model: string
+  messages: LlmChatMessage[]
+  /** Sampling temperature. Defaults to 0.7 — same as OpenAI's web UI. */
+  temperature?: number
+  /** Cap on response length. Most providers honour this; unset means
+   *  whatever the model's default is. */
+  maxTokens?: number
+  /** Optional abort signal so callers can cancel in-flight requests
+   *  (e.g. when the user navigates away mid-polish). */
+  signal?: AbortSignal
+}
+
+/**
+ * POST `${base}/chat/completions` with an OpenAI-shaped body and return
+ * the assistant's `content` string from the first choice.
+ *
+ * Streaming is intentionally NOT enabled — the polish UI wants the full
+ * text in one shot so it can apply post-processing (trim, dequote) and
+ * decide what to do with it. If we add a streaming chat panel later,
+ * this helper grows a sibling rather than changing in place.
+ *
+ * Errors surface as thrown `Error` instances with user-readable Chinese
+ * messages so the caller can pipe them straight into a status line /
+ * `appendLog`. AbortError is propagated untouched so cancellation paths
+ * don't get re-classified as network failures.
+ */
+export async function chatCompletion(opts: ChatCompletionOptions): Promise<string> {
+  const trimmedBase = normalizeBase(opts.base)
+  if (!trimmedBase) throw new Error('请填写 API 地址')
+  if (!opts.apiKey.trim()) throw new Error('请填写 API Key')
+  if (!opts.model.trim()) throw new Error('请选择模型')
+  if (opts.messages.length === 0) throw new Error('消息内容不能为空')
+
+  let url: string
+  try {
+    url = new URL(`${trimmedBase}/chat/completions`).toString()
+  } catch {
+    throw new Error('API 地址格式无效')
+  }
+
+  // Build the wire body. `stream: false` is explicit to defeat any
+  // proxy / vendor that defaults to streaming when the client doesn't
+  // say otherwise — we don't parse SSE in this code path.
+  const body: Record<string, unknown> = {
+    model: opts.model.trim(),
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.7,
+    stream: false,
+  }
+  if (opts.maxTokens !== undefined) body.max_tokens = opts.maxTokens
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${opts.apiKey.trim()}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'HTTP-Referer': PROJECT_URL,
+        'X-Title': PROJECT_NAME,
+        'X-OpenRouter-Title': PROJECT_NAME,
+        'X-OpenRouter-Categories': 'roleplay',
+      },
+      body: JSON.stringify(body),
+      signal: opts.signal,
+    })
+  } catch (err) {
+    // AbortError is a DOMException in browsers; let it propagate so
+    // callers can distinguish "user cancelled" from "network died".
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`网络请求失败：${msg}`)
+  }
+
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const text = await res.text()
+      detail = text ? `: ${text.slice(0, 200)}` : ''
+    } catch {
+      // body read errors don't matter — status code alone is enough
+    }
+    throw new Error(`HTTP ${res.status} ${res.statusText}${detail}`)
+  }
+
+  let json: unknown
+  try {
+    json = await res.json()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`返回内容不是合法 JSON：${msg}`)
+  }
+
+  // OpenAI shape: { choices: [{ message: { role, content }, finish_reason }] }.
+  // Vendors sometimes return an empty choices array (e.g. when content
+  // is filtered) — treat that as an error rather than silently returning
+  // empty so the user sees something specific.
+  const choices = (json as { choices?: unknown }).choices
+  if (!Array.isArray(choices) || choices.length === 0) {
+    throw new Error('返回数据缺少 choices 数组')
+  }
+  const message = (choices[0] as { message?: unknown }).message
+  const content = readString(message, 'content')
+  if (!content) throw new Error('返回数据缺少 content 字段')
+  return content
 }

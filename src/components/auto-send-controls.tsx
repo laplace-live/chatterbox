@@ -1,9 +1,13 @@
+import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import { appendLog } from '../lib/log'
 import { cancelLoop } from '../lib/loop'
 import {
   activeTemplateIndex,
   autoSendPanelOpen,
+  autoSendYolo,
   cachedRoomId,
+  llmActivePromptAutoSend,
+  llmPromptsAutoSend,
   maxLength,
   msgSendInterval,
   msgTemplates,
@@ -14,6 +18,7 @@ import {
   sendMsg,
 } from '../lib/store'
 import { getGraphemes, processMessages, trimText } from '../lib/utils'
+import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -65,6 +70,17 @@ export function AutoSendControls() {
     activeTemplateIndex.value = Math.max(0, idx - 1)
   }
 
+  // YOLO toggle gating + inline picker visibility — same logic shape
+  // as 常规发送 / 自动融入, scoped to the autoSend feature. Toggle is
+  // enabled only when the LLM is fully usable for autoSend (API +
+  // active autoSend prompt). Picker shows as soon as API is configured
+  // AND there's at least one autoSend draft, even when the active
+  // draft is empty (so the user can recover by switching without
+  // leaving the tab).
+  const llmGap = describeLlmGap('autoSend')
+  const llmReady = llmGap === null
+  const showPromptPicker = isLlmApiConfigured() && llmPromptsAutoSend.value.length > 0
+
   return (
     <AccordionItem
       open={autoSendPanelOpen.value}
@@ -72,14 +88,21 @@ export function AutoSendControls() {
         autoSendPanelOpen.value = v
       }}
     >
-      <AccordionTrigger>独轮车{sendMsg.value ? ' 🟢' : ''}</AccordionTrigger>
+      {/* Two independent run-state markers in the title: 🟢 = loop
+          actively sending, ⚡️ = YOLO polish active. Both can be on
+          at once; surfacing both in the trigger means the user can
+          see the state without expanding the panel. */}
+      <AccordionTrigger>
+        独轮车{sendMsg.value ? ' 🟢' : ''}
+        {autoSendYolo.value ? ' ⚡️' : ''}
+      </AccordionTrigger>
       <AccordionContent>
-        <div class='lc-my-2 lc-flex lc-items-center lc-flex-wrap lc-gap-1'>
+        <div class='lc-my-2 lc-flex lc-items-center lc-gap-1'>
           <Button variant={sendMsg.value ? 'destructive' : 'default'} size='sm' onClick={toggleSend}>
             {sendMsg.value ? '停车' : '开车'}
           </Button>
           <NativeSelect
-            className='lc-w-[16ch]'
+            className='lc-w-full'
             value={String(idx)}
             onChange={e => {
               activeTemplateIndex.value = parseInt(e.currentTarget.value, 10)
@@ -97,6 +120,46 @@ export function AutoSendControls() {
           <Button variant='outline' size='sm' onClick={removeTemplate}>
             删除当前
           </Button>
+        </div>
+
+        {/* YOLO row sits on its own line under the start / template
+            controls so it doesn't crowd the already-packed first row
+            (which holds the danmaku template selector + add/delete).
+            Conceptually it's the LLM-side controls — orthogonal to
+            the template controls above — so a visual break helps
+            reinforce that distinction. */}
+        <div class='lc-my-2 lc-flex lc-items-center lc-gap-1'>
+          <Button
+            // Variant flip is the standard "is YOLO on?" affordance —
+            // mirrors 常规发送 / 自动融入 so the visual language is
+            // consistent across all three YOLO surfaces.
+            variant={autoSendYolo.value ? 'default' : 'outline'}
+            size='sm'
+            disabled={!llmReady}
+            onClick={() => {
+              autoSendYolo.value = !autoSendYolo.value
+            }}
+          >
+            YOLO
+          </Button>
+          {showPromptPicker && (
+            // Inline switcher for the active 独轮车 prompt — the
+            // PromptManager in Settings is still the place to author
+            // / edit / reorder the list, this is just for hot-
+            // swapping which one feeds the YOLO polish without
+            // leaving this tab.
+            <PromptPicker
+              className='lc-min-w-[40px] lc-truncate'
+              title='切换 YOLO 使用的独轮车提示词'
+              prompts={llmPromptsAutoSend.value}
+              activeIndex={llmActivePromptAutoSend.value}
+              onActiveIndexChange={v => {
+                llmActivePromptAutoSend.value = v
+              }}
+              previewGraphemes={16}
+            />
+          )}
+          {!llmReady && <span class='lc-text-ga6 lc-text-[.85em] lc-ml-1'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
         <Textarea

@@ -1,4 +1,4 @@
-import { VERSION } from '../lib/const'
+import { PROJECT_URL, VERSION } from '../lib/const'
 
 const LINK_CLASS = 'lc-text-link lc-no-underline'
 
@@ -70,7 +70,7 @@ export function AboutTab() {
           <span>许可证: AGPL-3.0</span>
           <span>
             源代码:{' '}
-            <a href='https://github.com/laplace-live/chatterbox' target='_blank' rel='noopener' class={LINK_CLASS}>
+            <a href={PROJECT_URL} target='_blank' rel='noopener' class={LINK_CLASS}>
               GitHub
             </a>
           </span>

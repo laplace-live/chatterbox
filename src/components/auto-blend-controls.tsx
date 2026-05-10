@@ -1,5 +1,6 @@
 import { autoBlendStatus, CANDIDATE_LIMIT } from '../lib/auto-blend'
 import { cn } from '../lib/cn'
+import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import {
   autoBlendAvoidRepeat,
   autoBlendCooldownAuto,
@@ -12,9 +13,13 @@ import {
   autoBlendUniqueUsers,
   autoBlendUseReplacements,
   autoBlendWindowSec,
+  autoBlendYolo,
   cachedRoomId,
+  llmActivePromptAutoBlend,
+  llmPromptsAutoBlend,
   persistAutoBlendState,
 } from '../lib/store'
+import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -130,6 +135,17 @@ export function AutoBlendControls() {
     autoBlendEnabled.value = !autoBlendEnabled.value
   }
 
+  // YOLO toggle gating + inline picker visibility — same logic
+  // shape as 常规发送, scoped to the autoBlend feature instead. The
+  // toggle is enabled only when the LLM is fully usable for autoBlend
+  // (API + active autoBlend prompt). The picker shows as soon as API
+  // is configured AND there's at least one autoBlend draft, even when
+  // the active draft is empty (so the user can recover by switching
+  // to a non-empty draft without leaving the tab).
+  const llmGap = describeLlmGap('autoBlend')
+  const llmReady = llmGap === null
+  const showPromptPicker = isLlmApiConfigured() && llmPromptsAutoBlend.value.length > 0
+
   return (
     <AccordionItem
       open={autoBlendPanelOpen.value}
@@ -137,12 +153,53 @@ export function AutoBlendControls() {
         autoBlendPanelOpen.value = v
       }}
     >
-      <AccordionTrigger>自动融入{autoBlendEnabled.value ? ' 🟣' : ''}</AccordionTrigger>
+      {/* Two independent run-state markers in the title: 🟣 = blend
+          detector running, ⚡️ = YOLO polish active. Both can be on
+          at once and the user wants to see both states without
+          expanding the panel. */}
+      <AccordionTrigger>
+        自动融入{autoBlendEnabled.value ? ' 🟣' : ''}
+        {autoBlendYolo.value ? ' ⚡️' : ''}
+      </AccordionTrigger>
       <AccordionContent>
-        <div class='lc-my-2 lc-flex lc-items-center lc-flex-wrap lc-gap-1'>
+        <div class='lc-my-2 lc-flex lc-items-center lc-gap-1'>
           <Button variant={autoBlendEnabled.value ? 'destructive' : 'default'} size='sm' onClick={toggleEnabled}>
             {autoBlendEnabled.value ? '停止融入' : '开始融入'}
           </Button>
+          <Button
+            // Variant flip mirrors the 常规发送 YOLO button — outline
+            // when off, brand-coloured fill when on. Same affordance
+            // pattern across every YOLO toggle so the visual language
+            // stays consistent.
+            variant={autoBlendYolo.value ? 'default' : 'outline'}
+            size='sm'
+            disabled={!llmReady}
+            onClick={() => {
+              autoBlendYolo.value = !autoBlendYolo.value
+            }}
+          >
+            YOLO
+          </Button>
+          {showPromptPicker && (
+            // Inline switcher for the active 自动融入 prompt — the
+            // PromptManager in Settings is still the place to author
+            // / edit / reorder the list, this is just for hot-
+            // swapping which one feeds the YOLO polish without
+            // leaving this tab. Smaller grapheme cap than the
+            // Settings picker to keep the row readable in the
+            // narrowest dialog width.
+            <PromptPicker
+              className='lc-min-w-[40px] lc-truncate'
+              title='切换 YOLO 使用的自动融入提示词'
+              prompts={llmPromptsAutoBlend.value}
+              activeIndex={llmActivePromptAutoBlend.value}
+              onActiveIndexChange={v => {
+                llmActivePromptAutoBlend.value = v
+              }}
+              previewGraphemes={16}
+            />
+          )}
+          {!llmReady && <span class='lc-text-ga6 lc-text-[.85em] lc-ml-1'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
         <div
