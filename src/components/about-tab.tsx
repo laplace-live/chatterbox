@@ -40,6 +40,13 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     description: '通过 WebSocket 连接 Soniox 语音识别云服务，将麦克风音频流实时转换为文字。需要提供 Soniox API Key。',
   },
   {
+    name: 'LLM API（用户自定义）',
+    host: '用户在设置中配置',
+    trigger: '在设置中点击「刷新」获取模型列表，或使用对应的 AI 功能时调用',
+    description:
+      '兼容 OpenAI API 的大语言模型服务，由用户自行配置 API 地址与 API Key。脚本会向用户填写的地址发送请求，请确保该地址可信。',
+  },
+  {
     name: 'Soniox SDK',
     host: 'unpkg.com',
     trigger: '脚本加载时',

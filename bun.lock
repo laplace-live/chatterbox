@@ -7,6 +7,7 @@
       "dependencies": {
         "@preact/signals": "^2.9.0",
         "@soniox/speech-to-text-web": "^1.4.0",
+        "@tabler/icons-preact": "^3.44.0",
         "clsx": "^2.1.1",
         "preact": "^10.29.1",
         "tailwind-merge": "^2.6.1",
@@ -275,6 +276,10 @@
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.59.0", "", { "os": "win32", "cpu": "x64" }, "sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA=="],
 
     "@soniox/speech-to-text-web": ["@soniox/speech-to-text-web@1.4.0", "", {}, "sha512-ZtwL3yQsPEn7Cf3uYYSa6c4PnD19ohv7/wpZweLfJlNvI5NwoCeQEvENxIMFXGEatG65GvisVkPTl/1MV2WswA=="],
+
+    "@tabler/icons": ["@tabler/icons@3.44.0", "", {}, "sha512-Wn0AOZG9sg0L+bjfMqq4eNhC6pQjIrk94LvvWYNYkY8KH8wC3YILRzQlrnVJc4FUeMxH/AK97QsYCX35H3LndA=="],
+
+    "@tabler/icons-preact": ["@tabler/icons-preact@3.44.0", "", { "dependencies": { "@tabler/icons": "3.44.0" }, "peerDependencies": { "preact": "^10.5.13" } }, "sha512-P0i7HNqwANPOJwhuskPkDZ5iYmPGfpqCHBOaCBQzu681sWcz2ZNJqxY/H+zqJ6bUGukBUbNJgUF9ayrBN2FI9A=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg=="],
 

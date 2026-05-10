@@ -2,7 +2,9 @@ import { useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../lib/api'
+import { cn } from '../lib/cn'
 import { BASE_URL } from '../lib/const'
+import { fetchLlmModels, formatLlmPricing } from '../lib/llm'
 import { appendLog, maxLogLines } from '../lib/log'
 import { buildReplacementMap } from '../lib/replacement'
 import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/settings-io'
@@ -14,6 +16,10 @@ import {
   danmakuDirectConfirm,
   danmakuDirectMode,
   forceScrollDanmaku,
+  llmApiBase,
+  llmApiKey,
+  llmModel,
+  llmModels,
   localGlobalRules,
   localRoomRules,
   optimizeLayout,
@@ -25,6 +31,7 @@ import {
 import { EmoteIds } from './emote-ids'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
+import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
@@ -77,6 +84,40 @@ export function SettingsTab() {
   const newRoomId = useSignal('')
 
   const messageBlacklistInput = useSignal('')
+
+  // LLM section: visibility toggle on the password field, plus a tiny
+  // status state machine for the "fetch models" call (idle / loading /
+  // success / error). Status is colour-coded the same way the remote
+  // keyword sync line is, so the user gets the same visual feedback.
+  const llmKeyVisible = useSignal(false)
+  const llmFetching = useSignal(false)
+  const llmFetchStatus = useSignal('')
+  const llmFetchStatusColor = useSignal('#666')
+
+  const refreshLlmModels = async () => {
+    if (llmFetching.value) return
+    llmFetching.value = true
+    llmFetchStatus.value = '正在获取模型列表…'
+    llmFetchStatusColor.value = '#666'
+    try {
+      const ids = await fetchLlmModels(llmApiBase.value, llmApiKey.value)
+      llmModels.value = ids
+      // If the previously selected model isn't in the freshly fetched
+      // list (renamed / removed), keep the old id around so the user
+      // can SEE that it's stale (rendered via the same "saved but
+      // missing" sentinel option as Soniox uses for unplugged mics).
+      // The user can switch away themselves; we don't auto-clobber.
+      llmFetchStatus.value = `已获取 ${ids.length} 个模型`
+      llmFetchStatusColor.value = '#36a185'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      llmFetchStatus.value = `获取失败：${msg}`
+      llmFetchStatusColor.value = '#f44'
+      appendLog(`❌ LLM 模型列表获取失败：${msg}`)
+    } finally {
+      llmFetching.value = false
+    }
+  }
 
   const updateRemoteStatus = () => {
     const rk = remoteKeywords.value
@@ -720,7 +761,7 @@ export function SettingsTab() {
 
       <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>
-          自动融入黑名单
+          自动融入观众黑名单
           {blacklistEntries.length > 0 && <span class='lc-text-ga6 lc-font-normal'> ({blacklistEntries.length})</span>}
         </div>
         <div class={HINT_CLASS}>
@@ -813,6 +854,117 @@ export function SettingsTab() {
         <div class='lc-max-h-[200px] lc-overflow-y-auto'>
           <EmoteIds />
         </div>
+      </div>
+
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>LLM 设置</div>
+        <div class={HINT_CLASS}>
+          配置兼容 OpenAI API 的大语言模型，用于 AI 集成。模型列表通过 <code>GET {'{API 地址}'}/models</code>{' '}
+          获取，因此需要服务端允许浏览器跨域访问
+        </div>
+        <div class={ROW_CLASS}>
+          <Label htmlFor='llmApiBase'>API 地址</Label>
+          <Input
+            id='llmApiBase'
+            placeholder='https://api.openai.com/v1'
+            className='lc-flex-1 lc-min-w-[150px]'
+            value={llmApiBase.value}
+            onInput={e => {
+              llmApiBase.value = e.currentTarget.value
+            }}
+          />
+        </div>
+        <div class={ROW_CLASS}>
+          <Label htmlFor='llmApiKey'>API Key</Label>
+          <Input
+            id='llmApiKey'
+            // Visibility toggle mirrors Soniox: password by default so the
+            // key isn't shoulder-surfable, but reveal-on-demand keeps it
+            // editable / verifiable without copy-paste gymnastics.
+            type={llmKeyVisible.value ? 'text' : 'password'}
+            placeholder='sk-...'
+            className='lc-flex-1 lc-min-w-[150px]'
+            value={llmApiKey.value}
+            onInput={e => {
+              llmApiKey.value = e.currentTarget.value
+            }}
+          />
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              llmKeyVisible.value = !llmKeyVisible.value
+            }}
+          >
+            {llmKeyVisible.value ? '隐藏' : '显示'}
+          </Button>
+        </div>
+        <div class={ROW_CLASS}>
+          <Label htmlFor='llmModel'>模型</Label>
+          <Combobox
+            id='llmModel'
+            className='lc-flex-1 lc-min-w-[150px]'
+            value={llmModel.value}
+            // Map LlmModel → ComboboxOption + carry the rich payload
+            // through so renderItem below can read pricing without a
+            // second lookup. Building the array inline is fine here:
+            // llmModels only changes when the user clicks 刷新, and the
+            // Combobox's filter/highlight effects already deal with
+            // identity changes across renders.
+            options={llmModels.value.map(m => {
+              const priceStr = formatLlmPricing(m.pricing)
+              return {
+                value: m.id,
+                // Default trigger text + filter target. We DON'T use
+                // `m.name` as the label even when it exists, because
+                // OpenRouter's friendly names ("OpenAI: GPT-4o") are
+                // longer than the id and would push pricing off-row.
+                // The friendly name still feeds searchText.
+                label: m.id,
+                // Filter haystack: id + friendly name + pricing
+                // string, so a query of "free" or "$2.5" or
+                // "OpenAI" all surface the right rows.
+                searchText: [m.id, m.name, priceStr].filter(Boolean).join(' '),
+                model: m,
+                priceStr,
+              }
+            })}
+            onChange={v => {
+              llmModel.value = v
+            }}
+            placeholder='选择模型'
+            searchPlaceholder='输入关键词过滤模型…'
+            emptyText='未找到匹配模型'
+            unloadedText='请点击「刷新」获取模型列表'
+            // Stale-but-persisted sentinel — same pattern the STT tab
+            // uses for an unplugged audio device: surface the saved id
+            // so the user can SEE what's selected and pick something
+            // else, rather than silently falling back to placeholder.
+            missingLabel={v => `${v}（已保存，不在当前列表中）`}
+            renderItem={opt => (
+              <div class='lc-flex lc-flex-col lc-gap-0.5'>
+                <span class={cn('lc-break-all', opt.value === llmModel.value && 'lc-font-bold')}>{opt.value}</span>
+                {opt.priceStr && <span class='lc-text-ga6 lc-text-[.85em]'>{opt.priceStr}</span>}
+              </div>
+            )}
+          />
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={llmFetching.value || !llmApiBase.value.trim() || !llmApiKey.value.trim()}
+            onClick={() => void refreshLlmModels()}
+          >
+            {llmFetching.value ? '加载中…' : '刷新'}
+          </Button>
+        </div>
+        {llmFetchStatus.value && (
+          // Status colour cycles through neutral / success / error driven
+          // by the fetch state machine; inline color matches the remote
+          // keyword sync line above so the same visual language repeats.
+          <div class='lc-text-[.9em]' style={{ color: llmFetchStatusColor.value }}>
+            {llmFetchStatus.value}
+          </div>
+        )}
       </div>
 
       <div class={SECTION_CLASS}>

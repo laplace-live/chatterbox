@@ -12,6 +12,7 @@
   "dependencies": {
     "@preact/signals": "^2.9.0",
     "@soniox/speech-to-text-web": "^1.4.0",
+    "@tabler/icons-preact": "^3.44.0",
     "clsx": "^2.1.1",
     "preact": "^10.29.1",
     "tailwind-merge": "^2.6.1"

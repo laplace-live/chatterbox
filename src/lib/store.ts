@@ -1,6 +1,7 @@
 import { effect, signal } from '@preact/signals'
 
 import type { BilibiliEmoticonPackage } from '../types'
+import type { LlmModel } from './llm'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import { gmSignal } from './gm-signal'
@@ -68,6 +69,19 @@ export const autoBlendUserBlacklist = gmSignal<Record<string, string>>('autoBlen
 // value is unused (always `1`) — the key is the entire payload; we use a
 // Record (not a Set) for cheap GM-storage round-tripping via JSON.
 export const autoBlendMessageBlacklist = gmSignal<Record<string, 1>>('autoBlendMessageBlacklist', {})
+
+// LLM settings (used for future AI integrations — UI only for now). The
+// API base is treated as the OpenAI-compatible root, so the script hits
+// `${llmApiBase}/models` for the model list and would hit
+// `${llmApiBase}/chat/completions` etc. once an integration ships.
+// `llmModels` caches the most recently fetched model objects so the
+// dropdown stays populated across reloads without re-hitting the user's
+// endpoint. We persist the full {id, name?, pricing?} shape rather than
+// just ids so the UI can show metadata (e.g. price) without a re-fetch.
+export const llmApiBase = gmSignal('llmApiBase', 'https://api.openai.com/v1')
+export const llmApiKey = gmSignal('llmApiKey', '')
+export const llmModel = gmSignal('llmModel', '')
+export const llmModels = gmSignal<LlmModel[]>('llmModels', [])
 
 // Soniox settings
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
