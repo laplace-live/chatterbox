@@ -17,7 +17,7 @@ import { Tabs } from './tabs'
 // nothing-fits state. MAX caps at 900 to stop someone dragging past the
 // viewport on widescreen monitors; we also subtract a viewport margin at
 // drag time so smaller windows clamp tighter.
-const DIALOG_MIN_WIDTH = 280
+const DIALOG_MIN_WIDTH = 180
 const DIALOG_MAX_WIDTH = 900
 const DIALOG_VIEWPORT_MARGIN = 40
 

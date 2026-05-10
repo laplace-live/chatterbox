@@ -12,7 +12,7 @@ export function Tabs() {
   const current = activeTab.value
 
   return (
-    <div class='lc-flex lc-mb-[5px] lc-px-[10px] lc-gap-1 lc-border-b lc-border-b-solid lc-border-b-ga2'>
+    <div class='lc-flex lc-mb-[5px] lc-px-[4px] lc-gap-1 lc-border-b lc-border-b-solid lc-border-b-ga2'>
       {TABS.map(tab => {
         const isActive = current === tab.id
         return (
@@ -23,7 +23,7 @@ export function Tabs() {
               activeTab.value = tab.id
             }}
             class={cn(
-              'lc-py-1 lc-px-3 -lc-mb-px lc-bg-transparent lc-cursor-pointer',
+              'lc-py-1 lc-px-2 -lc-mb-px lc-bg-transparent lc-cursor-pointer',
               // Native <button> ships with a UA border. Zero-out top/x and
               // explicitly draw a 1px solid bottom border whose color we
               // toggle below — keeps the active-tab underline aligned with
