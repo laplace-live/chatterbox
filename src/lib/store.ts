@@ -66,7 +66,6 @@ export const autoBlendCooldownSec = gmSignal('autoBlendCooldownSec', 10) // b
 // rooms, ceilinged at 60 s for nearly-silent ones). The fixed
 // `autoBlendCooldownSec` value is ignored while this is on.
 export const autoBlendCooldownAuto = gmSignal('autoBlendCooldownAuto', false)
-export const autoBlendIncludeReply = gmSignal('autoBlendIncludeReply', false)
 export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', true)
 // When true, drop incoming danmaku that exactly match the last text we
 // auto-sent so a chat that keeps repeating the same line after our
@@ -166,6 +165,18 @@ export const sonioxAudioDeviceId = gmSignal('sonioxAudioDeviceId', '')
       GM_setValue('localGlobalRules', old)
     }
     GM_deleteValue('replacementRules')
+  }
+})()
+
+// Drop the now-removed `autoBlendIncludeReply` setting — @ replies are
+// always excluded from the auto-blend detector, so the persisted
+// preference is dead weight. Sentinel-based existence check (rather
+// than a value check) so we delete the key whether the user had it on
+// or off, but still skip the GM write entirely after the first run.
+;(() => {
+  const sentinel = Symbol()
+  if (GM_getValue<unknown>('autoBlendIncludeReply', sentinel) !== sentinel) {
+    GM_deleteValue('autoBlendIncludeReply')
   }
 })()
 

@@ -6,7 +6,6 @@ import {
   autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
-  autoBlendIncludeReply,
   autoBlendMinOccurrences,
   autoBlendPanelOpen,
   autoBlendSendCount,
@@ -271,14 +270,6 @@ export function AutoBlendControls() {
         </div>
 
         <div class='lc-my-2 lc-flex lc-flex-wrap lc-gap-3'>
-          <Checkbox
-            id='autoBlendIncludeReply'
-            checked={autoBlendIncludeReply.value}
-            onInput={e => {
-              autoBlendIncludeReply.value = e.currentTarget.checked
-            }}
-            label='包含 @ 回复弹幕'
-          />
           <Checkbox
             id='autoBlendUseReplacements'
             checked={autoBlendUseReplacements.value}

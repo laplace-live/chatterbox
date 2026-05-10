@@ -18,7 +18,6 @@ import {
   autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
-  autoBlendIncludeReply,
   autoBlendMessageBlacklist,
   autoBlendMinOccurrences,
   autoBlendSendCount,
@@ -257,7 +256,9 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
 
   const text = rawText.trim()
   if (!text) return
-  if (isReply && !autoBlendIncludeReply.value) return
+  // @ replies are directed at one user, so they're never a "trend" worth
+  // blending into — skip unconditionally.
+  if (isReply) return
 
   // User opt-in: don't let an exact repeat of our last auto-send re-trigger
   // us. Dropped before any counter updates so the blocked text also stays
