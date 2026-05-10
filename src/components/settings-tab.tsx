@@ -16,10 +16,18 @@ import {
   danmakuDirectConfirm,
   danmakuDirectMode,
   forceScrollDanmaku,
+  llmActivePromptAutoBlend,
+  llmActivePromptAutoSend,
+  llmActivePromptGlobal,
+  llmActivePromptNormalSend,
   llmApiBase,
   llmApiKey,
   llmModel,
   llmModels,
+  llmPromptsAutoBlend,
+  llmPromptsAutoSend,
+  llmPromptsGlobal,
+  llmPromptsNormalSend,
   localGlobalRules,
   localRoomRules,
   optimizeLayout,
@@ -29,6 +37,7 @@ import {
   unlockSpaceBlock,
 } from '../lib/store'
 import { EmoteIds } from './emote-ids'
+import { PromptManager } from './prompt-manager'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Combobox } from './ui/combobox'
@@ -965,6 +974,106 @@ export function SettingsTab() {
             {llmFetchStatus.value}
           </div>
         )}
+      </div>
+
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>LLM 提示词</div>
+        <div class={HINT_CLASS}>
+          全局提示词会自动拼接到每个功能特定提示词的前面，作为所有 LLM
+          调用的统一前缀（例如设定角色、风格规范、安全约束等）。每条提示词的第一行会作为列表中的预览名称，列表中选中的那条会被使用。可以为同一个范围保存多条提示词在不同场景间切换。
+        </div>
+
+        {/* Global subsection: pinned to the top because its contents
+            apply to every feature below. Visual order matches "global
+            first, then specifics" so the user reads the chain in the
+            same order the LLM ultimately does. The bottom divider
+            visually splits "shared baseline" from "per-feature
+            instructions" so the hierarchy is obvious at a glance. */}
+        <div class='lc-mb-3 lc-pb-3 lc-border-b lc-border-b-solid lc-border-b-ga2'>
+          <Label htmlFor='llmPromptGlobal' className='lc-block lc-font-bold lc-mb-1'>
+            全局提示词
+          </Label>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
+            会拼接到下方每个功能提示词的前面。常用于设置统一的角色、语气、安全规则等。留空则只发送对应功能的提示词。
+          </div>
+          <PromptManager
+            selectId='llmPromptGlobal'
+            prompts={llmPromptsGlobal.value}
+            activeIndex={llmActivePromptGlobal.value}
+            onPromptsChange={v => {
+              llmPromptsGlobal.value = v
+            }}
+            onActiveIndexChange={v => {
+              llmActivePromptGlobal.value = v
+            }}
+            placeholder='例如：你是一个 Bilibili 弹幕助手，回复需保持简短、自然、避免敏感词，并不要使用表情符号…'
+          />
+        </div>
+
+        {/* Per-feature subsection layout. The triple repeats the same
+            shape (label + hint + PromptManager) so the user can scan
+            top-to-bottom and trust that "find the right block, edit the
+            prompt" works the same way for every feature. */}
+        <div class='lc-mb-3'>
+          <Label htmlFor='llmPromptNormalSend' className='lc-block lc-font-bold lc-mb-1'>
+            常规发送
+          </Label>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写。</div>
+          <PromptManager
+            selectId='llmPromptNormalSend'
+            prompts={llmPromptsNormalSend.value}
+            activeIndex={llmActivePromptNormalSend.value}
+            onPromptsChange={v => {
+              llmPromptsNormalSend.value = v
+            }}
+            onActiveIndexChange={v => {
+              llmActivePromptNormalSend.value = v
+            }}
+            placeholder='例如：你是一个 Bilibili 弹幕助手，请将我的输入改写为更适合发送的弹幕…'
+          />
+        </div>
+
+        <div class='lc-mb-3'>
+          <Label htmlFor='llmPromptAutoBlend' className='lc-block lc-font-bold lc-mb-1'>
+            自动融入
+          </Label>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
+            用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词。
+          </div>
+          <PromptManager
+            selectId='llmPromptAutoBlend'
+            prompts={llmPromptsAutoBlend.value}
+            activeIndex={llmActivePromptAutoBlend.value}
+            onPromptsChange={v => {
+              llmPromptsAutoBlend.value = v
+            }}
+            onActiveIndexChange={v => {
+              llmActivePromptAutoBlend.value = v
+            }}
+            placeholder='例如：根据当前直播间正在刷的弹幕趋势，生成一句风格匹配但措辞略有变化的跟随弹幕…'
+          />
+        </div>
+
+        <div>
+          <Label htmlFor='llmPromptAutoSend' className='lc-block lc-font-bold lc-mb-1'>
+            独轮车
+          </Label>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
+            用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写。
+          </div>
+          <PromptManager
+            selectId='llmPromptAutoSend'
+            prompts={llmPromptsAutoSend.value}
+            activeIndex={llmActivePromptAutoSend.value}
+            onPromptsChange={v => {
+              llmPromptsAutoSend.value = v
+            }}
+            onActiveIndexChange={v => {
+              llmActivePromptAutoSend.value = v
+            }}
+            placeholder='例如：基于以下弹幕模板，每次输出时随机调整语气和措辞，避免完全重复…'
+          />
+        </div>
       </div>
 
       <div class={SECTION_CLASS}>

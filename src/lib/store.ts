@@ -83,6 +83,77 @@ export const llmApiKey = gmSignal('llmApiKey', '')
 export const llmModel = gmSignal('llmModel', '')
 export const llmModels = gmSignal<LlmModel[]>('llmModels', [])
 
+// LLM prompts. Each scope (the shared "global" baseline + each feature)
+// owns an independent list of prompt drafts and an index into that list,
+// mirroring how `msgTemplates` + `activeTemplateIndex` work for the 独轮车
+// template editor — the user authored the same UX request for prompts.
+// Persisted as separate arrays (not a Record) so a corrupted entry for
+// one scope can't invalidate the others, and so individual signals can be
+// diffed cheaply inside the UI without recomputing untouched siblings.
+//
+// The "global" scope is prepended to every feature's prompt at call time
+// (see `getActiveLlmPrompt` in lib/prompts.ts), so call sites don't have
+// to know about the chain. The feature-specific prompt is what actually
+// triggers an LLM call — global alone never does, since the LLM wouldn't
+// know what task to perform.
+
+// Shipped default for the global scope so the LLM section is useful out
+// of the box rather than presenting an empty editor with only a
+// placeholder for guidance. Goes through the standard PromptManager UI
+// — the user can edit it freely, add more, or delete it outright; the
+// seed-once migration below WON'T put it back if they delete it.
+//
+// Exported in case future UI (e.g. a "restore default" button) wants to
+// reference it. Authored as a multi-line string with bullet points
+// because the Bilibili 弹幕 use case has several independent constraints
+// (length, formatting, sensitive words) that are easier to scan as a
+// list than as run-on prose.
+export const DEFAULT_GLOBAL_PROMPT = [
+  '你是 Bilibili 直播间的弹幕生成助手，输出会被直接当作弹幕发送。请遵循以下基本约定：',
+  '',
+  '- 单条弹幕请控制在 40 字以内，使用自然口语化的中文',
+  '- 不要使用 Markdown、列表、表情符号 / emoji，不要包裹引号或代码块',
+  '- 直接输出最终弹幕文本，不要包含解释、前缀或多余空白',
+  '- 避免敏感词与平台违禁词，避免引战或冒犯性表述',
+  '- 与直播间氛围保持一致，保持友好自然',
+].join('\n')
+
+// Seed the default global prompt for users who don't already have one
+// configured. Tracked via a dedicated `llmPromptsGlobalSeeded` flag
+// rather than by relying on the gmSignal default, because the gmSignal
+// default only kicks in when the key has never been written — and any
+// pre-release tester running an earlier build of this branch already
+// has `llmPromptsGlobal: []` persisted, which would otherwise silently
+// suppress the seed forever.
+//
+// The flag also means a user who deliberately deletes the default
+// won't have it re-added on every reload — `seeded=true` short-circuits
+// the migration even when the array is back to empty. Same one-time
+// semantics as the `replacementRules` migration below.
+;(() => {
+  const seeded = GM_getValue<boolean>('llmPromptsGlobalSeeded', false)
+  if (seeded) return
+  const existing = GM_getValue<string[]>('llmPromptsGlobal', [])
+  if (existing.length === 0) {
+    GM_setValue('llmPromptsGlobal', [DEFAULT_GLOBAL_PROMPT])
+  }
+  GM_setValue('llmPromptsGlobalSeeded', true)
+})()
+
+// gmSignal default also points at DEFAULT_GLOBAL_PROMPT so the line
+// reads truthfully ("default: the default prompt") even though the
+// migration above has already written it for any real user. The signal
+// default is the safety net for the theoretical case where the
+// migration's GM_setValue silently fails.
+export const llmPromptsGlobal = gmSignal<string[]>('llmPromptsGlobal', [DEFAULT_GLOBAL_PROMPT])
+export const llmActivePromptGlobal = gmSignal('llmActivePromptGlobal', 0)
+export const llmPromptsNormalSend = gmSignal<string[]>('llmPromptsNormalSend', [])
+export const llmActivePromptNormalSend = gmSignal('llmActivePromptNormalSend', 0)
+export const llmPromptsAutoBlend = gmSignal<string[]>('llmPromptsAutoBlend', [])
+export const llmActivePromptAutoBlend = gmSignal('llmActivePromptAutoBlend', 0)
+export const llmPromptsAutoSend = gmSignal<string[]>('llmPromptsAutoSend', [])
+export const llmActivePromptAutoSend = gmSignal('llmActivePromptAutoSend', 0)
+
 // Soniox settings
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
 export const sonioxLanguageHints = gmSignal<string[]>('sonioxLanguageHints', ['zh'])
