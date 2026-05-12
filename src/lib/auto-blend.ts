@@ -32,7 +32,7 @@ import {
   randomColor,
   randomInterval,
 } from './store'
-import { addRandomCharacter, trimText } from './utils'
+import { addRandomCharacter, resolveSendDelayMs, trimText } from './utils'
 
 interface Counter {
   uniqueUids: Set<string>
@@ -462,9 +462,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       appendLog(result, label, display)
 
       if (i < repeatCount - 1) {
-        const interval = msgSendInterval.value * 1000
-        const offset = randomInterval.value ? Math.floor(Math.random() * 500) : 0
-        await new Promise(r => setTimeout(r, Math.max(0, interval - offset)))
+        await new Promise(r => setTimeout(r, resolveSendDelayMs(msgSendInterval.value, randomInterval.value)))
       }
     }
   } catch (err) {

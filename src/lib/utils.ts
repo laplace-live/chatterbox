@@ -208,6 +208,22 @@ export function addRandomCharacter(text: string): string {
 }
 
 /**
+ * Resolves the actual sleep duration (ms) between auto-send iterations.
+ *
+ * Base delay is `intervalSeconds * 1000`. When `random` is true, a uniform
+ * 0–499 ms offset is subtracted so the loop doesn't fire on a perfectly
+ * fixed cadence (legacy one-sided jitter — actual delay sits in
+ * `[base - 499, base]` ms, never longer than the user's configured value).
+ * Result is clamped to 0 so a 0-second interval with jitter doesn't pass a
+ * negative argument down to `setTimeout`.
+ */
+export function resolveSendDelayMs(intervalSeconds: number, random: boolean): number {
+  const baseMs = intervalSeconds * 1000
+  const offset = random ? Math.floor(Math.random() * 500) : 0
+  return Math.max(0, baseMs - offset)
+}
+
+/**
  * Maps Bilibili danmaku error codes to human-readable messages.
  */
 export function formatDanmakuError(error: string | undefined): string {

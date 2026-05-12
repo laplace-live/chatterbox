@@ -27,7 +27,7 @@ import {
   randomInterval,
   sendMsg,
 } from './store'
-import { processMessages } from './utils'
+import { processMessages, resolveSendDelayMs } from './utils'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi'
 
 let currentAbort: AbortController | null = null
@@ -231,8 +231,7 @@ export async function loop(): Promise<void> {
               // so a streak of empty polishes doesn't spin past the
               // user's configured cadence.
               appendLog(`⚠️ 独轮车 AI 返回为空，跳过本段：${task.text}`)
-              const offset = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
-              const ok = await abortableSleep(interval * 1000 - offset, signal)
+              const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
               if (!ok) {
                 completed = false
                 break
@@ -260,8 +259,7 @@ export async function loop(): Promise<void> {
             // doesn't make the loop spin past the user's cadence.
             const msg = err instanceof Error ? err.message : String(err)
             appendLog(`🔴 独轮车 AI 润色失败，跳过本段：${msg}`)
-            const offset = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
-            const ok = await abortableSleep(interval * 1000 - offset, signal)
+            const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
             if (!ok) {
               completed = false
               break
@@ -293,8 +291,7 @@ export async function loop(): Promise<void> {
           if (isLockedEmoticon(message)) {
             const skipLabel = total > 1 ? `自动表情 [${i + 1}/${total}]` : '自动表情'
             appendLog(formatLockedEmoticonReject(message, skipLabel))
-            const resolvedRandomInterval = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
-            const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
+            const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
             if (!ok) {
               completed = false
               break outer
@@ -309,8 +306,7 @@ export async function loop(): Promise<void> {
           if (isUnavailableEmoticon(message)) {
             const skipLabel = total > 1 ? `自动表情 [${i + 1}/${total}]` : '自动表情'
             appendLog(formatUnavailableEmoticonReject(message, skipLabel))
-            const resolvedRandomInterval = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
-            const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
+            const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
             if (!ok) {
               completed = false
               break outer
@@ -333,8 +329,7 @@ export async function loop(): Promise<void> {
           const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
           appendLog(result, label, displayMsg)
 
-          const resolvedRandomInterval = enableRandomInterval ? Math.floor(Math.random() * 500) : 0
-          const ok = await abortableSleep(interval * 1000 - resolvedRandomInterval, signal)
+          const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
           if (!ok) {
             completed = false
             break outer
