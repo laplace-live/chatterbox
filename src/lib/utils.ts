@@ -157,14 +157,53 @@ export function extractRoomNumber(url: string): string | undefined {
 }
 
 /**
- * Inserts a random soft hyphen in the text (for evasion).
+ * Inserts a random soft hyphen (U+00AD) in the text for dedup-bypass /
+ * evasion. Insertion is grapheme-safe (no splitting inside a combining
+ * sequence or emoji ZWJ cluster) and bmote-safe: positions strictly
+ * inside a B站 standard emote bracket — `[doge]`, `[花]`, `[OK]`,
+ * `[捂脸2]`, etc. — are excluded so the soft hyphen can never land
+ * between `[` and its matching `]` and break the emote rendering.
+ *
+ * Unbalanced single brackets (e.g. literal `[第3章` with no close) form
+ * no emote and so don't restrict insertion. The outer ends of each
+ * matched `[...]` pair stay valid: positions immediately before `[` or
+ * immediately after `]` are fine.
+ *
+ * When every position is forbidden (only possible if the entire string
+ * is one balanced bracket pair AND we somehow blocked the head/tail —
+ * shouldn't happen in practice), falls back to appending at the end.
  */
 export function addRandomCharacter(text: string): string {
   if (!text || text.length === 0) return text
 
   const graphemes = getGraphemes(text)
-  const randomIndex = Math.floor(Math.random() * (graphemes.length + 1))
-  graphemes.splice(randomIndex, 0, '­')
+
+  // Insertion at index k means "before graphemes[k]" (or at the end
+  // when k === graphemes.length). Mark every k that falls strictly
+  // inside a balanced `[...]` bmote as forbidden — i.e. k between
+  // (open+1) and (close), inclusive of close, since position `close`
+  // inserts BEFORE the `]` and is still inside the bracket.
+  const forbidden = new Set<number>()
+  let openAt = -1
+  for (let i = 0; i < graphemes.length; i++) {
+    const g = graphemes[i]
+    if (g === '[') {
+      openAt = i
+    } else if (g === ']' && openAt !== -1) {
+      for (let k = openAt + 1; k <= i; k++) forbidden.add(k)
+      openAt = -1
+    }
+  }
+
+  const allowed: number[] = []
+  for (let k = 0; k <= graphemes.length; k++) {
+    if (!forbidden.has(k)) allowed.push(k)
+  }
+
+  const idx =
+    allowed.length > 0 ? (allowed[Math.floor(Math.random() * allowed.length)] ?? graphemes.length) : graphemes.length
+
+  graphemes.splice(idx, 0, '­')
   return graphemes.join('')
 }
 
