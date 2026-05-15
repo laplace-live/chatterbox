@@ -1,4 +1,14 @@
 /**
+ * Sigma (1σ) of the send-interval jitter, expressed as a fraction of the
+ * base interval. Used by `resolveSendDelayMs` when randomness is enabled.
+ * 0.10 means ~68% of delays fall within ±10% of the user's configured
+ * interval, and ~95% within ±20% (samples are clamped to ±2σ to bound the
+ * worst case so a freak Gaussian draw can't, e.g., schedule a 5-minute
+ * pause when the user set 1 second). Tune here.
+ */
+const SEND_JITTER_SIGMA = 0.1
+
+/**
  * Splits a string into grapheme clusters (user-perceived characters).
  */
 export function getGraphemes(str: string): string[] {
@@ -208,19 +218,36 @@ export function addRandomCharacter(text: string): string {
 }
 
 /**
+ * Sample one value from a standard normal distribution (mean 0, variance 1)
+ * via the Box-Muller transform. Only the cosine half is taken; the sine half
+ * is discarded since we need a single sample per call. `u1 || 1e-9` guards
+ * against the rare-but-possible `Math.random() === 0` (which would otherwise
+ * produce `log(0) = -Infinity` and propagate NaN downstream).
+ */
+function sampleStandardNormal(): number {
+  const u1 = Math.random() || 1e-9
+  const u2 = Math.random()
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+}
+
+/**
  * Resolves the actual sleep duration (ms) between auto-send iterations.
  *
- * Base delay is `intervalSeconds * 1000`. When `random` is true, a uniform
- * 0–499 ms offset is subtracted so the loop doesn't fire on a perfectly
- * fixed cadence (legacy one-sided jitter — actual delay sits in
- * `[base - 499, base]` ms, never longer than the user's configured value).
- * Result is clamped to 0 so a 0-second interval with jitter doesn't pass a
- * negative argument down to `setTimeout`.
+ * Base delay is `intervalSeconds * 1000`. When `random` is true, a Gaussian
+ * (bell-curve) jitter is added with σ = `SEND_JITTER_SIGMA * baseMs` — most
+ * delays cluster tightly around `baseMs` with rare ±2σ outliers, matching
+ * human cadence better than uniform jitter (uniform "randomness" is itself a
+ * fingerprint over a tight window). The sample is clamped to ±2σ so a freak
+ * Gaussian draw can't blow past the user's expected cadence. Result is also
+ * clamped to ≥ 0 so a 0-second interval with jitter doesn't pass a negative
+ * argument down to `setTimeout`.
  */
 export function resolveSendDelayMs(intervalSeconds: number, random: boolean): number {
   const baseMs = intervalSeconds * 1000
-  const offset = random ? Math.floor(Math.random() * 500) : 0
-  return Math.max(0, baseMs - offset)
+  if (!random) return Math.max(0, baseMs)
+  const sigmaMs = baseMs * SEND_JITTER_SIGMA
+  const clampedSample = Math.max(-2, Math.min(2, sampleStandardNormal()))
+  return Math.max(0, Math.round(baseMs + clampedSample * sigmaMs))
 }
 
 /**
