@@ -65,9 +65,18 @@
  */
 
 import { effect } from '@preact/signals'
+// Type-only import: `Mpegts` is the type of the package's default-
+// exported namespace value (createPlayer, isSupported, Events, …)
+// — exactly the shape the UMD pins onto `window.mpegts` at runtime,
+// so `typeof Mpegts` describes our `getMpegtsFromWindow()` return.
+// Nested types like `Mpegts.Player` come from the same declaration.
+// The package is installed purely as a devDependency for this import;
+// nothing from it is bundled (we lazy-load the UMD from unpkg).
+import type Mpegts from 'mpegts.js'
 
 import { unsafeWindow } from '$'
 import { ensureRoomId } from './api'
+import { loadScript } from './load-script'
 import { appendLog } from './log'
 import { audioOnlyEnabled } from './store'
 
@@ -77,7 +86,10 @@ const AUDIO_EL_ID = 'lc-audio-only-stream'
 
 // Pinned mpegts.js version. Locked rather than `latest` so a breaking
 // upstream change doesn't silently land in user browsers on next CDN
-// cache miss. Bump deliberately when validating a new version.
+// cache miss. Bump deliberately when validating a new version, and
+// keep it in sync with the version range in `package.json` (installed
+// purely for `import type Mpegts from 'mpegts.js'`) so the locally-
+// checked types stay accurate against the runtime UMD we fetch.
 const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js'
 
 // Stream URLs from getRoomPlayInfo are signed with ~1 hour expiry. We
@@ -140,32 +152,6 @@ interface LivePlayerLike {
   reload?: () => unknown
 }
 
-/**
- * Subset of the mpegts.js Player surface we drive. The runtime object
- * comes from a CDN-loaded UMD bundle so the rest of mpegts.js stays
- * unbundled from our userscript.
- */
-interface MpegtsPlayer {
-  attachMediaElement(el: HTMLMediaElement): void
-  load(): void
-  pause(): void
-  unload(): void
-  detachMediaElement(): void
-  destroy(): void
-  on(event: string, listener: (...args: unknown[]) => void): void
-}
-
-interface MpegtsRuntime {
-  createPlayer(config: {
-    type: 'flv' | 'mse' | 'mpegts'
-    isLive?: boolean
-    hasVideo?: boolean
-    hasAudio?: boolean
-    url: string
-  }): MpegtsPlayer
-  Events?: Record<string, string>
-}
-
 function getLivePlayer(): LivePlayerLike | null {
   // `livePlayer` is bilibili's own global. In Tampermonkey, our code
   // runs in an isolated sandbox; `unsafeWindow` reaches the page's real
@@ -174,44 +160,20 @@ function getLivePlayer(): LivePlayerLike | null {
   return candidate ?? null
 }
 
-function getMpegtsFromWindow(): MpegtsRuntime | null {
-  const candidate = (unsafeWindow as unknown as { mpegts?: MpegtsRuntime }).mpegts
+function getMpegtsFromWindow(): typeof Mpegts | null {
+  const candidate = (unsafeWindow as unknown as { mpegts?: typeof Mpegts }).mpegts
   return candidate ?? null
 }
 
 // === Lazy mpegts.js loader ===============================================
 //
-// We avoid the @require / `externalGlobals` pattern (which Tampermonkey
-// fetches eagerly at script start) and inject a <script> tag on first
-// toggle. The shared promise means concurrent toggle attempts share the
-// single in-flight fetch instead of racing two parallel script loads.
+// Lazy-injected via `loadScript()` rather than declared as @require /
+// `externalGlobals` so users who never enable audio-only never pay the
+// ~120 KB CDN fetch. See `lib/load-script.ts` for the shared shape —
+// concurrent toggle attempts share a single in-flight fetch.
 
-let mpegtsLoadPromise: Promise<MpegtsRuntime> | null = null
-
-function loadMpegts(): Promise<MpegtsRuntime> {
-  const existing = getMpegtsFromWindow()
-  if (existing) return Promise.resolve(existing)
-  if (mpegtsLoadPromise) return mpegtsLoadPromise
-  mpegtsLoadPromise = new Promise<MpegtsRuntime>((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = MPEGTS_CDN_URL
-    // `crossorigin=anonymous` so the browser doesn't gate the global
-    // assignment behind a CORS check — unpkg sets `access-control-allow-
-    // origin: *` and works fine without credentials.
-    script.crossOrigin = 'anonymous'
-    script.onload = () => {
-      const m = getMpegtsFromWindow()
-      if (m) resolve(m)
-      else reject(new Error('mpegts.js loaded but window.mpegts not set'))
-    }
-    script.onerror = () => {
-      // Clear the cached promise so a subsequent toggle can retry.
-      mpegtsLoadPromise = null
-      reject(new Error(`failed to load mpegts.js from ${MPEGTS_CDN_URL}`))
-    }
-    document.head.appendChild(script)
-  })
-  return mpegtsLoadPromise
+function loadMpegts(): Promise<typeof Mpegts> {
+  return loadScript(MPEGTS_CDN_URL, getMpegtsFromWindow)
 }
 
 // === Audio-only stream URL fetch =========================================
@@ -323,7 +285,7 @@ async function fetchAudioOnlyStreamUrl(roomId: number): Promise<AudioStreamInfo>
 // === Playback pipeline ===================================================
 
 let audioEl: HTMLAudioElement | null = null
-let mpegtsPlayer: MpegtsPlayer | null = null
+let mpegtsPlayer: Mpegts.Player | null = null
 /** Room id we currently have a stream open against. Captured at enable
  *  time so the refresh timer keeps targeting the same room even if the
  *  user navigates away mid-toggle. */
@@ -482,7 +444,7 @@ function destroyAudioPipeline(): void {
  * caller is responsible for short-circuiting if the engagement
  * generation has moved on by the time this awaits.
  */
-async function attachMpegtsPlayer(url: string, mpegts: MpegtsRuntime): Promise<void> {
+async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts): Promise<void> {
   // Re-use the existing `<audio>` if we still have one (refresh path);
   // otherwise mount a fresh hidden element.
   if (!audioEl) {

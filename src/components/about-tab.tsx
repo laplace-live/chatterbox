@@ -49,8 +49,9 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: 'Soniox SDK',
     host: 'unpkg.com',
-    trigger: '脚本加载时',
-    description: '从 unpkg CDN 加载 Soniox 语音识别 SDK (@soniox/speech-to-text-web)。',
+    trigger: '首次启动同传时',
+    description:
+      '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/speech-to-text-web)，仅在首次点击「开始同传」时下载。',
   },
 ]
 

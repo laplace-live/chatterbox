@@ -1,7 +1,7 @@
 import preact from '@preact/preset-vite'
 import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
-import monkey, { util } from 'vite-plugin-monkey'
+import monkey from 'vite-plugin-monkey'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -27,13 +27,6 @@ export default defineConfig({
       },
       build: {
         metaFileName: true,
-        externalGlobals: {
-          '@soniox/speech-to-text-web': [
-            'SonioxSpeechToTextWeb',
-            (version: string) =>
-              `https://unpkg.com/@soniox/speech-to-text-web@${version}/dist/speech-to-text-web.umd.cjs`,
-          ].concat(util.dataUrl(';window.SonioxSpeechToTextWeb=window["speech-to-text-web"];')),
-        },
       },
     }),
   ],

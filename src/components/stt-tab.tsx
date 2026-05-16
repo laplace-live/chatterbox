@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals'
-import { SonioxClient } from '@soniox/speech-to-text-web'
+import type { SonioxClient } from '@soniox/speech-to-text-web'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
@@ -7,6 +7,7 @@ import { ensureRoomId, getCsrfToken } from '../lib/api'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
+import { loadSoniox } from '../lib/soniox'
 import {
   sonioxApiKey,
   sonioxAudioDeviceId,
@@ -186,7 +187,11 @@ export function SttTab() {
       statusColor.value = '#666'
 
       try {
-        const client = new SonioxClient({ apiKey })
+        // Fetch the SDK from CDN on first use; subsequent toggles
+        // hit the in-flight cache in `loadScript()` and resolve
+        // synchronously off `unsafeWindow` once it's installed.
+        const Soniox = await loadSoniox()
+        const client = new Soniox.SonioxClient({ apiKey })
         clientRef.current = client
 
         const hints = sonioxLanguageHints.value
