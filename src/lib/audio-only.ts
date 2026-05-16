@@ -113,7 +113,14 @@ html.${HTML_FLAG_CLASS} #live-player::after {
   z-index: 1;
 }
 
-html .web-player-video-cover-img-wrap {
+/* Bilibili overlays a streamer-uploaded cover image (.web-player-video-
+ * cover-img-wrap) on top of the video during pre-roll / connection
+ * loading. In audio-only mode the video element is hidden but this
+ * overlay sits on a separate layer and would otherwise stay visible
+ * — obscuring our "🎧 仅音频模式" hint label. Scope to the audio-only
+ * flag (matching every other rule in this stylesheet) so we don't
+ * hide the cover during normal video playback. */
+html.${HTML_FLAG_CLASS} .web-player-video-cover-img-wrap {
   display: none !important;
 }
 `
