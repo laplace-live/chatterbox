@@ -14,6 +14,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: 'AI 弹幕审核',
     host: 'edge-workers.laplace.cn',
+    url: 'https://subspace.institute/docs/open-platform/chat-audit',
     trigger: '启用「AI 规避」功能时',
     description:
       '当弹幕发送失败且开启了 AI 规避功能后，脚本会将弹幕文本发送至此服务进行敏感词检测，并尝试自动替换敏感词后重新发送。',
@@ -49,9 +50,18 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: 'Soniox SDK',
     host: 'unpkg.com',
+    url: 'https://github.com/soniox/speech-to-text-web',
     trigger: '首次启动同传时',
     description:
       '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/speech-to-text-web)，仅在首次点击「开始同传」时下载。',
+  },
+  {
+    name: 'mpegts.js',
+    host: 'unpkg.com',
+    url: 'https://github.com/xqq/mpegts.js',
+    trigger: '首次启用仅音频模式时',
+    description:
+      '从 unpkg CDN 按需加载 mpegts.js 流媒体库，用于解析 bilibili 直播的纯音频流，仅在首次点击「仅音频」时下载。',
   },
 ]
 
