@@ -328,6 +328,12 @@ let watchdogTimer: ReturnType<typeof setInterval> | null = null
  *  finishes after a generation bump — i.e. the user toggled off, or
  *  toggled off-and-on-again, while a fetch / mpegts load was in flight. */
 let engagementGen = 0
+/** True iff we've called `livePlayer.stopPlayback()` and haven't yet
+ *  reloaded. Tracked separately from `mpegtsPlayer` because there's an
+ *  in-flight window (after stopPlayback, before attachMpegtsPlayer
+ *  resolves) where the native player is stopped but no audio pipeline
+ *  exists yet — disengage still needs to reload in that case. */
+let nativePlayerStopped = false
 
 function clearStreamRefreshTimer(): void {
   if (streamRefreshTimer !== null) {
@@ -578,6 +584,10 @@ async function engageAudioOnly(): Promise<void> {
   if (player?.stopPlayback) {
     try {
       player.stopPlayback()
+      // Set this BEFORE the next await so a concurrent disengage sees
+      // it and knows it needs to reload the native player even though
+      // mpegtsPlayer hasn't been set yet.
+      nativePlayerStopped = true
     } catch (err) {
       console.warn('[audio-only] stopPlayback failed:', err)
     }
@@ -586,7 +596,17 @@ async function engageAudioOnly(): Promise<void> {
   activeRoomId = roomId
   await attachMpegtsPlayer(info.url, mpegts)
   if (gen !== engagementGen) {
-    destroyAudioPipeline()
+    // Someone bumped the gen during our attach — that's always
+    // `disengageAudioOnly()` (engages only run via signal flips, and
+    // each on→on flip requires an off in between which calls disengage).
+    // Disengage already destroyed any module-level state it observed
+    // and reloaded the native player iff `nativePlayerStopped` was set.
+    // We deliberately do NOT call `destroyAudioPipeline()` here: if a
+    // subsequent engage has already started its own pipeline, our
+    // destroy would clobber its `mpegtsPlayer` / `audioEl` references.
+    // The state we set up (audioEl + mpegtsPlayer in attachMpegtsPlayer)
+    // was already nulled out by disengage before that subsequent engage
+    // ran, so there's nothing of ours left to leak.
     return
   }
 
@@ -600,24 +620,47 @@ async function engageAudioOnly(): Promise<void> {
  * player back online. `reload()` re-fetches the master playlist and
  * restores the user's previously-selected quality without us tracking
  * anything — the player already remembers what was set.
+ *
+ * Safe to call when nothing is engaged: the `hadPipeline` snapshot
+ * keeps it silent on the initial signal-effect run that fires when
+ * `audioOnlyEnabled` is already false on page load. And critical to
+ * call even when `mpegtsPlayer` is null — see `applyAudioOnlyMode`
+ * for the partial-engage cancellation case that this guards against.
  */
 function disengageAudioOnly(): void {
-  // Bump the generation so any in-flight enable/refresh promises early-
-  // exit on resume.
+  // Snapshot BEFORE we tear anything down so we can decide whether to
+  // emit a user-visible log + reload.
+  const hadPipeline = mpegtsPlayer !== null || nativePlayerStopped
+
+  // Always bump the generation, even on the no-op path. Cheap, and it
+  // means a future engage that races against this disengage can't
+  // accidentally pass an earlier gen check.
   engagementGen++
   destroyAudioPipeline()
-  const player = getLivePlayer()
-  if (player?.reload) {
-    try {
-      player.reload()
-      appendLog('🎬 已关闭仅音频模式，正在恢复直播')
-    } catch (err) {
-      console.warn('[audio-only] reload failed:', err)
-      appendLog('⚠️ 恢复直播失败，请刷新页面')
+
+  if (!hadPipeline) return
+
+  // Reload only when stopPlayback actually landed — `mpegtsPlayer`
+  // alone doesn't imply the native player is stopped (the in-flight
+  // window between gen-check-2 and stopPlayback exists where nothing
+  // is touched yet), and `nativePlayerStopped` is the authoritative
+  // signal for "we need to reload to restore video".
+  if (nativePlayerStopped) {
+    nativePlayerStopped = false
+    const player = getLivePlayer()
+    if (player?.reload) {
+      try {
+        player.reload()
+        appendLog('🎬 已关闭仅音频模式，正在恢复直播')
+        return
+      } catch (err) {
+        console.warn('[audio-only] reload failed:', err)
+        appendLog('⚠️ 恢复直播失败，请刷新页面')
+        return
+      }
     }
-  } else {
-    appendLog('🎬 已关闭仅音频模式')
   }
+  appendLog('🎬 已关闭仅音频模式')
 }
 
 // === Pending-apply orchestration =========================================
@@ -657,7 +700,16 @@ function applyAudioOnlyMode(enabled: boolean): void {
         if (mpegtsPlayer && activeRoomId !== null) return
         await engageAudioOnly()
       } else {
-        if (!mpegtsPlayer) return
+        // Always disengage — even when no pipeline is visible yet, an
+        // in-flight `engageAudioOnly()` may be partway through its async
+        // setup (awaiting `ensureRoomId`, `fetchAudioOnlyStreamUrl`,
+        // `loadMpegts`, etc.). `disengageAudioOnly()` bumps
+        // `engagementGen`, which forces the in-flight engage to short-
+        // circuit on its next gen check rather than completing and
+        // leaking a streaming pipeline + stopped native player against
+        // the user's intent. The `hadPipeline` guard inside disengage
+        // keeps the no-op case (initial effect run when the feature is
+        // already off) silent — no spurious log, no `reload()` call.
         disengageAudioOnly()
       }
     } catch (err) {
@@ -665,14 +717,21 @@ function applyAudioOnlyMode(enabled: boolean): void {
       console.warn('[audio-only] apply failed:', err)
       appendLog(`⚠️ 仅音频模式启动失败：${msg}`)
       // Best-effort recovery: tear down anything half-built and reload
-      // the native player so the user isn't stuck in a silent state.
+      // the native player iff we actually stopped it. The
+      // `nativePlayerStopped` guard avoids a spurious `reload()` for
+      // failures that happened before stopPlayback (e.g. API rejection
+      // or mpegts CDN load failure) — those paths never touched the
+      // native player, so reloading would just interrupt good video.
       destroyAudioPipeline()
-      const player = getLivePlayer()
-      if (desired && player?.reload) {
-        try {
-          player.reload()
-        } catch {
-          // best-effort recovery
+      if (nativePlayerStopped) {
+        nativePlayerStopped = false
+        const player = getLivePlayer()
+        if (player?.reload) {
+          try {
+            player.reload()
+          } catch {
+            // best-effort recovery
+          }
         }
       }
     }
@@ -719,6 +778,10 @@ export function stopAudioOnly(): void {
   }
   clearPendingApply()
   destroyAudioPipeline()
+  // Clear so a subsequent `startAudioOnly()` (e.g. HMR remount during
+  // development) doesn't think we owe a `reload()` for a stop we no
+  // longer remember the context of.
+  nativePlayerStopped = false
   document.documentElement.classList.remove(HTML_FLAG_CLASS)
   removeStyleEl()
 }
