@@ -38,6 +38,15 @@ export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
 export const unlockLiveBlock = gmSignal('unlockLiveBlock', true)
 export const unlockSpaceBlock = gmSignal('unlockSpaceBlock', true)
+// Audio-only mode: bilibili's web player doesn't ship an audio-only toggle
+// (the official app has one). When on, we stop the native HLS pull via
+// `livePlayer.stopPlayback()` and play a true audio-only FLV stream
+// (fetched with `only_audio=1` from the app endpoint) through a hidden
+// `<audio>` element driven by lazy-loaded mpegts.js — ~180 kbps instead
+// of ~1700 kbps for the original 1080P stream. Default off; opt in via
+// the headphones button injected next to 小窗模式 (or the floating
+// overlay button while audio-only is engaged). See `lib/audio-only.ts`.
+export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
 export const activeTab = gmSignal('activeTab', 'fasong')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
 export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)

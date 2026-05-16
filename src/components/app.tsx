@@ -1,5 +1,6 @@
 import { useEffect } from 'preact/hooks'
 
+import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
 import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
@@ -38,6 +39,15 @@ export function App() {
   useEffect(() => {
     startUserBlacklistHijack()
     return () => stopUserBlacklistHijack()
+  }, [])
+
+  // Always-on: the 仅音频 toggle injected next to 小窗模式 must exist whenever
+  // the live page is loaded, regardless of the signal's current value —
+  // turning the feature on/off is what the button is for. The module itself
+  // is signal-driven and idempotent, so we mount it unconditionally.
+  useEffect(() => {
+    startAudioOnly()
+    return () => stopAudioOnly()
   }, [])
 
   // B站's SPA renders `.app-body` after our userscript has mounted and
