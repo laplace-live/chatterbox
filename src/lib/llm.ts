@@ -203,6 +203,34 @@ export interface LlmChatMessage {
   content: string
 }
 
+/**
+ * OpenAI-style structured-output directive.
+ *
+ * Only the `json_schema` form is modelled here — the older `json_object`
+ * form is uninteresting because providers that accept it also accept
+ * `json_schema`, which gives us guaranteed shape on top of "must be JSON".
+ *
+ * Passed through verbatim to the wire body. Vendors that don't recognise
+ * `response_format` (older self-hosted servers, some routers) silently
+ * ignore the field; callers should still instruct the model to emit JSON
+ * via the system prompt so the parse path doesn't depend on the directive
+ * being honoured.
+ */
+export interface ChatCompletionResponseFormat {
+  type: 'json_schema'
+  json_schema: {
+    /** Human-readable identifier for the schema. Required by OpenAI's
+     *  structured-outputs spec; ignored by tolerant implementations. */
+    name: string
+    /** Whether unknown properties are rejected. OpenAI defaults to
+     *  false; we default to true at call sites to fail loudly. */
+    strict?: boolean
+    /** JSON Schema body (subset OpenAI accepts: object/array/string/
+     *  number/boolean/null, with `properties`, `required`, etc.). */
+    schema: unknown
+  }
+}
+
 export interface ChatCompletionOptions {
   base: string
   apiKey: string
@@ -213,6 +241,10 @@ export interface ChatCompletionOptions {
   /** Cap on response length. Most providers honour this; unset means
    *  whatever the model's default is. */
   maxTokens?: number
+  /** Optional structured-output directive. Forwarded to the wire body
+   *  as `response_format`. Vendors that ignore it still receive JSON
+   *  via the system prompt; callers should still parse defensively. */
+  responseFormat?: ChatCompletionResponseFormat
   /** Optional abort signal so callers can cancel in-flight requests
    *  (e.g. when the user navigates away mid-polish). */
   signal?: AbortSignal
@@ -256,6 +288,7 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
     stream: false,
   }
   if (opts.maxTokens !== undefined) body.max_tokens = opts.maxTokens
+  if (opts.responseFormat) body.response_format = opts.responseFormat
 
   let res: Response
   try {

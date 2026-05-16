@@ -581,7 +581,7 @@ async function engageAudioOnly(): Promise<void> {
 
   startWatchdog()
   scheduleStreamRefresh(roomId, gen)
-  appendLog('🎧 已开启仅音频模式（only_audio=1 真·音频流）')
+  appendLog('🎧 已开启仅音频模式')
 }
 
 /**

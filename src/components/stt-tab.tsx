@@ -17,9 +17,12 @@ import {
   sonioxTranslationEnabled,
   sonioxTranslationTarget,
   sonioxWrapBrackets,
+  sttEndpointReached,
   sttRunning,
+  sttTranscriptBuffer,
 } from '../lib/store'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
+import { AiChatSection } from './ai-chat-section'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
@@ -253,6 +256,14 @@ export function SttTab() {
               if (display.length > 500) display = `…${display.slice(-500)}`
               finalText.value = display
               nonFinalText.value = transNonFinal
+              // Forward whichever final stream the user is listening to
+              // (translation here, original below) into the global AI
+              // Chat buffer. The engine doesn't care which it gets —
+              // it's just "the thing the streamer's audience is hearing
+              // turned into text" — so feeding the translation when
+              // it's on keeps the context aligned with what the
+              // viewers actually see in captions.
+              if (newTransFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newTransFinal
             } else {
               if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
               accFinal.current += newFinal
@@ -260,10 +271,18 @@ export function SttTab() {
               if (display.length > 500) display = `…${display.slice(-500)}`
               finalText.value = display
               nonFinalText.value = nonFinal
+              if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
             }
             if (endpointDetected && sonioxAutoSend.value) {
               setTimeout(() => void flushBuffer(), translationEnabled ? 300 : 0)
             }
+            // Surface Soniox's `<end>` endpoint marker to the AI Chat
+            // engine — its debounce treats endpoint as a stronger
+            // "ready to generate" signal than buffer length alone.
+            // Set unconditionally on endpoint (independent of auto-send
+            // gating above) so the engine still fires when the user
+            // has the same-tab danmaku auto-send turned off.
+            if (endpointDetected) sttEndpointReached.value = true
           },
           onFinished: async () => {
             let waitCount = 0
@@ -517,6 +536,13 @@ export function SttTab() {
           </div>
         </div>
       </div>
+
+      {/* AI Chat lives downstream of STT — it consumes the same final
+          transcript stream that the captions above render — so we mount
+          it inside this tab rather than burning a top-level tab slot.
+          The component owns its own enable / mode toggles; this tab
+          just hosts it. */}
+      <AiChatSection />
     </>
   )
 }

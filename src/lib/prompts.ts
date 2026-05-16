@@ -16,10 +16,12 @@
  */
 
 import {
+  llmActivePromptAiChat,
   llmActivePromptAutoBlend,
   llmActivePromptAutoSend,
   llmActivePromptGlobal,
   llmActivePromptNormalSend,
+  llmPromptsAiChat,
   llmPromptsAutoBlend,
   llmPromptsAutoSend,
   llmPromptsGlobal,
@@ -28,11 +30,15 @@ import {
 import { getGraphemes, trimText } from './utils'
 
 /**
- * Discriminator for the three features that own their own prompt list.
+ * Discriminator for the features that own their own prompt list.
  * Mirrors the casing used by the corresponding signals so a future
  * codegen / Record-backed refactor can map mechanically.
+ *
+ * `aiChat` is the LLM "AI 陪聊" surface that lives inside the 同传 tab:
+ * a viewer-persona system prompt fed STT transcripts + in-page danmaku
+ * context to generate / send candidate danmaku.
  */
-export type LlmPromptFeature = 'normalSend' | 'autoBlend' | 'autoSend'
+export type LlmPromptFeature = 'normalSend' | 'autoBlend' | 'autoSend' | 'aiChat'
 
 /** Default cap on how many graphemes of the first line we surface as a
  *  preview. 24 fits comfortably in the full-width Settings PromptManager
@@ -93,6 +99,40 @@ export const DEFAULT_GLOBAL_PROMPT = [
 ].join('\n')
 
 /**
+ * Shipped default for the AI Chat scope. Chinese-localized port of
+ * laplace-cap's `DEFAULT_SYSTEM_PROMPT` — the viewer-persona framing
+ * plus four user-tunable sections (topic / character / streamer /
+ * audience) the LLM can be steered with without rewriting the whole
+ * prompt.
+ *
+ * Same seed-once semantics as `DEFAULT_GLOBAL_PROMPT`: users can delete
+ * this draft freely; the migration in `store.ts` won't put it back.
+ *
+ * Note we intentionally describe the JSON output contract here too,
+ * because vendors that ignore `response_format` still need to be told
+ * to emit JSON in `content` — the engine's defensive parser depends
+ * on this prompt-side instruction as a fallback for those vendors.
+ */
+export const DEFAULT_AI_CHAT_PROMPT = [
+  '你是哔哩哔哩直播间里的一位观众，正在观看主播直播。你会收到主播说话的滚动文字转录，以及最近其他观众的弹幕。请根据上下文理解当前话题，生成一条自然、真诚、像真实观众一样的弹幕消息。',
+  '',
+  '基本要求：',
+  '- 使用主播正在说话的语言（默认中文），保持口语化',
+  '- 不要复述或鹦鹉学舌主播的原话',
+  '- 不要发送与当前话题无关的内容',
+  '- 避免刷屏、灌水、纯表情、复读',
+  '- 如果当前没有合适的话题（开场白、闲聊间隙、内容敏感等），请把 send 设为 false',
+  '',
+  '## 当前直播话题：',
+  '',
+  '## 你的角色设定：',
+  '',
+  '## 主播角色：',
+  '',
+  '## 观众群体氛围：',
+].join('\n')
+
+/**
  * Joiner between the global prompt and the feature prompt. Double newline
  * reads as a paragraph break to most chat models, which is what we want:
  * the global prompt and the feature prompt are conceptually separate
@@ -115,6 +155,8 @@ export function getActiveFeaturePrompt(feature: LlmPromptFeature): string {
       return llmPromptsAutoBlend.value[llmActivePromptAutoBlend.value] ?? ''
     case 'autoSend':
       return llmPromptsAutoSend.value[llmActivePromptAutoSend.value] ?? ''
+    case 'aiChat':
+      return llmPromptsAiChat.value[llmActivePromptAiChat.value] ?? ''
   }
 }
 

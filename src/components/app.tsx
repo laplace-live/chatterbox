@@ -1,10 +1,11 @@
 import { useEffect } from 'preact/hooks'
 
+import { startAiChatEngine, stopAiChatEngine } from '../lib/ai-chat'
 import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
 import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
-import { autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
+import { aiChatEnabled, autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
 import { Configurator } from './configurator'
 import { ToggleButton } from './toggle-button'
@@ -32,6 +33,21 @@ export function App() {
     }
     return () => stopAutoBlend()
   }, [autoBlendEnabled.value])
+
+  // AI Chat engine — mirrors the autoBlend pattern above. Start/stop is
+  // ref-counted inside the engine so a strict-mode double-effect can't
+  // tear down a still-needed subscription. The cleanup on unmount runs
+  // through `stopAiChatEngine` rather than no-op'ing so a HMR full
+  // reload of <App /> doesn't leave a dangling danmaku-stream
+  // subscription pointing at an old effect.
+  useEffect(() => {
+    if (aiChatEnabled.value) {
+      startAiChatEngine()
+    } else {
+      stopAiChatEngine()
+    }
+    return () => stopAiChatEngine()
+  }, [aiChatEnabled.value])
 
   // Always-on: the "融入黑名单" toggle injected into B站's chat-item menu
   // should be available even when 自动融入 is currently off, so users can

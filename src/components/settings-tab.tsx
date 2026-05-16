@@ -16,6 +16,7 @@ import {
   danmakuDirectConfirm,
   danmakuDirectMode,
   forceScrollDanmaku,
+  llmActivePromptAiChat,
   llmActivePromptAutoBlend,
   llmActivePromptAutoSend,
   llmActivePromptGlobal,
@@ -24,6 +25,7 @@ import {
   llmApiKey,
   llmModel,
   llmModels,
+  llmPromptsAiChat,
   llmPromptsAutoBlend,
   llmPromptsAutoSend,
   llmPromptsGlobal,
@@ -1054,7 +1056,7 @@ export function SettingsTab() {
           />
         </div>
 
-        <div>
+        <div class='lc-mb-3'>
           <Label htmlFor='llmPromptAutoSend' className='lc-block lc-font-bold lc-mb-1'>
             独轮车
           </Label>
@@ -1070,6 +1072,28 @@ export function SettingsTab() {
               llmActivePromptAutoSend.value = v
             }}
             placeholder='例如：你是一个猫娘，所有弹幕最后都要加「喵～」'
+          />
+        </div>
+
+        <div>
+          <Label htmlFor='llmPromptAiChat' className='lc-block lc-font-bold lc-mb-1'>
+            AI 陪聊
+          </Label>
+          <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
+            用于「同传 → AI 陪聊」根据语音转录和观众弹幕生成模拟观众弹幕的角色设定与生成规则，AI
+            陪聊会强制输出结构化数据，请避免手写结构化输出格式相关提示词
+          </div>
+          <PromptManager
+            selectId='llmPromptAiChat'
+            prompts={llmPromptsAiChat.value}
+            activeIndex={llmActivePromptAiChat.value}
+            onPromptsChange={v => {
+              llmPromptsAiChat.value = v
+            }}
+            onActiveIndexChange={v => {
+              llmActivePromptAiChat.value = v
+            }}
+            placeholder='例如：你是一位幽默的成年观众，喜欢用简短中文吐槽…'
           />
         </div>
       </div>

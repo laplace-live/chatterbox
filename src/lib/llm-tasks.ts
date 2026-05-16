@@ -55,6 +55,7 @@ const FEATURE_LABELS: Record<LlmPromptFeature, string> = {
   normalSend: '常规发送',
   autoBlend: '自动融入',
   autoSend: '独轮车',
+  aiChat: 'AI 陪聊',
 }
 
 /**
