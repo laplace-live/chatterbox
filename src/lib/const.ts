@@ -28,6 +28,7 @@ export const VERSION = GM_info.script.version
  */
 export const PROJECT_URL = 'https://github.com/laplace-live/chatterbox'
 export const PROJECT_NAME = 'LAPLACE Chatterbox'
+export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
 
 /**
  * API endpoint URLs used by the script.

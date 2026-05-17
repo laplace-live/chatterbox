@@ -1,4 +1,4 @@
-import { PROJECT_URL, VERSION } from '../lib/const'
+import { DOCUMENT_URL, PROJECT_URL, VERSION } from '../lib/const'
 
 const LINK_CLASS = 'lc-text-link lc-no-underline'
 
@@ -83,6 +83,12 @@ export function AboutTab() {
             源代码:{' '}
             <a href={PROJECT_URL} target='_blank' rel='noopener' class={LINK_CLASS}>
               GitHub
+            </a>
+          </span>
+          <span>
+            使用文档:{' '}
+            <a href={DOCUMENT_URL} target='_blank' rel='noopener' class={LINK_CLASS}>
+              Subspace Institute 亚空间研究所
             </a>
           </span>
         </div>
