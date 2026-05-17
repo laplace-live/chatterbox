@@ -16,15 +16,15 @@ export function NativeSelect({ disabled, className, children, ...props }: Native
     <select
       disabled={disabled}
       class={cn(
-        'lc-box-border',
+        'lc:box-border',
         // Right-side padding leaves room for the native dropdown arrow.
-        'lc-pr-1 lc-pl-0.5 lc-py-px',
-        'lc-border lc-border-solid lc-border-ga4 lc-rounded',
-        'lc-bg-bg1 lc-text-inherit',
-        'lc-outline-none lc-leading-none lc-min-h-5',
-        'lc-cursor-pointer disabled:lc-cursor-not-allowed disabled:lc-opacity-60',
-        'lc-transition',
-        'focus:lc-border-brand',
+        'lc:pr-1 lc:pl-0.5 lc:py-px',
+        'lc:border lc:border-solid lc:border-ga4 lc:rounded',
+        'lc:bg-bg1 lc:text-inherit',
+        'lc:outline-none lc:leading-none lc:min-h-5',
+        'lc:cursor-pointer lc:disabled:cursor-not-allowed lc:disabled:opacity-60',
+        'lc:transition',
+        'lc:focus:border-brand',
         className
       )}
       {...props}

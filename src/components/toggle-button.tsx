@@ -17,17 +17,17 @@ export function ToggleButton() {
   }
 
   return (
-    <div class='lc-fixed lc-right-1 lc-bottom-1 lc-z-[2147483647] lc-flex lc-gap-1 lc-items-center'>
+    <div class='lc:fixed lc:right-1 lc:bottom-1 lc:z-[2147483647] lc:flex lc:gap-1 lc:items-center'>
       <AudioOnlyButton />
       <button
         type='button'
         id='laplace-chatterbox-toggle'
         onClick={toggle}
         class={cn(
-          'lc-appearance-none lc-outline-none lc-border-none',
-          'lc-cursor-pointer lc-select-none',
-          'lc-text-white lc-py-1.5 lc-px-2 lc-rounded',
-          sendMsg.value ? 'lc-bg-[rgb(0_186_143)]' : 'lc-bg-[#777]'
+          'lc:appearance-none lc:outline-none lc:border-none',
+          'lc:cursor-pointer lc:select-none',
+          'lc:text-white lc:py-1.5 lc:px-2 lc:rounded',
+          sendMsg.value ? 'lc:bg-[rgb(0_186_143)]' : 'lc:bg-[#777]'
         )}
       >
         弹幕助手

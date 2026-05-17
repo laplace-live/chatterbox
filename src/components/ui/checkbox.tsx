@@ -15,7 +15,7 @@ export interface CheckboxProps extends CheckboxBase {
   className?: string
 }
 
-const LABEL_WRAP_CLASS = 'lc-inline-flex lc-items-center lc-gap-1 lc-cursor-pointer'
+const LABEL_WRAP_CLASS = 'lc:inline-flex lc:items-center lc:gap-1 lc:cursor-pointer'
 
 export function Checkbox({ label, id, disabled, className, ...props }: CheckboxProps) {
   const input = (
@@ -24,15 +24,15 @@ export function Checkbox({ label, id, disabled, className, ...props }: CheckboxP
       id={id}
       disabled={disabled}
       class={cn(
-        'lc-accent-brand lc-m-0',
-        'lc-cursor-pointer disabled:lc-cursor-not-allowed',
+        'lc:accent-brand lc:m-0',
+        'lc:cursor-pointer lc:disabled:cursor-not-allowed',
         // Override the dialog-wide `input { border: 1px solid }` rule from
         // app.tsx that would otherwise paint a black square around the native
         // checkbox.
-        'lc-border-none',
+        'lc:border-none',
         // Replaces the previous `.lc-ui-checkbox:focus-visible` rule from
         // styles.ts.
-        'focus-visible:lc-outline focus-visible:lc-outline-2 focus-visible:lc-outline-solid focus-visible:lc-outline-brand focus-visible:lc-outline-offset-1',
+        'lc:focus-visible:outline lc:focus-visible:outline-2 lc:focus-visible:outline-solid lc:focus-visible:outline-brand lc:focus-visible:outline-offset-1',
         className
       )}
       {...props}

@@ -18,8 +18,8 @@ import {
   normalSendYolo,
 } from './store'
 
-const MARKER = 'lc-dm-direct'
-const STYLE_ID = 'lc-dm-direct-style'
+const MARKER = 'laplace-dm-direct'
+const STYLE_ID = 'laplace-dm-direct-style'
 
 const STYLE = `
 .${MARKER} {
@@ -50,7 +50,7 @@ const STYLE = `
 .${MARKER} button:hover {
   opacity: 1;
 }
-html.lc-dm-direct-always .${MARKER} {
+html.laplace-dm-direct-always .${MARKER} {
   opacity: 1;
 }
 `
@@ -262,7 +262,7 @@ export function startDanmakuDirect(): void {
   if (unsubscribe) return
 
   alwaysShowDispose = signalEffect(() => {
-    document.documentElement.classList.toggle('lc-dm-direct-always', danmakuDirectAlwaysShow.value)
+    document.documentElement.classList.toggle('laplace-dm-direct-always', danmakuDirectAlwaysShow.value)
   })
 
   initContextMenuHijack()
@@ -291,7 +291,7 @@ export function stopDanmakuDirect(): void {
   if (alwaysShowDispose) {
     alwaysShowDispose()
     alwaysShowDispose = null
-    document.documentElement.classList.remove('lc-dm-direct-always')
+    document.documentElement.classList.remove('laplace-dm-direct-always')
   }
   if (unsubscribe) {
     unsubscribe()

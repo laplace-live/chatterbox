@@ -178,7 +178,7 @@ export function NormalSendTab() {
     >
       <AccordionTrigger>常规发送{normalSendYolo.value ? ' ⚡️' : ''}</AccordionTrigger>
       <AccordionContent>
-        <div class='lc-my-2 lc-relative'>
+        <div class='lc:my-2 lc:relative'>
           <Textarea
             value={fasongText.value}
             // Locked while a polish is racing — without this the user
@@ -200,9 +200,9 @@ export function NormalSendTab() {
                 ? 'YOLO 模式：输入后 Enter 会自动 AI 润色并发送'
                 : '输入弹幕内容… (Enter 发送)'
             }
-            className='lc-h-[50px]'
+            className='lc:h-[50px]'
           />
-          <div class='lc-absolute lc-right-2 lc-bottom-1.5 lc-text-ga6 lc-pointer-events-none'>
+          <div class='lc:absolute lc:right-2 lc:bottom-1.5 lc:text-ga6 lc:pointer-events-none'>
             {fasongText.value.length}
           </div>
         </div>
@@ -215,7 +215,7 @@ export function NormalSendTab() {
             the AI buttons keep the UI honest: users can SEE the buttons
             (good for discovery) but can't trigger them until the LLM
             is wired up. */}
-        <div class='lc-my-2 lc-flex lc-items-center  lc-gap-1'>
+        <div class='lc:my-2 lc:flex lc:items-center  lc:gap-1'>
           <EmoteSelector />
           <Button
             variant='outline'
@@ -249,7 +249,7 @@ export function NormalSendTab() {
             // with two buttons and we want the row to stay readable
             // in the narrowest dialog width.
             <PromptPicker
-              className='lc-min-w-[40px] lc-truncate'
+              className='lc:min-w-[40px] lc:truncate'
               title='切换 AI 润色 / YOLO 使用的常规发送提示词'
               prompts={llmPromptsNormalSend.value}
               activeIndex={llmActivePromptNormalSend.value}
@@ -259,10 +259,10 @@ export function NormalSendTab() {
               previewGraphemes={16}
             />
           )}
-          {!llmReady && <span class='lc-text-ga6 lc-text-[.85em] lc-ml-1'>AI 功能需配置 LLM 后启用</span>}
+          {!llmReady && <span class='lc:text-ga6 lc:text-[.85em] lc:ml-1'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
-        <div class='lc-my-2'>
+        <div class='lc:my-2'>
           <Checkbox
             id='aiEvasion'
             checked={aiEvasion.value}

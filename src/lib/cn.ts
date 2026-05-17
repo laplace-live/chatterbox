@@ -6,7 +6,7 @@ import { extendTailwindMerge } from 'tailwind-merge'
 // tailwind-merge v3+ assumes Tailwind v4's new prefix syntax where the
 // prefix is the FIRST modifier (`lc:hover:flex`). UnoCSS, even with
 // `presetWind4`, still emits Tailwind v3-style classes where the prefix
-// hugs the utility name (`hover:lc-flex`). v2.6.0 is the last release
+// hugs the utility name (`lc:hover:flex`). v2.6.0 is the last release
 // that recognises the v3-style prefix, so this is the version that
 // actually understands what UnoCSS produces.
 //
@@ -15,11 +15,11 @@ import { extendTailwindMerge } from 'tailwind-merge'
 //   matches by class-group taxonomy (the `padding` group is the same
 //   whether the value resolves to `1rem` or `calc(var(--spacing) * 4)`),
 //   so this is fine for our usage.
-// - Bare-pixel arbitrary values like `lc-size-16px` aren't recognised —
-//   only bracket form `lc-size-[16px]` is. Our codebase already uses the
+// - Bare-pixel arbitrary values like `lc:size-16px` aren't recognised —
+//   only bracket form `lc:size-[16px]` is. Our codebase already uses the
 //   bracket form everywhere.
 const twMerge = extendTailwindMerge({
-  prefix: 'lc-',
+  prefix: 'lc:',
 })
 
 // Standard shadcn-shape `cn` helper: clsx for conditional/array/object

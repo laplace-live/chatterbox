@@ -52,7 +52,7 @@ export function Popover({ open, onOpenChange, className, children }: PopoverProp
           outside-click test. `inline-block` keeps the wrapper inline so
           a Popover sitting inside a flex / inline row doesn't break the
           row's layout. */}
-      <div ref={wrapperRef} class={cn('lc-relative lc-inline-block', className)}>
+      <div ref={wrapperRef} class={cn('lc:relative lc:inline-block', className)}>
         {children}
       </div>
     </PopoverContext.Provider>
@@ -136,24 +136,24 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
 
   // top:    popover sits ABOVE the trigger (its bottom edge meets the trigger's top).
   // bottom: popover sits BELOW the trigger (its top edge meets the trigger's bottom).
-  const sideClass = side === 'top' ? 'lc-bottom-full lc-mb-1' : 'lc-top-full lc-mt-1'
+  const sideClass = side === 'top' ? 'lc:bottom-full lc:mb-1' : 'lc:top-full lc:mt-1'
   // start:  popover's left edge aligns with the trigger's left edge.
   // end:    popover's right edge aligns with the trigger's right edge.
   // center: popover is centered horizontally on the trigger.
   const alignClass =
-    align === 'end' ? 'lc-right-0' : align === 'center' ? 'lc-left-1/2 -lc-translate-x-1/2' : 'lc-left-0'
+    align === 'end' ? 'lc:right-0' : align === 'center' ? 'lc:left-1/2 lc:-translate-x-1/2' : 'lc:left-0'
 
   return (
     <div
       role='dialog'
       class={cn(
-        'lc-absolute lc-z-50',
+        'lc:absolute lc:z-50',
         sideClass,
         alignClass,
-        'lc-border lc-border-solid lc-border-ga3 lc-rounded',
-        'lc-bg-bg1',
-        'lc-shadow-[0_4px_12px_rgba(0,0,0,.15)]',
-        'lc-overflow-hidden',
+        'lc:border lc:border-solid lc:border-ga3 lc:rounded',
+        'lc:bg-bg1',
+        'lc:shadow-[0_4px_12px_rgba(0,0,0,.15)]',
+        'lc:overflow-hidden',
         className
       )}
     >

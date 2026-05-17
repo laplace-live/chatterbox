@@ -34,9 +34,9 @@ const SONIOX_FLUSH_DELAY_MS = 5000
 // Each visible block in this tab is wrapped in this section shape (vertical
 // rhythm + bottom divider). Repeated across API key / recognition / translation
 // settings.
-const SECTION_CLASS = 'lc-my-2 lc-pb-2 lc-border-b lc-border-b-solid lc-border-b-ga2'
-const HEADING_CLASS = 'lc-font-bold lc-mb-2'
-const ROW_CLASS = 'lc-flex lc-gap-2 lc-items-center lc-flex-wrap lc-mb-2'
+const SECTION_CLASS = 'lc:my-2 lc:pb-2 lc:border-b lc:border-b-solid lc:border-b-ga2'
+const HEADING_CLASS = 'lc:font-bold lc:mb-2'
+const ROW_CLASS = 'lc:flex lc:gap-2 lc:items-center lc:flex-wrap lc:mb-2'
 
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
@@ -377,7 +377,7 @@ export function SttTab() {
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
             placeholder='输入 Soniox API Key'
-            className='lc-flex-1 lc-min-w-[150px]'
+            className='lc:flex-1 lc:min-w-[150px]'
             value={sonioxApiKey.value}
             onInput={e => {
               sonioxApiKey.value = e.currentTarget.value
@@ -393,9 +393,9 @@ export function SttTab() {
             {apiKeyVisible.value ? '隐藏' : '显示'}
           </Button>
         </div>
-        <div class='lc-my-2 lc-text-[#666] lc-text-[.9em]'>
+        <div class='lc:my-2 lc:text-[#666] lc:text-[.9em]'>
           前往{' '}
-          <a href='https://soniox.com/' target='_blank' class='lc-text-link' rel='noopener'>
+          <a href='https://soniox.com/' target='_blank' class='lc:text-link' rel='noopener'>
             Soniox
           </a>{' '}
           注册账号并获取 API Key
@@ -408,7 +408,7 @@ export function SttTab() {
           <Label htmlFor='sonioxAudioDevice'>设备</Label>
           <NativeSelect
             id='sonioxAudioDevice'
-            className='lc-flex-1 lc-min-w-[150px] lc-pr-5'
+            className='lc:flex-1 lc:min-w-[150px] lc:pr-5'
             value={savedDeviceId}
             onChange={e => {
               sonioxAudioDeviceId.value = e.currentTarget.value
@@ -454,7 +454,7 @@ export function SttTab() {
             id='sonioxMaxLength'
             type='number'
             min='1'
-            className='lc-w-[50px]'
+            className='lc:w-[50px]'
             value={sonioxMaxLength.value}
             onInput={e => {
               const v = parseInt(e.currentTarget.value, 10) || 1
@@ -463,7 +463,7 @@ export function SttTab() {
           />
           <span>字自动分段</span>
         </div>
-        <div class='lc-flex lc-gap-3 lc-items-center lc-flex-wrap'>
+        <div class='lc:flex lc:gap-3 lc:items-center lc:flex-wrap'>
           <Checkbox
             id='sonioxAutoSend'
             checked={sonioxAutoSend.value}
@@ -495,11 +495,11 @@ export function SttTab() {
             label='启用实时翻译'
           />
         </div>
-        <div class='lc-flex lc-gap-2 lc-items-center lc-flex-wrap'>
+        <div class='lc:flex lc:gap-2 lc:items-center lc:flex-wrap'>
           <Label htmlFor='sonioxTranslationTarget'>翻译目标语言：</Label>
           <NativeSelect
             id='sonioxTranslationTarget'
-            className='lc-min-w-[80px]'
+            className='lc:min-w-[80px]'
             value={sonioxTranslationTarget.value}
             onChange={e => {
               sonioxTranslationTarget.value = e.currentTarget.value
@@ -510,10 +510,10 @@ export function SttTab() {
             <option value='ja'>日本語</option>
           </NativeSelect>
         </div>
-        <div class='lc-mt-2 lc-text-[#666] lc-text-[.9em]'>启用后将发送翻译结果而非原始识别文字</div>
+        <div class='lc:mt-2 lc:text-[#666] lc:text-[.9em]'>启用后将发送翻译结果而非原始识别文字</div>
       </div>
 
-      <div class='lc-my-2'>
+      <div class='lc:my-2'>
         <div class={ROW_CLASS}>
           <Button
             variant={state.value === 'running' ? 'destructive' : 'default'}
@@ -528,11 +528,11 @@ export function SttTab() {
               an inline color avoids enumerating the states as classes. */}
           <span style={{ color: statusColor.value }}>{statusText.value}</span>
         </div>
-        <div class='lc-my-2'>
-          <div class='lc-font-bold lc-mb-1'>实时识别结果：</div>
-          <div class='lc-p-2 lc-bg-bg2 lc-rounded lc-min-h-10 lc-max-h-[100px] lc-overflow-y-auto lc-break-all'>
+        <div class='lc:my-2'>
+          <div class='lc:font-bold lc:mb-1'>实时识别结果：</div>
+          <div class='lc:p-2 lc:bg-bg2 lc:rounded lc:min-h-10 lc:max-h-[100px] lc:overflow-y-auto lc:break-all'>
             <span>{finalText.value}</span>
-            <span class='lc-text-ga6'>{nonFinalText.value}</span>
+            <span class='lc:text-ga6'>{nonFinalText.value}</span>
           </div>
         </div>
       </div>

@@ -50,28 +50,28 @@ export function Configurator() {
   // 3. Visible + non-optimized: legacy block layout that grows to its
   //    content up to the viewport height.
   const dialogClass = cn(
-    'lc-fixed lc-right-1 lc-bottom-[calc(4px_+_30px)] lc-z-[2147483647]',
-    'lc-bg-bg1 lc-rounded lc-min-w-[50px]',
-    'lc-shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
-    !visible && 'lc-hidden',
-    visible && optimized && 'lc-flex lc-flex-col lc-h-[calc(100vh_-_110px)] lc-overflow-hidden',
-    visible && !optimized && 'lc-block lc-max-h-[calc(100vh_-_110px)] lc-overflow-y-auto'
+    'lc:fixed lc:right-1 lc:bottom-[calc(4px_+_30px)] lc:z-[2147483647]',
+    'lc:bg-bg1 lc:rounded lc:min-w-[50px]',
+    'lc:shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
+    !visible && 'lc:hidden',
+    visible && optimized && 'lc:flex lc:flex-col lc:h-[calc(100vh_-_110px)] lc:overflow-hidden',
+    visible && !optimized && 'lc:block lc:max-h-[calc(100vh_-_110px)] lc:overflow-y-auto'
   )
 
   // All four tab panels share the visibility/layout shape: in optimized
   // mode the panel itself owns the vertical scroll (since the dialog is
   // overflow-hidden), and in legacy mode the dialog scrolls and the panel
   // grows naturally. Fasong's meme list still has its own internal scroll
-  // container (capped at lc-max-h-[240px]) so a long meme list doesn't
+  // container (capped at lc:max-h-[240px]) so a long meme list doesn't
   // monopolize the panel viewport.
   const panelClass = (active: boolean) =>
     cn(
       // `<Tabs />` already lives inside the dialog, so panel-level horizontal
       // padding belongs here on the per-tab wrapper rather than the dialog.
-      'lc-px-[10px]',
-      !active && 'lc-hidden',
-      active && optimized && 'lc-flex-1 lc-min-h-0 lc-overflow-y-auto',
-      active && !optimized && 'lc-block'
+      'lc:px-[10px]',
+      !active && 'lc:hidden',
+      active && optimized && 'lc:flex-1 lc:min-h-0 lc:overflow-y-auto',
+      active && !optimized && 'lc:block'
     )
 
   return (
@@ -85,10 +85,10 @@ export function Configurator() {
 
       <div class={panelClass(tab === 'fasong')}>
         <AutoSendControls />
-        <div class='lc-my-1'>
+        <div class='lc:my-1'>
           <AutoBlendControls />
         </div>
-        <div class='lc-my-1'>
+        <div class='lc:my-1'>
           <MemesList />
         </div>
         <NormalSendTab />
@@ -106,7 +106,7 @@ export function Configurator() {
         <AboutTab />
       </div>
 
-      <div class='lc-px-[10px] lc-pb-[5px]'>
+      <div class='lc:px-[10px] lc:pb-[5px]'>
         <LogPanel />
       </div>
     </div>
@@ -189,19 +189,19 @@ function ResizeHandle() {
       class={cn(
         // Absolute inside the fixed dialog: `position: fixed` itself
         // establishes a containing block, so no extra `relative` needed.
-        'lc-absolute lc-left-0 lc-top-0 lc-bottom-0 lc-w-[3px]',
-        'lc-cursor-ew-resize lc-select-none',
+        'lc:absolute lc:left-0 lc:top-0 lc:bottom-0 lc:w-[3px]',
+        'lc:cursor-ew-resize lc:select-none',
         // Sit above tab buttons / panels so the strip is always grabbable.
         // The dialog itself is at the script's z-index ceiling, so this
         // only races with our own children.
-        'lc-z-10',
+        'lc:z-10',
         // Subtle hover/active feedback so the affordance is discoverable
         // without a permanent visual seam down the panel edge.
-        'hover:lc-bg-ga3 active:lc-bg-ga4'
+        'lc:hover:bg-ga3 lc:active:bg-ga4'
       )}
       // `touch-action: none` opts out of the browser's default pan/zoom
       // gesture so a touch-drag scrolls the panel width instead of the
-      // page. Inline because UnoCSS doesn't ship a `lc-touch-none`
+      // page. Inline because UnoCSS doesn't ship a `lc:touch-none`
       // utility under our slimmed-down preset.
       style={{ touchAction: 'none' }}
       onPointerDown={onPointerDown}

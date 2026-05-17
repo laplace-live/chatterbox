@@ -34,8 +34,8 @@
 import { appendLog } from './log'
 import { autoBlendMessageBlacklist, autoBlendUserBlacklist } from './store'
 
-const USER_INJECTED_CLASS = 'lc-bl-toggle'
-const MESSAGE_INJECTED_CLASS = 'lc-bl-msg-toggle'
+const USER_INJECTED_CLASS = 'lc:bl-toggle'
+const MESSAGE_INJECTED_CLASS = 'lc:bl-msg-toggle'
 
 let pendingUid: string | null = null
 let pendingUname: string | null = null

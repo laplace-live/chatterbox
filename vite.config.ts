@@ -1,16 +1,16 @@
 import preact from '@preact/preset-vite'
-import UnoCSS from 'unocss/vite'
+import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    // UnoCSS must run before the framework plugin so it can scan the JSX
-    // sources before they're transformed to plain JS. The emitted CSS is
-    // referenced via `import 'virtual:uno.css'` in the entry and inlined
+    // Tailwind v4 must run before the framework plugin so it can scan the
+    // JSX sources before they're transformed to plain JS. The emitted CSS
+    // is referenced via `import './styles.css'` in the entry and inlined
     // into the userscript by vite-plugin-monkey via GM_addStyle.
-    UnoCSS(),
+    tailwindcss(),
     preact(),
     monkey({
       entry: 'src/main.tsx',
