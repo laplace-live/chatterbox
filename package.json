@@ -13,7 +13,7 @@
     "@preact/signals": "^2.9.0",
     "@tabler/icons-preact": "^3.44.0",
     "clsx": "^2.1.1",
-    "preact": "^10.29.1",
+    "preact": "^10.29.2",
     "tailwind-merge": "^2.6.1"
   },
   "devDependencies": {
