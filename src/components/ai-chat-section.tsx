@@ -35,7 +35,7 @@ import { Label } from './ui/label'
 
 // Match the existing section visual rhythm in stt-tab.tsx so this block
 // reads as a native part of the 同传 tab rather than a bolted-on extra.
-const SECTION_CLASS = 'my-2 pb-2 border-b border-b-solid border-b-ga2'
+const SECTION_CLASS = 'my-2 border-b border-b-solid border-b-ga2'
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 

@@ -34,7 +34,7 @@ const SONIOX_FLUSH_DELAY_MS = 5000
 // Each visible block in this tab is wrapped in this section shape (vertical
 // rhythm + bottom divider). Repeated across API key / recognition / translation
 // settings.
-const SECTION_CLASS = 'my-2 pb-2 border-b border-b-solid border-b-ga2'
+const SECTION_CLASS = 'my-2 border-b border-b-solid border-b-ga2'
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
