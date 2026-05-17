@@ -1,6 +1,6 @@
 import type { BilibiliWbiKeys } from '../types'
 
-import { md5 } from './md5'
+import { Md5 } from './md5'
 
 /** WBI keys captured by XHR hijack; set when /x/web-interface/nav response is received. */
 export let cachedWbiKeys: BilibiliWbiKeys | null = null
@@ -105,7 +105,7 @@ export function encodeWbi(params: Record<string, string | number>, wbiKeys: Bili
     })
     .join('&')
 
-  const wbi_sign = md5(sortedQuery + mixin_key)
+  const wbi_sign = Md5.hashStr(sortedQuery + mixin_key)
 
   const unsortedQuery = Object.keys(params)
     .map(key => {

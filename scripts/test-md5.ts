@@ -1,4 +1,4 @@
-import { md5 } from '../src/md5.ts'
+import { Md5 } from '../src/lib/md5.ts'
 
 function bunMd5(str: string): string {
   return new Bun.CryptoHasher('md5').update(str).digest('hex')
@@ -30,7 +30,7 @@ let passCount = 0
 let failCount = 0
 
 for (const [index, testCase] of testCases.entries()) {
-  const manualHash = md5(testCase)
+  const manualHash = Md5.hashStr(testCase)
   const bunHash = bunMd5(testCase)
   const match = manualHash === bunHash
 
