@@ -1080,8 +1080,7 @@ export function SettingsTab() {
             AI 陪聊
           </Label>
           <div class='lc-text-ga6 lc-text-[.9em] lc-mb-1'>
-            用于「同传 → AI 陪聊」根据语音转录和观众弹幕生成模拟观众弹幕的角色设定与生成规则，AI
-            陪聊会强制输出结构化数据，请避免手写结构化输出格式相关提示词
+            用于「同传 → AI 陪聊」根据语音转录和观众弹幕生成模拟观众弹幕的角色设定与生成规则
           </div>
           <PromptManager
             selectId='llmPromptAiChat'

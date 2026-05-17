@@ -6,7 +6,7 @@ import type { LlmModel } from './llm'
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import { gmSignal } from './gm-signal'
 import { appendLog } from './log'
-import { DEFAULT_AI_CHAT_PROMPT, DEFAULT_GLOBAL_PROMPT } from './prompts'
+import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT } from './prompts'
 
 // GM-persisted settings
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
@@ -152,20 +152,35 @@ export const llmActivePromptAutoBlend = gmSignal('llmActivePromptAutoBlend', 0)
 export const llmPromptsAutoSend = gmSignal<string[]>('llmPromptsAutoSend', [])
 export const llmActivePromptAutoSend = gmSignal('llmActivePromptAutoSend', 0)
 
-// AI Chat prompt scope. Seed-once just like the global default above, so
-// users who delete the shipped draft don't get it re-added on every
-// reload. The persisted seeding flag short-circuits the migration even
-// when the array is back to empty.
+// AI Chat prompt scope. Two-stage seed lineage:
+//
+// - v1 (legacy) shipped a single default. Tracked via
+//   `llmPromptsAiChatSeeded`. Users on that build either have the
+//   single default at index 0, or a customised list.
+// - v2 ships four distinct persona templates (杠精 / 吐槽役 /
+//   暖男 / 互动派). Tracked via `llmPromptsAiChatSeededV2`.
+//
+// v2 migration is **additive**: it merges any v2 templates the user
+// doesn't already have (exact content match) onto the end of their
+// list, preserving customisations and the v1 default. Fresh installs
+// (empty list) get the full v2 lineup. Both v1 and v2 flags get set
+// after the v2 run so neither stage re-seeds.
 ;(() => {
-  const seeded = GM_getValue<boolean>('llmPromptsAiChatSeeded', false)
-  if (seeded) return
+  const seededV2 = GM_getValue<boolean>('llmPromptsAiChatSeededV2', false)
+  if (seededV2) return
   const existing = GM_getValue<string[]>('llmPromptsAiChat', [])
   if (existing.length === 0) {
-    GM_setValue('llmPromptsAiChat', [DEFAULT_AI_CHAT_PROMPT])
+    GM_setValue('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
+  } else {
+    const additions = DEFAULT_AI_CHAT_PROMPTS.filter(p => !existing.includes(p))
+    if (additions.length > 0) {
+      GM_setValue('llmPromptsAiChat', [...existing, ...additions])
+    }
   }
   GM_setValue('llmPromptsAiChatSeeded', true)
+  GM_setValue('llmPromptsAiChatSeededV2', true)
 })()
-export const llmPromptsAiChat = gmSignal<string[]>('llmPromptsAiChat', [DEFAULT_AI_CHAT_PROMPT])
+export const llmPromptsAiChat = gmSignal<string[]>('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
 export const llmActivePromptAiChat = gmSignal('llmActivePromptAiChat', 0)
 
 // AI Chat settings — drive the "AI 陪聊" section appended to the 同传 tab.
