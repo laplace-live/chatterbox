@@ -75,7 +75,11 @@ export function Configurator() {
     )
 
   return (
-    <div id='laplace-chatterbox-dialog' class={dialogClass} style={{ width: `${width}px` }}>
+    <div
+      id='laplace-chatterbox-dialog'
+      class={dialogClass}
+      style={{ width: `${width}px`, '--laplace-chatterbox-dialog-width': `${width}px` }}
+    >
       <ResizeHandle />
       <Tabs />
 

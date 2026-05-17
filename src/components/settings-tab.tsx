@@ -38,7 +38,6 @@ import {
   unlockLiveBlock,
   unlockSpaceBlock,
 } from '../lib/store'
-import { EmoteIds } from './emote-ids'
 import { PromptManager } from './prompt-manager'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -857,13 +856,6 @@ export function SettingsTab() {
               清空名单
             </Button>
           )}
-        </div>
-      </div>
-
-      <div class={SECTION_CLASS}>
-        <div class={HEADING_CLASS}>表情（复制后可在独轮车或常规发送中直接发送）</div>
-        <div class='lc-max-h-[200px] lc-overflow-y-auto'>
-          <EmoteIds />
         </div>
       </div>
 

@@ -24,6 +24,7 @@ import {
   normalSendYolo,
 } from '../lib/store'
 import { processMessages } from '../lib/utils'
+import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -206,11 +207,16 @@ export function NormalSendTab() {
           </div>
         </div>
 
-        {/* AI controls live in their own row so the affordances read as
-            a tight pair. The disabled-when-not-ready states keep the
-            UI honest — users can SEE the buttons (good for discovery)
-            but can't trigger them until the LLM is wired up. */}
+        {/* Action row sits directly under the textarea. The emote picker
+            leads because it's a separate concern from the AI cluster
+            (LLM polish / YOLO toggle / prompt picker) — putting it
+            first in reading order makes the "insert an emote" path
+            equally discoverable. The disabled-when-not-ready states on
+            the AI buttons keep the UI honest: users can SEE the buttons
+            (good for discovery) but can't trigger them until the LLM
+            is wired up. */}
         <div class='lc-my-2 lc-flex lc-items-center  lc-gap-1'>
+          <EmoteSelector />
           <Button
             variant='outline'
             size='sm'
