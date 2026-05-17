@@ -18,7 +18,7 @@ export function LogPanel() {
       onOpenChange={v => {
         logPanelOpen.value = v
       }}
-      className='lc:mt-1'
+      className='mt-1'
     >
       <AccordionTrigger>日志</AccordionTrigger>
       <AccordionContent>
@@ -27,7 +27,7 @@ export function LogPanel() {
           readOnly
           value={logLines.value.join('\n')}
           placeholder={`此处将输出日志（最多保留 ${maxLogLines.value} 条）`}
-          className='lc:h-[60px] lc:mt-2'
+          className='mt-2 h-15'
         />
       </AccordionContent>
     </AccordionItem>

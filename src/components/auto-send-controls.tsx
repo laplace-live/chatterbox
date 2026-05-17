@@ -97,12 +97,12 @@ export function AutoSendControls() {
         {autoSendYolo.value ? ' ⚡️' : ''}
       </AccordionTrigger>
       <AccordionContent>
-        <div class='lc:my-2 lc:flex lc:items-center lc:gap-1'>
+        <div class='my-2 flex items-center gap-1'>
           <Button variant={sendMsg.value ? 'destructive' : 'default'} size='sm' onClick={toggleSend}>
             {sendMsg.value ? '停车' : '开车'}
           </Button>
           <NativeSelect
-            className='lc:w-full'
+            className='w-full'
             value={String(idx)}
             onChange={e => {
               activeTemplateIndex.value = parseInt(e.currentTarget.value, 10)
@@ -128,7 +128,7 @@ export function AutoSendControls() {
             Conceptually it's the LLM-side controls — orthogonal to
             the template controls above — so a visual break helps
             reinforce that distinction. */}
-        <div class='lc:my-2 lc:flex lc:items-center lc:gap-1'>
+        <div class='my-2 flex items-center gap-1'>
           <Button
             // Variant flip is the standard "is YOLO on?" affordance —
             // mirrors 常规发送 / 自动融入 so the visual language is
@@ -149,7 +149,7 @@ export function AutoSendControls() {
             // swapping which one feeds the YOLO polish without
             // leaving this tab.
             <PromptPicker
-              className='lc:min-w-[40px] lc:truncate'
+              className='min-w-10 truncate'
               title='切换 YOLO 使用的独轮车提示词'
               prompts={llmPromptsAutoSend.value}
               activeIndex={llmActivePromptAutoSend.value}
@@ -159,17 +159,17 @@ export function AutoSendControls() {
               previewGraphemes={16}
             />
           )}
-          {!llmReady && <span class='lc:text-ga6 lc:text-[.85em] lc:ml-1'>AI 功能需配置 LLM 后启用</span>}
+          {!llmReady && <span class='ml-1 text-[.85em] text-ga6'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
         <Textarea
           value={currentTemplate}
           onInput={e => updateTemplate(e.currentTarget.value)}
           placeholder='在这输入弹幕，每行一句话，超过可发送字数的会自动进行分割'
-          className='lc:h-[80px]'
+          className='h-20'
         />
 
-        <div class='lc:flex lc:flex-wrap lc:gap-2 lc:my-2'>
+        <div class='my-2 flex flex-wrap gap-2'>
           <div>
             <span>{msgCount} 条，</span>
             <span>间隔</span>
@@ -177,7 +177,7 @@ export function AutoSendControls() {
               type='number'
               min='0'
               autocomplete='off'
-              className='lc:w-[50px]'
+              className='w-12.5'
               value={msgSendInterval.value}
               onInput={e => {
                 const v = parseInt(e.currentTarget.value, 10)
@@ -190,7 +190,7 @@ export function AutoSendControls() {
               type='number'
               min='1'
               autocomplete='off'
-              className='lc:w-[50px]'
+              className='w-12.5'
               value={maxLength.value}
               onInput={e => {
                 const v = parseInt(e.currentTarget.value, 10)

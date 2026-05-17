@@ -25,9 +25,6 @@ import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 
-// Each Label wraps a hint + NumberInput pair, laid out as an inline flex row.
-const FIELD_LABEL_CLASS = 'lc:inline-flex lc:items-center lc:gap-1'
-
 function NumberInput({
   value,
   min,
@@ -47,7 +44,7 @@ function NumberInput({
       autocomplete='off'
       min={String(min)}
       max={max !== undefined ? String(max) : undefined}
-      className={'lc:w-[50px]'}
+      className={'w-12.5'}
       value={value}
       disabled={disabled}
       onInput={e => {
@@ -82,15 +79,15 @@ function AutoBlendStatus() {
   const auto = autoBlendCooldownAuto.value
 
   return (
-    <div class='lc:my-2 lc:rounded-sm lc:bg-ga1 lc:px-2 lc:py-1.5 lc:flex lc:flex-col lc:gap-1'>
-      <div class='lc:text-ga6 lc:flex lc:items-center lc:justify-between lc:gap-2'>
-        <span class='lc:shrink-0'>候选 (前 {CANDIDATE_LIMIT})</span>
-        <span class='lc:min-w-0 lc:truncate lc:text-right'>
+    <div class='my-2 flex flex-col gap-1 rounded-sm bg-ga1 px-2 py-1.5'>
+      <div class='flex items-center justify-between gap-2 text-ga6'>
+        <span class='shrink-0'>候选 (前 {CANDIDATE_LIMIT})</span>
+        <span class='min-w-0 truncate text-right'>
           <span>弹幕 {chatsPerMinute} 条/分</span>
           {cooldownRemainingSec > 0 ? (
             <>
               <span> · </span>
-              <span class='lc:text-brand'>冷却中 {cooldownRemainingSec} 秒</span>
+              <span class='text-brand'>冷却中 {cooldownRemainingSec} 秒</span>
             </>
           ) : (
             // Only surface the would-be cooldown when auto is on — the
@@ -106,18 +103,18 @@ function AutoBlendStatus() {
         </span>
       </div>
       {candidates.length === 0 ? (
-        <div class='lc:text-ga6'>{cooldownRemainingSec > 0 ? '冷却中，暂停统计' : '暂无统计'}</div>
+        <div class='text-ga6'>{cooldownRemainingSec > 0 ? '冷却中，暂停统计' : '暂无统计'}</div>
       ) : (
         candidates.map((entry, i) => (
-          <div key={entry.text} class='lc:flex lc:items-center lc:gap-2 lc:leading-tight' title={entry.text}>
-            <span class='lc:text-ga6 lc:w-3 lc:text-right lc:shrink-0'>{i + 1}</span>
-            <span class='lc:flex-1 lc:min-w-0 lc:truncate'>{entry.text}</span>
-            <span class='lc:shrink-0 lc:text-[11px] lc:text-ga6 lc:font-mono'>
-              <span class={entry.uniqueUsers >= userThreshold ? 'lc:text-brand' : ''}>
+          <div key={entry.text} class='flex items-center gap-2 leading-tight' title={entry.text}>
+            <span class='w-3 shrink-0 text-right text-ga6'>{i + 1}</span>
+            <span class='min-w-0 flex-1 truncate'>{entry.text}</span>
+            <span class='shrink-0 font-mono text-[11px] text-ga6'>
+              <span class={entry.uniqueUsers >= userThreshold ? 'text-brand' : ''}>
                 {entry.uniqueUsers}/{userThreshold}
               </span>
               <span> 人 </span>
-              <span class={entry.totalCount >= countThreshold ? 'lc:text-brand' : ''}>
+              <span class={entry.totalCount >= countThreshold ? 'text-brand' : ''}>
                 {entry.totalCount}/{countThreshold}
               </span>
               <span> 条</span>
@@ -161,7 +158,7 @@ export function AutoBlendControls() {
         {autoBlendYolo.value ? ' ⚡️' : ''}
       </AccordionTrigger>
       <AccordionContent>
-        <div class='lc:my-2 lc:flex lc:items-center lc:gap-1'>
+        <div class='my-2 flex items-center gap-1'>
           <Button variant={autoBlendEnabled.value ? 'destructive' : 'default'} size='sm' onClick={toggleEnabled}>
             {autoBlendEnabled.value ? '停止融入' : '开始融入'}
           </Button>
@@ -188,7 +185,7 @@ export function AutoBlendControls() {
             // Settings picker to keep the row readable in the
             // narrowest dialog width.
             <PromptPicker
-              className='lc:min-w-[40px] lc:truncate'
+              className='min-w-10 truncate'
               title='切换 YOLO 使用的自动融入提示词'
               prompts={llmPromptsAutoBlend.value}
               activeIndex={llmActivePromptAutoBlend.value}
@@ -198,20 +195,20 @@ export function AutoBlendControls() {
               previewGraphemes={16}
             />
           )}
-          {!llmReady && <span class='lc:text-ga6 lc:text-[.85em] lc:ml-1'>AI 功能需配置 LLM 后启用</span>}
+          {!llmReady && <span class='ml-1 text-[.85em] text-ga6'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
         <div
           class={cn(
-            'lc:my-2 lc:flex lc:flex-wrap lc:items-center lc:gap-y-1 lc:gap-x-2',
+            'my-2 flex flex-wrap items-center gap-x-2 gap-y-1',
             // Grey out the field labels when blend is off — applied at the
             // group level so the inline NumberInputs (which don't inherit
             // because they style themselves explicitly) and the surrounding
             // Chinese hint text both dim together.
-            !autoBlendEnabled.value && 'lc:text-ga4'
+            !autoBlendEnabled.value && 'text-ga4'
           )}
         >
-          <Label className={FIELD_LABEL_CLASS}>
+          <Label className={'inline-flex items-center gap-1'}>
             触发：
             <NumberInput
               value={autoBlendUniqueUsers.value}
@@ -221,7 +218,7 @@ export function AutoBlendControls() {
               }}
             />
           </Label>
-          <Label className={FIELD_LABEL_CLASS}>
+          <Label className={'inline-flex items-center gap-1'}>
             人在
             <NumberInput
               value={autoBlendWindowSec.value}
@@ -231,7 +228,7 @@ export function AutoBlendControls() {
               }}
             />
           </Label>
-          <Label className={FIELD_LABEL_CLASS}>
+          <Label className={'inline-flex items-center gap-1'}>
             秒内重复
             <NumberInput
               value={autoBlendMinOccurrences.value}
@@ -243,7 +240,7 @@ export function AutoBlendControls() {
             次
           </Label>
 
-          <Label className={FIELD_LABEL_CLASS}>
+          <Label className={'inline-flex items-center gap-1'}>
             跟车
             <NumberInput
               value={autoBlendSendCount.value}
@@ -255,7 +252,7 @@ export function AutoBlendControls() {
             />
             次
           </Label>
-          <Label className={FIELD_LABEL_CLASS}>
+          <Label className={'inline-flex items-center gap-1'}>
             自动融入冷却
             <NumberInput
               value={autoBlendCooldownSec.value}
@@ -269,7 +266,7 @@ export function AutoBlendControls() {
           </Label>
         </div>
 
-        <div class='lc:my-2 lc:flex lc:flex-wrap lc:gap-3'>
+        <div class='my-2 flex flex-wrap gap-3'>
           <Checkbox
             id='autoBlendUseReplacements'
             checked={autoBlendUseReplacements.value}

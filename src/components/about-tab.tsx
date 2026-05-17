@@ -1,7 +1,5 @@
 import { DOCUMENT_URL, PROJECT_URL, VERSION } from '../lib/const'
 
-const LINK_CLASS = 'lc:text-link lc:no-underline'
-
 interface ExternalService {
   name: string
   host: string
@@ -68,26 +66,26 @@ const EXTERNAL_SERVICES: ExternalService[] = [
 export function AboutTab() {
   return (
     <>
-      <div class={'lc:my-2 lc:pb-4 lc:border-b lc:border-b-solid lc:border-b-ga2'}>
-        <div class={'lc:font-bold lc:mb-2'}>LAPLACE Chatterbox 弹幕助手</div>
-        <div class='lc:flex lc:flex-col lc:gap-1 lc:text-[#666]'>
+      <div class={'my-2 border-b border-b-ga2 border-b-solid pb-4'}>
+        <div class={'mb-2 font-bold'}>LAPLACE Chatterbox 弹幕助手</div>
+        <div class='flex flex-col text-ga6'>
           <span>版本: {VERSION}</span>
           <span>
             作者:{' '}
-            <a href='https://laplace.live' target='_blank' rel='noopener' class={LINK_CLASS}>
+            <a href='https://laplace.live' target='_blank' rel='noopener' class={'text-link no-underline'}>
               LAPLACE Live!
             </a>
           </span>
           <span>许可证: AGPL-3.0</span>
           <span>
             源代码:{' '}
-            <a href={PROJECT_URL} target='_blank' rel='noopener' class={LINK_CLASS}>
+            <a href={PROJECT_URL} target='_blank' rel='noopener' class={'text-link no-underline'}>
               GitHub
             </a>
           </span>
           <span>
             使用文档:{' '}
-            <a href={DOCUMENT_URL} target='_blank' rel='noopener' class={LINK_CLASS}>
+            <a href={DOCUMENT_URL} target='_blank' rel='noopener' class={'text-link no-underline'}>
               Subspace Institute 亚空间研究所
             </a>
           </span>
@@ -95,29 +93,27 @@ export function AboutTab() {
       </div>
 
       {/* Same section spacing as above but without the divider on the last block. */}
-      <div class='lc:my-2 lc:pb-4'>
-        <div class={'lc:font-bold lc:mb-2'}>隐私说明</div>
-        <div class='lc:text-[#666] lc:mb-3'>
-          本脚本在运行时可能会与以下外部服务通信。不同功能触发的请求不同，请按需启用。
-        </div>
+      <div class='my-2 pb-4'>
+        <div class={'mb-2 font-bold'}>隐私说明</div>
+        <div class='mb-3 text-ga6'>本脚本在运行时可能会与以下外部服务通信。不同功能触发的请求不同，请按需启用。</div>
 
-        <div class='lc:flex lc:flex-col lc:gap-3'>
+        <div class='flex flex-col gap-3'>
           {EXTERNAL_SERVICES.map(service => (
-            <div key={service.name} class='lc:p-2 lc:rounded lc:bg-ga1s'>
-              <div class='lc:font-bold lc:mb-1'>
+            <div key={service.name} class='rounded bg-ga1s p-2'>
+              <div class='mb-1 font-bold'>
                 {service.url ? (
-                  <a href={service.url} target='_blank' rel='noopener' class={LINK_CLASS}>
+                  <a href={service.url} target='_blank' rel='noopener' class={'text-link no-underline'}>
                     {service.name}
                   </a>
                 ) : (
                   service.name
                 )}
               </div>
-              <div class='lc:text-[.9em] lc:text-[#666] lc:font-mono lc:mb-1'>{service.host}</div>
-              <div class='lc:text-[.9em] lc:mb-1'>
-                <span class='lc:text-brand'>触发条件:</span> {service.trigger}
+              <div class='mb-1 font-mono text-ga6 text-[.9em]'>{service.host}</div>
+              <div class='mb-1 text-[.9em]'>
+                <span class='text-brand'>触发条件:</span> {service.trigger}
               </div>
-              <div class='lc:text-[.9em] lc:text-[#555]'>{service.description}</div>
+              <div class='text-ga6 text-[.9em]'>{service.description}</div>
             </div>
           ))}
         </div>

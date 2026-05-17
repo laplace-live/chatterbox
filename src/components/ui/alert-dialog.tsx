@@ -67,12 +67,7 @@ export function AlertDialog() {
   return (
     <dialog
       ref={ref}
-      class={cn(
-        // Original used `var(--Ga2, #ccc)` here (different fallback from elsewhere);
-        // preserved via arbitrary value rather than mapping into the theme.
-        'lc:border lc:border-solid lc:border-[var(--Ga2,#ccc)]',
-        'lc:rounded-lg lc:p-3 lc:max-w-[320px]'
-      )}
+      class={cn('border border-ga4 border-solid', 'max-w-[320px] rounded-lg p-3')}
       onCancel={e => {
         e.preventDefault()
         close(false)
@@ -84,9 +79,9 @@ export function AlertDialog() {
         if (p.anchor && e.key === 'Escape') close(false)
       }}
     >
-      {p.title && <p class={'lc:mt-0 lc:mb-2 lc:mx-0 lc:break-all'}>{p.title}</p>}
-      {p.body && <div class={'lc:mt-0 lc:mb-2 lc:mx-0 lc:break-all'}>{p.body}</div>}
-      <div class={'lc:flex lc:justify-end lc:gap-2'}>
+      {p.title && <p class={'mx-0 mt-0 mb-2 break-all'}>{p.title}</p>}
+      {p.body && <div class={'mx-0 mt-0 mb-2 break-all'}>{p.body}</div>}
+      <div class={'flex justify-end gap-2'}>
         <Button variant='outline' size='sm' onClick={() => close(false)}>
           {p.cancelText ?? '取消'}
         </Button>

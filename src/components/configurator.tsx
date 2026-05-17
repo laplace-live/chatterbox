@@ -43,41 +43,39 @@ export function Configurator() {
   // viewport-aware envelope automatically.
   const width = clampWidth(dialogWidth.value)
 
-  // Three layout shapes for the dialog:
-  // 1. Hidden when `dialogOpen` is false.
-  // 2. Visible + optimized: full-height flex column with hidden overflow
-  //    (children opt back into scroll where appropriate).
-  // 3. Visible + non-optimized: legacy block layout that grows to its
-  //    content up to the viewport height.
-  const dialogClass = cn(
-    'lc:fixed lc:right-1 lc:bottom-[calc(4px_+_30px)] lc:z-[2147483647]',
-    'lc:bg-bg1 lc:rounded lc:min-w-[50px]',
-    'lc:shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
-    !visible && 'lc:hidden',
-    visible && optimized && 'lc:flex lc:flex-col lc:h-[calc(100vh_-_110px)] lc:overflow-hidden',
-    visible && !optimized && 'lc:block lc:max-h-[calc(100vh_-_110px)] lc:overflow-y-auto'
-  )
-
   // All four tab panels share the visibility/layout shape: in optimized
   // mode the panel itself owns the vertical scroll (since the dialog is
   // overflow-hidden), and in legacy mode the dialog scrolls and the panel
   // grows naturally. Fasong's meme list still has its own internal scroll
-  // container (capped at lc:max-h-[240px]) so a long meme list doesn't
+  // container (capped at max-h-[240px]) so a long meme list doesn't
   // monopolize the panel viewport.
   const panelClass = (active: boolean) =>
     cn(
       // `<Tabs />` already lives inside the dialog, so panel-level horizontal
       // padding belongs here on the per-tab wrapper rather than the dialog.
-      'lc:px-[10px]',
-      !active && 'lc:hidden',
-      active && optimized && 'lc:flex-1 lc:min-h-0 lc:overflow-y-auto',
-      active && !optimized && 'lc:block'
+      'px-[10px]',
+      !active && 'hidden',
+      active && optimized && 'min-h-0 flex-1 overflow-y-auto',
+      active && !optimized && 'block'
     )
 
   return (
     <div
       id='laplace-chatterbox-dialog'
-      class={dialogClass}
+      // Three layout shapes for the dialog:
+      // 1. Hidden when `dialogOpen` is false.
+      // 2. Visible + optimized: full-height flex column with hidden overflow
+      //    (children opt back into scroll where appropriate).
+      // 3. Visible + non-optimized: legacy block layout that grows to its
+      //    content up to the viewport height.
+      className={cn(
+        'fixed right-1 bottom-[calc(34px)] z-2147483647 text-[13px]',
+        'min-w-12.5 rounded border border-ga3 border-solid bg-bg1',
+        // 'shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
+        !visible && 'hidden',
+        visible && optimized && 'flex h-[calc(100vh-110px)] flex-col overflow-hidden',
+        visible && !optimized && 'block max-h-[calc(100vh-110px)] overflow-y-auto'
+      )}
       style={{ width: `${width}px`, '--laplace-chatterbox-dialog-width': `${width}px` }}
     >
       <ResizeHandle />
@@ -85,10 +83,10 @@ export function Configurator() {
 
       <div class={panelClass(tab === 'fasong')}>
         <AutoSendControls />
-        <div class='lc:my-1'>
+        <div class='my-1'>
           <AutoBlendControls />
         </div>
-        <div class='lc:my-1'>
+        <div class='my-1'>
           <MemesList />
         </div>
         <NormalSendTab />
@@ -106,7 +104,7 @@ export function Configurator() {
         <AboutTab />
       </div>
 
-      <div class='lc:px-[10px] lc:pb-[5px]'>
+      <div class='px-2.5 pb-1.25'>
         <LogPanel />
       </div>
     </div>
@@ -189,19 +187,19 @@ function ResizeHandle() {
       class={cn(
         // Absolute inside the fixed dialog: `position: fixed` itself
         // establishes a containing block, so no extra `relative` needed.
-        'lc:absolute lc:left-0 lc:top-0 lc:bottom-0 lc:w-[3px]',
-        'lc:cursor-ew-resize lc:select-none',
+        'absolute top-0 bottom-0 left-0 w-0.75',
+        'cursor-ew-resize select-none',
         // Sit above tab buttons / panels so the strip is always grabbable.
         // The dialog itself is at the script's z-index ceiling, so this
         // only races with our own children.
-        'lc:z-10',
+        'z-10',
         // Subtle hover/active feedback so the affordance is discoverable
         // without a permanent visual seam down the panel edge.
-        'lc:hover:bg-ga3 lc:active:bg-ga4'
+        'hover:bg-ga3 active:bg-ga4'
       )}
       // `touch-action: none` opts out of the browser's default pan/zoom
       // gesture so a touch-drag scrolls the panel width instead of the
-      // page. Inline because UnoCSS doesn't ship a `lc:touch-none`
+      // page. Inline because UnoCSS doesn't ship a `touch-none`
       // utility under our slimmed-down preset.
       style={{ touchAction: 'none' }}
       onPointerDown={onPointerDown}

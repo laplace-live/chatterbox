@@ -168,7 +168,11 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   useEffect(() => {
     if (!open.value) return
     const onDoc = (e: MouseEvent) => {
-      if (!wrapperRef.current?.contains(e.target as Node)) {
+      // composedPath() pierces shadow-DOM boundaries; e.target alone is
+      // retargeted to the shadow host on a document-level listener and
+      // would incorrectly fire "outside" for clicks inside the dropdown.
+      const wrapper = wrapperRef.current
+      if (wrapper && !e.composedPath().includes(wrapper)) {
         open.value = false
       }
     }
@@ -236,7 +240,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   }
 
   return (
-    <div ref={wrapperRef} class={cn('lc:relative', className)}>
+    <div ref={wrapperRef} class={cn('relative', className)}>
       <button
         type='button'
         id={id}
@@ -252,27 +256,25 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
         // ROW_CLASS lines up with sibling inputs/buttons instead of
         // floating a hairline above or below them.
         class={cn(
-          'lc:w-full lc:box-border',
-          'lc:flex lc:items-center lc:justify-between lc:gap-1',
-          'lc:pl-1.5 lc:pr-1 lc:py-px lc:min-h-5',
-          'lc:border lc:border-solid lc:border-ga4 lc:rounded',
-          'lc:bg-bg1 lc:text-inherit lc:text-left lc:leading-none',
-          'lc:cursor-pointer lc:disabled:cursor-not-allowed lc:disabled:opacity-60',
-          'lc:outline-none lc:transition',
-          'lc:focus:border-brand',
-          open.value && 'lc:border-brand'
+          'box-border w-full',
+          'flex items-center justify-between gap-1',
+          'min-h-5 py-px pr-1 pl-1.5',
+          'rounded border border-ga4 border-solid',
+          'bg-bg1 text-left text-inherit leading-none',
+          'cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
+          'outline-none transition',
+          'focus:border-brand',
+          open.value && 'border-brand'
         )}
       >
-        <span class={cn('lc:flex-1 lc:truncate lc:leading-tight', !value && 'lc:text-ga5')}>
-          {triggerLabel || placeholder}
-        </span>
+        <span class={cn('flex-1 truncate leading-tight', !value && 'text-ga5')}>{triggerLabel || placeholder}</span>
         {/* size/stroke explicit because Tabler's defaults (24/2) are too
             chunky here — we want the chevron to read as a hint, not an
             anchor, on a 20-px-tall trigger. */}
         <IconChevronDown
           size={12}
           aria-hidden='true'
-          class={cn('lc:shrink-0 lc:transition-transform', open.value && 'lc:rotate-180')}
+          class={cn('shrink-0 transition-transform', open.value && 'rotate-180')}
         />
       </button>
 
@@ -283,14 +285,14 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
             // top-full anchors below the trigger; left/right 0 stretch
             // the popover to the wrapper's full width so long ids have
             // room to breathe.
-            'lc:absolute lc:left-0 lc:right-0 lc:top-full lc:mt-1 lc:z-50',
-            'lc:border lc:border-solid lc:border-ga3 lc:rounded',
-            'lc:bg-bg1',
-            'lc:shadow-[0_4px_12px_rgba(0,0,0,.15)]',
-            'lc:overflow-hidden'
+            'absolute top-full right-0 left-0 z-50 mt-1',
+            'rounded border border-ga3 border-solid',
+            'bg-bg1',
+            'shadow-[0_4px_12px_rgba(0,0,0,.15)]',
+            'overflow-hidden'
           )}
         >
-          <div class='lc:p-1 lc:border-b lc:border-b-solid lc:border-b-ga2'>
+          <div class='border-b border-b-ga2 border-b-solid p-1'>
             <input
               ref={inputRef}
               type='text'
@@ -301,25 +303,25 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
               }}
               onKeyDown={onInputKeyDown}
               class={cn(
-                'lc:w-full lc:box-border',
-                'lc:px-1 lc:py-px',
-                'lc:border lc:border-solid lc:border-ga4 lc:rounded',
-                'lc:bg-bg1 lc:text-inherit',
-                'lc:outline-none lc:leading-none lc:min-h-5',
-                'lc:focus:border-brand'
+                'box-border w-full',
+                'px-1 py-px',
+                'rounded border border-ga4 border-solid',
+                'bg-bg1 text-inherit',
+                'min-h-5 leading-none outline-none',
+                'focus:border-brand'
               )}
             />
           </div>
 
-          <div ref={listRef} role='listbox' class='lc:max-h-[200px] lc:overflow-y-auto'>
+          <div ref={listRef} role='listbox' class='max-h-50 overflow-y-auto'>
             {options.length === 0 && !showMissing ? (
               // Pre-fetch case: the user hasn't loaded any options yet.
               // Use unloadedText if the consumer supplied one (e.g.
               // "请先点击「刷新」"), else fall back to the generic empty
               // text so we still say *something*.
-              <div class='lc:px-2 lc:py-1 lc:text-ga5'>{unloadedText ?? emptyText}</div>
+              <div class='px-2 py-1 text-ga5'>{unloadedText ?? emptyText}</div>
             ) : filtered.length === 0 && !showMissing ? (
-              <div class='lc:px-2 lc:py-1 lc:text-ga5'>{emptyText}</div>
+              <div class='px-2 py-1 text-ga5'>{emptyText}</div>
             ) : (
               filtered.map((opt, i) => {
                 const selected = opt.value === value
@@ -337,23 +339,23 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                     }}
                     onClick={() => select(opt.value)}
                     class={cn(
-                      'lc:w-full lc:box-border',
-                      'lc:flex lc:items-start lc:gap-2',
-                      'lc:px-2 lc:py-1',
-                      'lc:bg-transparent lc:border-none',
-                      'lc:text-left lc:text-inherit lc:leading-tight',
-                      'lc:cursor-pointer',
+                      'box-border w-full',
+                      'flex items-start gap-2',
+                      'px-2 py-1',
+                      'border-none bg-transparent',
+                      'text-left text-inherit leading-tight',
+                      'cursor-pointer',
                       // Mouse-hover and keyboard-highlight both drive the
                       // same `active` state so the visible "where am I"
                       // signal never disagrees between input modalities.
-                      active && 'lc:bg-ga1s'
+                      active && 'bg-ga1s'
                     )}
                   >
                     {/* min-w-0 lets the inner content respect break-all
                         even though it sits inside a flex row; without
                         it long ids would force the parent button wider
                         than the popover. */}
-                    <div class='lc:flex-1 lc:min-w-0'>
+                    <div class='min-w-0 flex-1'>
                       {renderItem ? (
                         renderItem(opt, { selected, active })
                       ) : (
@@ -361,19 +363,17 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                         // selected. break-all (not truncate) so a 60-char
                         // id like `meta-llama/Llama-3.1-405B-Instruct-FP8`
                         // wraps and stays fully readable.
-                        <span class={cn('lc:block lc:break-all', selected && 'lc:font-bold')}>
-                          {opt.label ?? opt.value}
-                        </span>
+                        <span class={cn('block break-all', selected && 'font-bold')}>{opt.label ?? opt.value}</span>
                       )}
                     </div>
                     <IconCheck
                       size={12}
                       aria-hidden='true'
                       // Reserve the slot even for unselected rows
-                      // (lc:invisible, not lc:hidden) so the option
+                      // (invisible, not hidden) so the option
                       // content doesn't shift horizontally as the
                       // selection moves between rows.
-                      class={cn('lc:shrink-0 lc:mt-0.5', !selected && 'lc:invisible')}
+                      class={cn('mt-0.5 shrink-0', !selected && 'invisible')}
                     />
                   </button>
                 )
@@ -389,17 +389,17 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
               <div
                 title={value}
                 class={cn(
-                  'lc:w-full lc:box-border',
-                  'lc:flex lc:items-start lc:gap-2',
-                  'lc:px-2 lc:py-1',
+                  'box-border w-full',
+                  'flex items-start gap-2',
+                  'px-2 py-1',
                   // Pin the sentinel below the live list with a top
                   // divider so it reads as a separate cluster.
-                  'lc:border-t lc:border-t-solid lc:border-t-ga2',
-                  'lc:text-left lc:text-inherit lc:leading-tight lc:text-ga6'
+                  'border-t border-t-ga2 border-t-solid',
+                  'text-left text-ga6 leading-tight'
                 )}
               >
-                <span class='lc:flex-1 lc:break-all'>{missingLabel(value)}</span>
-                <IconCheck size={12} aria-hidden='true' class='lc:shrink-0 lc:mt-0.5' />
+                <span class='flex-1 break-all'>{missingLabel(value)}</span>
+                <IconCheck size={12} aria-hidden='true' class='mt-0.5 shrink-0' />
               </div>
             )}
           </div>

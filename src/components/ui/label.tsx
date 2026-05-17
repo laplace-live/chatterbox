@@ -18,11 +18,11 @@ export function Label({ disabled, htmlFor, for: forProp, className, children, ..
     <label
       htmlFor={htmlFor ?? forProp}
       class={cn(
-        'lc:select-none lc:leading-none lc:shrink-0',
+        'shrink-0 select-none leading-none',
         // `!` ensures the disabled state wins over any cursor set by consumers
         // via `className` (e.g. Checkbox's wrapper sets `cursor-pointer` when
         // the input is interactive).
-        disabled && 'lc:cursor-not-allowed! lc:text-ga4',
+        disabled && 'cursor-not-allowed! text-ga4',
         className
       )}
       {...props}

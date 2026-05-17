@@ -17,16 +17,16 @@ export function Input({ type = 'text', disabled, className, ...props }: InputPro
       type={type}
       disabled={disabled}
       class={cn(
-        'lc:box-border',
-        'lc:px-1 lc:py-px',
-        'lc:border lc:border-solid lc:border-ga4 lc:rounded',
-        'lc:bg-bg1 lc:text-inherit',
-        'lc:outline-none lc:leading-none lc:min-h-5',
-        'lc:cursor-text lc:disabled:cursor-not-allowed lc:disabled:opacity-60',
-        'lc:transition',
+        'box-border',
+        'px-1 py-px',
+        'rounded border border-ga4 border-solid',
+        'bg-bg1 text-inherit',
+        'min-h-5 leading-none outline-none',
+        'cursor-text disabled:cursor-not-allowed disabled:opacity-60',
+        'transition',
         // Replaces the previous `.lc-ui-input:focus { border-color: ... }` rule
         // from styles.ts.
-        'lc:focus:border-brand',
+        'focus:border-brand',
         className
       )}
       {...props}

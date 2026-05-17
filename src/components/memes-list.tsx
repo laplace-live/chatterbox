@@ -126,13 +126,10 @@ function MemeItem({
   }
 
   return (
-    <div
-      data-meme-id={meme.id}
-      class='lc:py-[.4em] lc:flex lc:gap-[.4em] lc:items-start lc:border-b lc:border-b-solid lc:border-b-ga2'
-    >
-      <div class='lc:flex-1 lc:min-w-0'>
+    <div data-meme-id={meme.id} class='flex items-start gap-[.4em] border-b border-b-ga2 border-b-solid py-[.4em]'>
+      <div class='min-w-0 flex-1'>
         {meme.tags.length > 0 && (
-          <div class='lc:flex lc:flex-wrap lc:gap-[.2em] lc:mb-[.2em]'>
+          <div class='mb-[.2em] flex flex-wrap gap-[.2em]'>
             {meme.tags.map(tag => {
               const bgColor = (tag.color && TAG_COLORS[tag.color]) ?? '#888'
               return (
@@ -142,7 +139,7 @@ function MemeItem({
                   onClick={() => onTagClick(tag.name)}
                   title={`按「${tag.name}」筛选`}
                   variant='ghost'
-                  className='lc:text-sm lc:px-1! lc:py-0! lc:text-white'
+                  className='px-1! py-0! text-sm text-white'
                   // Tag color is data-driven (per-meme) so it can't be a
                   // static class; UnoCSS would have to safelist every
                   // possible value otherwise.
@@ -160,16 +157,16 @@ function MemeItem({
           onClick={() => void handleSend()}
           title='点击发送'
           variant='ghost'
-          className='lc:whitespace-pre-wrap lc:text-left lc:p-0 lc:hover:text-brand'
+          className='whitespace-pre-wrap p-0 text-left hover:text-brand'
         >
           {meme.content}
         </Button>
       </div>
-      <div class='lc:shrink-0 lc:flex lc:flex-col lc:items-center lc:gap-[.15em]'>
+      <div class='flex shrink-0 flex-col items-center gap-[.15em]'>
         <Button size='sm' variant='outline' title='复制到剪贴板' onClick={() => void handleCopy()}>
           {copyLabel.value}
         </Button>
-        {meme.copyCount > 0 && <span class={'lc:text-[10px] lc:text-ga6'}>{meme.copyCount}次</span>}
+        {meme.copyCount > 0 && <span class={'text-[10px] text-ga6'}>{meme.copyCount}次</span>}
       </div>
     </div>
   )
@@ -284,7 +281,7 @@ export function MemesList() {
       </AccordionItem>
       {memesPanelOpen.value && (
         <>
-          <div class='lc:flex lc:items-center lc:gap-2 lc:my-2'>
+          <div class='my-2 flex items-center gap-2'>
             <NativeSelect
               value={sortBy.value}
               onChange={e => {
@@ -299,12 +296,12 @@ export function MemesList() {
             <Button variant='outline' size='sm' disabled={loading.value} onClick={() => void loadMemes()}>
               {loading.value ? '加载中…' : '刷新'}
             </Button>
-            <span class={isError.value ? 'lc:text-[#f44]' : 'lc:text-[#666]'}>{status.value}</span>
+            <span class={isError.value ? 'text-[#f44]' : 'text-ga6'}>{status.value}</span>
             <a
               href={`https://laplace.live/memes${cachedStreamerUid.value ? `?contribute=${cachedStreamerUid.value}` : ''}`}
               target='_blank'
               rel='noopener'
-              class='lc:text-link lc:no-underline'
+              class='text-link no-underline'
             >
               贡献烂梗
             </a>
@@ -317,7 +314,7 @@ export function MemesList() {
               onInput={e => {
                 filterText.value = e.currentTarget.value
               }}
-              className='lc:w-full lc:mb-2'
+              className='mb-2 w-full'
             />
           )}
           <div
@@ -328,7 +325,7 @@ export function MemesList() {
             // (rather than flex-1) keeps the meme list from monopolizing the
             // 发送 tab's now-scrollable viewport when other accordions are
             // expanded.
-            class='lc:overflow-y-auto lc:-mx-[10px] lc:px-[10px] lc:max-h-[240px]'
+            class='-mx-2.5 max-h-60 overflow-y-auto px-2.5'
           >
             {memes.value
               .filter(m => {

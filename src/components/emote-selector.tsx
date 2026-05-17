@@ -122,19 +122,19 @@ export function EmoteSelector() {
         // side). If the user has resized the dialog narrower, the
         // popover may extend past the dialog edge and be clipped by the
         // dialog's overflow-hidden — same caveat as Combobox.
-        className='lc:w-[calc(var(--laplace-chatterbox-dialog-width)-20px)]'
+        className='w-[calc(var(--laplace-chatterbox-dialog-width)-20px)]'
       >
-        <div class='lc:p-2 lc:max-h-[min(320px,40vh)] lc:overflow-y-auto'>
+        <div class='max-h-[min(320px,40vh)] overflow-y-auto p-2'>
           {packages.length === 0 ? (
-            <div class='lc:text-ga6'>表情数据加载中…</div>
+            <div class='text-ga6'>表情数据加载中…</div>
           ) : (
             packages.map(pkg => (
-              <div key={pkg.pkg_id} class='lc:mb-3 lc:last:mb-0'>
-                <div class='lc:font-bold lc:mb-1 lc:text-ga6 lc:text-[11px]'>
+              <div key={pkg.pkg_id} class='mb-3 last:mb-0'>
+                <div class='mb-1 font-bold text-[11px] text-ga6'>
                   {pkg.pkg_name}
-                  <span class='lc:font-normal lc:ml-2'>({pkg.emoticons.length})</span>
+                  <span class='ml-2 font-normal'>({pkg.emoticons.length})</span>
                 </div>
-                <div class='lc:flex lc:flex-wrap lc:gap-1'>
+                <div class='flex flex-wrap gap-1'>
                   {pkg.emoticons.map(emo => {
                     // `perm === 0` means the server has marked this emote as
                     // locked for the current user (level / 粉丝团 / 舰长 / etc.).
@@ -152,8 +152,8 @@ export function EmoteSelector() {
                       // click targets share a column. Fixed `w-[80px]`
                       // keeps the grid even regardless of name length —
                       // names longer than the cell width truncate via
-                      // the inner button's `lc:truncate`.
-                      <div key={emo.emoticon_id} class='lc:w-[60px] lc:flex lc:flex-col lc:items-center lc:gap-0.5'>
+                      // the inner button's `truncate`.
+                      <div key={emo.emoticon_id} class='flex w-15 flex-col items-center gap-0.5'>
                         <Button
                           type='button'
                           variant='outline'
@@ -165,15 +165,15 @@ export function EmoteSelector() {
                           // network. The copy path below still works on
                           // locked emotes, since copying the id is harmless.
                           onClick={() => void handleSend(emo.emoticon_unique)}
-                          className={cn('lc:relative lc:p-0.5', isLocked && 'lc:opacity-60')}
+                          className={cn('relative p-0.5', isLocked && 'opacity-60')}
                         >
-                          <img src={emo.url} alt={emo.emoji} class='lc:size-15 lc:object-contain' loading='lazy' />
+                          <img src={emo.url} alt={emo.emoji} class='size-15 object-contain' loading='lazy' />
                           {isLocked && (
                             <span
                               class={cn(
-                                'lc:absolute lc:top-px lc:right-px lc:p-0.5',
-                                'lc:text-white lc:text-[9px] lc:leading-none lc:rounded-sm',
-                                'lc:pointer-events-none lc:whitespace-nowrap'
+                                'absolute top-px right-px p-0.5',
+                                'rounded-sm text-[9px] text-white leading-none',
+                                'pointer-events-none whitespace-nowrap'
                               )}
                               // Per-instance background — the API supplies
                               // this colour per emote (event / special
@@ -196,12 +196,12 @@ export function EmoteSelector() {
                           title={`点击复制: ${emo.emoticon_unique}`}
                           onClick={() => void handleCopy(emo.emoticon_unique)}
                           class={cn(
-                            'lc:bg-transparent lc:border-none lc:p-0 lc:m-0',
-                            'lc:w-full lc:truncate',
-                            'lc:text-[10px] lc:leading-tight lc:text-inherit',
-                            'lc:cursor-pointer lc:transition',
-                            'lc:hover:text-brand',
-                            isCopied && 'lc:text-brand lc:font-bold'
+                            'm-0 border-none bg-transparent p-0',
+                            'w-full truncate',
+                            'text-[10px] text-inherit leading-tight',
+                            'cursor-pointer transition',
+                            'hover:text-brand',
+                            isCopied && 'font-bold text-brand'
                           )}
                         >
                           {isCopied ? '已复制' : emo.emoji}

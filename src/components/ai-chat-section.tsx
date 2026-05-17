@@ -35,9 +35,9 @@ import { Label } from './ui/label'
 
 // Match the existing section visual rhythm in stt-tab.tsx so this block
 // reads as a native part of the 同传 tab rather than a bolted-on extra.
-const SECTION_CLASS = 'lc:my-2 lc:pb-2 lc:border-b lc:border-b-solid lc:border-b-ga2'
-const HEADING_CLASS = 'lc:font-bold lc:mb-2'
-const ROW_CLASS = 'lc:flex lc:gap-2 lc:items-center lc:flex-wrap lc:mb-2'
+const SECTION_CLASS = 'my-2 pb-2 border-b border-b-solid border-b-ga2'
+const HEADING_CLASS = 'font-bold mb-2'
+const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
 function relativeTime(ts: number | null, now: number): string {
   if (ts === null) return '尚未生成'
@@ -80,17 +80,17 @@ function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
   const icon = isSkip ? '⏭' : entry.sent ? '✅' : '❌'
   const color = isSkip ? '#888' : entry.sent ? '#36a185' : '#f44'
   return (
-    <div class='lc:py-0.5 lc:border-b lc:border-b-solid lc:border-b-ga2 lc:text-[.9em]'>
-      <div class='lc:flex lc:gap-1 lc:items-baseline lc:flex-wrap'>
+    <div class='border-b border-b-ga2 border-b-solid py-0.5 text-[.9em]'>
+      <div class='flex flex-wrap items-baseline gap-1'>
         <span style={{ color }}>{icon}</span>
         {entry.message ? (
-          <span class='lc:flex-1 lc:break-all'>{entry.message}</span>
+          <span class='flex-1 break-all'>{entry.message}</span>
         ) : (
-          <span class='lc:flex-1 lc:break-all lc:text-ga6'>{entry.reason || '（无理由）'}</span>
+          <span class='flex-1 break-all text-ga6'>{entry.reason || '（无理由）'}</span>
         )}
       </div>
       {entry.transcript && (
-        <div class='lc:text-ga6 lc:text-[.85em] lc:break-all'>主播: {truncateForRow(entry.transcript, 80)}</div>
+        <div class='break-all text-[.85em] text-ga6'>主播: {truncateForRow(entry.transcript, 80)}</div>
       )}
     </div>
   )
@@ -143,9 +143,9 @@ export function AiChatSection() {
 
   return (
     <div class={SECTION_CLASS} data-section='ai-chat'>
-      <div class={`${HEADING_CLASS} lc:flex lc:items-center lc:gap-2 lc:flex-wrap`}>
+      <div class={`${HEADING_CLASS} flex flex-wrap items-center gap-2`}>
         <span>AI 陪聊</span>
-        <span class='lc:text-[.85em] lc:font-normal' style={{ color: pill.color }}>
+        <span class='font-normal text-[.85em]' style={{ color: pill.color }}>
           · {pill.label}
         </span>
       </div>
@@ -187,9 +187,9 @@ export function AiChatSection() {
         </Button>
       </div>
 
-      {!llmReady && enabled && <div class='lc:mb-2 lc:text-[.9em] lc:text-[#f44]'>{gap ?? 'LLM 未就绪'}</div>}
+      {!llmReady && enabled && <div class='mb-2 text-[#f44] text-[.9em]'>{gap ?? 'LLM 未就绪'}</div>}
 
-      <div class={`${ROW_CLASS} lc:text-ga6 lc:text-[.9em]`}>
+      <div class={`${ROW_CLASS} text-[.9em] text-ga6`}>
         <span>同传：{sttRunning.value ? '已启动' : '未启动'}</span>
         <span>·</span>
         <span>本次观众消息：{aiChatViewerCount.value}</span>
@@ -201,26 +201,26 @@ export function AiChatSection() {
           actionable hint so the user understands they need either the
           streamer to speak or viewers to chat. */}
       {!autoSend && (
-        <div class='lc:mb-2'>
-          <div class='lc:font-bold lc:mb-1 lc:text-[.9em]'>
+        <div class='mb-2'>
+          <div class='mb-1 font-bold text-[.9em]'>
             候选弹幕
-            {candidates.length > 0 && <span class='lc:text-ga6 lc:font-normal'> ({candidates.length})</span>}
+            {candidates.length > 0 && <span class='font-normal text-ga6'> ({candidates.length})</span>}
           </div>
           {candidates.length === 0 ? (
-            <div class='lc:text-ga4 lc:text-[.9em]'>暂无候选 — 等待主播说话或观众消息触发生成</div>
+            <div class='text-[.9em] text-ga4'>暂无候选 — 等待主播说话或观众消息触发生成</div>
           ) : (
-            <div class='lc:max-h-[180px] lc:overflow-y-auto'>
+            <div class='max-h-45 overflow-y-auto'>
               {/* Newest-first ordering: engine appends to the end (so the
                   ring buffer drops the oldest when capped), but the user
                   cares about the freshest candidate, so reverse here for
                   display. Matches the 最近决策 feed below which does the
                   same with `[...history].reverse()`. */}
               {[...candidates].reverse().map(cand => (
-                <div key={cand.id} class='lc:py-1 lc:border-b lc:border-b-solid lc:border-b-ga2'>
+                <div key={cand.id} class='border-b border-b-ga2 border-b-solid py-1'>
                   {editingId.value === cand.id ? (
-                    <div class='lc:flex lc:gap-1 lc:items-center lc:flex-wrap'>
+                    <div class='flex flex-wrap items-center gap-1'>
                       <Input
-                        className='lc:flex-1 lc:min-w-[160px]'
+                        className='min-w-40 flex-1'
                         value={editingText.value}
                         onInput={e => {
                           editingText.value = e.currentTarget.value
@@ -244,8 +244,8 @@ export function AiChatSection() {
                     </div>
                   ) : (
                     <div>
-                      <div class='lc:flex lc:gap-1 lc:items-baseline lc:flex-wrap'>
-                        <span class='lc:flex-1 lc:break-all'>{cand.decision.message}</span>
+                      <div class='flex flex-wrap items-baseline gap-1'>
+                        <span class='flex-1 break-all'>{cand.decision.message}</span>
                         <Button variant='default' size='sm' onClick={() => acceptCandidate(cand.id)}>
                           发送
                         </Button>
@@ -257,12 +257,10 @@ export function AiChatSection() {
                         </Button>
                       </div>
                       {cand.transcript && (
-                        <div class='lc:text-ga6 lc:text-[.85em] lc:break-all'>
-                          主播: {truncateForRow(cand.transcript, 80)}
-                        </div>
+                        <div class='break-all text-[.85em] text-ga6'>主播: {truncateForRow(cand.transcript, 80)}</div>
                       )}
                       {cand.decision.reason && (
-                        <div class='lc:text-ga6 lc:text-[.85em] lc:break-all'>理由: {cand.decision.reason}</div>
+                        <div class='break-all text-[.85em] text-ga6'>理由: {cand.decision.reason}</div>
                       )}
                     </div>
                   )}
@@ -278,21 +276,21 @@ export function AiChatSection() {
           mode where the section is busy with auto-sent danmaku
           showing up in the main log too) to keep the panel's
           default height in check. */}
-      <AccordionItem className='lc:mb-2'>
+      <AccordionItem className='mb-2'>
         <AccordionTrigger>
           最近决策
-          {history.length > 0 && <span class='lc:text-ga6 lc:font-normal'> ({history.length})</span>}
+          {history.length > 0 && <span class='font-normal text-ga6'> ({history.length})</span>}
         </AccordionTrigger>
         <AccordionContent>
-          <div class='lc:max-h-[160px] lc:overflow-y-auto'>
+          <div class='max-h-40 overflow-y-auto'>
             {history.length === 0 ? (
-              <div class='lc:text-ga4 lc:text-[.9em]'>暂无决策记录</div>
+              <div class='text-[.9em] text-ga4'>暂无决策记录</div>
             ) : (
               [...history].reverse().map(entry => <HistoryRow key={entry.id} entry={entry} />)
             )}
           </div>
           {history.length > 0 && (
-            <div class='lc:mt-1'>
+            <div class='mt-1'>
               <Button variant='outline' size='sm' onClick={() => clearAiChatHistory()}>
                 清空记录
               </Button>
@@ -310,7 +308,7 @@ export function AiChatSection() {
         <Label htmlFor='aiChatPrompt'>提示词：</Label>
         <PromptPicker
           id='aiChatPrompt'
-          className='lc:flex-1 lc:min-w-[120px] lc:truncate'
+          className='min-w-30 flex-1 truncate'
           prompts={llmPromptsAiChat.value}
           activeIndex={llmActivePromptAiChat.value}
           onActiveIndexChange={v => {
@@ -324,15 +322,15 @@ export function AiChatSection() {
       <AccordionItem>
         <AccordionTrigger>陪聊高级设置</AccordionTrigger>
         <AccordionContent>
-          <div class='lc:grid lc:grid-cols-2 lc:gap-2 lc:mt-1'>
-            <div class='lc:flex lc:gap-1 lc:items-center'>
+          <div class='mt-1 grid grid-cols-2 gap-2'>
+            <div class='flex items-center gap-1'>
               <Label htmlFor='aiChatMaxMsgLen'>弹幕最长</Label>
               <Input
                 id='aiChatMaxMsgLen'
                 type='number'
                 min='1'
                 max='200'
-                className='lc:w-[60px]'
+                className='w-15'
                 value={aiChatMaxMessageLength.value}
                 onInput={e => {
                   const v = parseInt(e.currentTarget.value, 10)
@@ -341,14 +339,14 @@ export function AiChatSection() {
               />
               <span>字</span>
             </div>
-            <div class='lc:flex lc:gap-1 lc:items-center'>
+            <div class='flex items-center gap-1'>
               <Label htmlFor='aiChatViewerInterval'>每</Label>
               <Input
                 id='aiChatViewerInterval'
                 type='number'
                 min='1'
                 max='1000'
-                className='lc:w-[60px]'
+                className='w-15'
                 value={aiChatViewerInterval.value}
                 onInput={e => {
                   const v = parseInt(e.currentTarget.value, 10)
@@ -357,14 +355,14 @@ export function AiChatSection() {
               />
               <span>条弹幕触发</span>
             </div>
-            <div class='lc:flex lc:gap-1 lc:items-center'>
+            <div class='flex items-center gap-1'>
               <Label htmlFor='aiChatViewerWindow'>观众窗口</Label>
               <Input
                 id='aiChatViewerWindow'
                 type='number'
                 min='1'
                 max='500'
-                className='lc:w-[60px]'
+                className='w-15'
                 value={aiChatViewerWindow.value}
                 onInput={e => {
                   const v = parseInt(e.currentTarget.value, 10)
@@ -373,7 +371,7 @@ export function AiChatSection() {
               />
               <span>条</span>
             </div>
-            <div class='lc:flex lc:gap-1 lc:items-center'>
+            <div class='flex items-center gap-1'>
               <Label htmlFor='aiChatContextMax'>上下文上限</Label>
               <Input
                 id='aiChatContextMax'
@@ -381,7 +379,7 @@ export function AiChatSection() {
                 min='256'
                 max='32768'
                 step='128'
-                className='lc:w-[80px]'
+                className='w-20'
                 value={aiChatContextMaxChars.value}
                 onInput={e => {
                   const v = parseInt(e.currentTarget.value, 10)
@@ -390,7 +388,7 @@ export function AiChatSection() {
               />
               <span>字</span>
             </div>
-            <div class='lc:flex lc:gap-1 lc:items-center'>
+            <div class='flex items-center gap-1'>
               <Label htmlFor='aiChatTemperature'>采样温度</Label>
               <Input
                 id='aiChatTemperature'
@@ -398,7 +396,7 @@ export function AiChatSection() {
                 min='0'
                 max='2'
                 step='0.1'
-                className='lc:w-[60px]'
+                className='w-15'
                 value={aiChatTemperature.value}
                 onInput={e => {
                   const v = parseFloat(e.currentTarget.value)
@@ -407,7 +405,7 @@ export function AiChatSection() {
               />
             </div>
           </div>
-          <div class='lc:mt-2 lc:text-ga6 lc:text-[.85em]'>
+          <div class='mt-2 text-[.85em] text-ga6'>
             观众触发：累积一定数量的新观众弹幕后自动调用 LLM。观众窗口：每次提示词中携带的最近 N
             条观众消息。上下文上限：发送到 LLM 的上下文（历史 + 观众）字符总数预算。
           </div>

@@ -1,31 +1,4 @@
-/* Tailwind v4 configuration for the userscript.
- *
- * Three constraints drive the choices below:
- *
- * 1. We render inside live.bilibili.com — a host page we don't own. Anything
- *    we ship in CSS could leak. So we deliberately skip `tailwindcss/preflight`
- *    (the global `*`, `button`, `input`, headings reset) — only theme tokens
- *    and utilities are imported. This is the v4 equivalent of UnoCSS's
- *    `preflights: { reset: false }`.
- *
- * 2. All utilities are namespaced with the `lc` prefix. Note the v4 syntax:
- *    `lc:flex`, `lc:hover:bg-ga3` — prefix is variant-style, not hyphen-style
- *    (UnoCSS produced `lc-flex` / `hover:lc-bg-ga3`). The colon form prevents
- *    accidental collisions with B站's own classes.
- *
- * 3. The existing components inherit B站's design tokens through CSS variables
- *    (`var(--Ga2, #eee)`, `var(--bg1, #fff)`). Defining these as theme colors
- *    in @theme means utilities like `lc:bg-bg1` track host theme changes
- *    (light/dark) automatically.
- *
- * Note: Tailwind v4 emits internal helper vars (`--tw-bg-opacity`,
- * `--tw-translate-x`, etc.) on elements that use the relevant utilities.
- * Since utilities only apply to elements we tagged with `lc:` classes,
- * these stay scoped to our DOM and don't bleed onto B站's page.
- */
-@layer theme, utilities;
-@import 'tailwindcss/theme.css' layer(theme) prefix(lc);
-@import 'tailwindcss/utilities.css' layer(utilities) prefix(lc);
+@import 'tailwindcss';
 
 @theme {
   /* B站 host CSS variables. Fallbacks match the values used inline in the
@@ -45,13 +18,4 @@
   --color-brand: #36a185;
   --color-danger: #d44;
   --color-link: #288bb8;
-}
-
-/* Tightly-scoped global CSS that can't be expressed as utility classes
- * because it has to apply to every descendant of the dialog (font-size
- * cascade). The selectors all start with our ID prefixes so this is safe
- * — it can't accidentally hit anything on B站's page outside our DOM. */
-#laplace-chatterbox-toggle,
-#laplace-chatterbox-dialog {
-  font-size: 13px;
 }

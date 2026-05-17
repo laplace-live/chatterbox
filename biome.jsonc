@@ -18,7 +18,19 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "nursery": {
+        // https://biomejs.dev/linter/rules/use-sorted-classes/
+        // https://github.com/biomejs/biome/issues/1274#issuecomment-3490774696
+        "useSortedClasses": {
+          "fix": "safe",
+          "level": "warn",
+          "options": {
+            "attributes": ["classList"],
+            "functions": ["cn", "clsx", "cva", "tw"]
+          }
+        }
+      }
     }
   },
   "assist": {
@@ -62,6 +74,14 @@
       "semicolons": "asNeeded",
       "trailingCommas": "es5",
       "arrowParentheses": "asNeeded"
+    }
+  },
+  "css": {
+    "formatter": {
+      "quoteStyle": "single"
+    },
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }

@@ -98,7 +98,7 @@ export function PromptManager({
 
   return (
     <>
-      <div class='lc:flex lc:gap-1 lc:items-center lc:flex-wrap lc:mb-2'>
+      <div class='mb-2 flex flex-wrap items-center gap-1'>
         <PromptPicker
           id={selectId}
           // Wider than the inline pickers in feature tabs because
@@ -106,7 +106,7 @@ export function PromptManager({
           // benefit from it. Default 24-grapheme cap from
           // `getPromptPreview` is preserved (no `previewGraphemes`
           // override).
-          className='lc:flex-1 lc:min-w-[160px] lc:truncate'
+          className='min-w-40 flex-1 truncate'
           prompts={prompts}
           activeIndex={activeIndex}
           onActiveIndexChange={onActiveIndexChange}
@@ -134,7 +134,7 @@ export function PromptManager({
         value={currentPrompt}
         onInput={e => updateActivePrompt(e.currentTarget.value)}
         placeholder={placeholder ?? '在这里输入提示词，第一行会作为预览名称'}
-        className={textareaClassName ?? 'lc:h-[100px]'}
+        className={textareaClassName ?? 'h-25'}
       />
     </>
   )

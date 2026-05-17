@@ -49,23 +49,22 @@ import { NativeSelect } from './ui/native-select'
 const SYNC_INTERVAL = 10 * 60 * 1000
 
 // Section visual rhythm shared across every block (heading + body + bottom
-// divider). The last section drops the divider via SECTION_NO_BORDER.
-const SECTION_CLASS = 'lc:my-2 lc:pb-4 lc:border-b lc:border-b-solid lc:border-b-ga2'
-const SECTION_NO_BORDER = 'lc:my-2 lc:pb-4'
-const HEADING_CLASS = 'lc:font-bold lc:mb-2'
-const ROW_CLASS = 'lc:flex lc:gap-2 lc:items-center lc:flex-wrap lc:mb-2'
-const HINT_CLASS = 'lc:my-2 lc:text-ga6'
-const EMPTY_CLASS = 'lc:text-ga4'
-const LINK_CLASS = 'lc:text-link lc:no-underline'
+// divider).
+const SECTION_CLASS = 'my-2 pb-4 border-b border-b-solid border-b-ga2'
+const HEADING_CLASS = 'font-bold mb-2'
+const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
+const HINT_CLASS = 'my-2 text-ga6'
+const EMPTY_CLASS = 'text-ga4'
+const LINK_CLASS = 'text-link no-underline'
 
 // Each rule / blacklist row shares the same divider-separated layout.
-const LIST_ROW_CLASS = 'lc:flex lc:items-center lc:gap-2 lc:py-[.2em] lc:border-b lc:border-b-solid lc:border-b-ga2'
-const LIST_ROW_TEXT = 'lc:flex-1 lc:break-all lc:font-mono'
-const ADD_ROW_CLASS = 'lc:flex lc:gap-1 lc:items-center lc:flex-wrap'
-const FILL_INPUT_CLASS = 'lc:flex-1 lc:min-w-[80px]'
+const LIST_ROW_CLASS = 'flex items-center gap-2 py-[.2em] border-b border-b-solid border-b-ga2'
+const LIST_ROW_TEXT = 'flex-1 break-all font-mono'
+const ADD_ROW_CLASS = 'flex gap-1 items-center flex-wrap'
+const FILL_INPUT_CLASS = 'flex-1 min-w-[80px]'
 
 // Used as the destructive-action color on `ghost` Buttons in lists.
-const DELETE_BTN_CLASS = 'lc:text-[red]'
+const DELETE_BTN_CLASS = 'text-[red]'
 
 interface RemoteKeywords {
   global?: { keywords?: Record<string, string> }
@@ -601,13 +600,13 @@ export function SettingsTab() {
 
       <div class={SECTION_CLASS}>
         <div class={ROW_CLASS}>
-          <div class='lc:font-bold'>本地全局规则</div>
+          <div class='font-bold'>本地全局规则</div>
           <Button variant='outline' size='sm' disabled={testingLocal.value} onClick={() => void testLocal()}>
             {testingLocal.value ? '测试中…' : '测试本地词库'}
           </Button>
         </div>
         <div class={HINT_CLASS}>适用于所有直播间，优先级高于云端规则</div>
-        <div class='lc:mb-2 lc:max-h-[160px] lc:overflow-y-auto'>
+        <div class='mb-2 max-h-40 overflow-y-auto'>
           {globalRules.length === 0 ? (
             <div class={EMPTY_CLASS}>暂无全局替换规则，请在下方添加</div>
           ) : (
@@ -668,7 +667,7 @@ export function SettingsTab() {
             onChange={e => {
               editingRoomId.value = e.currentTarget.value
             }}
-            className='lc:min-w-[120px]'
+            className='min-w-30'
           >
             <option value='' disabled>
               选择直播间
@@ -680,10 +679,10 @@ export function SettingsTab() {
               </option>
             ))}
           </NativeSelect>
-          <div class='lc:flex lc:gap-1 lc:items-center'>
+          <div class='flex items-center gap-1'>
             <Input
               placeholder='房间号'
-              className='lc:w-[80px]'
+              className='w-20'
               value={newRoomId.value}
               onInput={e => {
                 newRoomId.value = e.currentTarget.value.replace(/\D/g, '')
@@ -713,7 +712,7 @@ export function SettingsTab() {
 
         {editingRoomId.value ? (
           <>
-            <div class='lc:mb-2 lc:max-h-[160px] lc:overflow-y-auto'>
+            <div class='mb-2 max-h-40 overflow-y-auto'>
               {editingRules.length === 0 ? (
                 <div class={EMPTY_CLASS}>暂无此房间的替换规则，请在下方添加</div>
               ) : (
@@ -772,22 +771,22 @@ export function SettingsTab() {
       <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>
           自动融入观众黑名单
-          {blacklistEntries.length > 0 && <span class='lc:text-ga6 lc:font-normal'> ({blacklistEntries.length})</span>}
+          {blacklistEntries.length > 0 && <span class='font-normal text-ga6'> ({blacklistEntries.length})</span>}
         </div>
         <div class={HINT_CLASS}>
           名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 / 移出名单。
         </div>
-        <div class='lc:mb-2 lc:max-h-[200px] lc:overflow-y-auto'>
+        <div class='mb-2 max-h-50 overflow-y-auto'>
           {blacklistEntries.length === 0 ? (
             <div class={EMPTY_CLASS}>暂无黑名单用户</div>
           ) : (
             blacklistEntries.map(([uid, uname]) => (
               <div key={uid} class={LIST_ROW_CLASS}>
-                <span class='lc:flex-1 lc:break-all lc:flex lc:items-baseline lc:gap-2'>
+                <span class='flex flex-1 items-baseline gap-2 break-all'>
                   <a href={`https://space.bilibili.com/${uid}`} target='_blank' rel='noopener' class={LINK_CLASS}>
                     {uname || '(无昵称)'}
                   </a>
-                  <span class='lc:text-ga6 lc:text-[11px] lc:font-mono'>{uid}</span>
+                  <span class='font-mono text-[11px] text-ga6'>{uid}</span>
                 </span>
                 <Button variant='ghost' size='sm' className={DELETE_BTN_CLASS} onClick={() => removeFromBlacklist(uid)}>
                   移出
@@ -807,14 +806,14 @@ export function SettingsTab() {
         <div class={HEADING_CLASS}>
           自动融入消息黑名单
           {messageBlacklistEntries.length > 0 && (
-            <span class='lc:text-ga6 lc:font-normal'> ({messageBlacklistEntries.length})</span>
+            <span class='font-normal text-ga6'> ({messageBlacklistEntries.length})</span>
           )}
         </div>
         <div class={HINT_CLASS}>
           与名单中弹幕完全一致的消息不会计入「自动融入」统计（精确匹配）。在弹幕框点击弹幕可将该消息加入 /
           移出名单，或在下方手动添加。
         </div>
-        <div class='lc:mb-2 lc:max-h-[200px] lc:overflow-y-auto'>
+        <div class='mb-2 max-h-50 overflow-y-auto'>
           {messageBlacklistEntries.length === 0 ? (
             <div class={EMPTY_CLASS}>暂无黑名单消息</div>
           ) : (
@@ -870,7 +869,7 @@ export function SettingsTab() {
           <Input
             id='llmApiBase'
             placeholder='https://api.openai.com/v1'
-            className='lc:flex-1 lc:min-w-[150px]'
+            className='min-w-37.5 flex-1'
             value={llmApiBase.value}
             onInput={e => {
               llmApiBase.value = e.currentTarget.value
@@ -886,7 +885,7 @@ export function SettingsTab() {
             // editable / verifiable without copy-paste gymnastics.
             type={llmKeyVisible.value ? 'text' : 'password'}
             placeholder='sk-...'
-            className='lc:flex-1 lc:min-w-[150px]'
+            className='min-w-37.5 flex-1'
             value={llmApiKey.value}
             onInput={e => {
               llmApiKey.value = e.currentTarget.value
@@ -906,7 +905,7 @@ export function SettingsTab() {
           <Label htmlFor='llmModel'>模型</Label>
           <Combobox
             id='llmModel'
-            className='lc:flex-1 lc:min-w-[150px]'
+            className='min-w-37.5 flex-1'
             value={llmModel.value}
             // Map LlmModel → ComboboxOption + carry the rich payload
             // through so renderItem below can read pricing without a
@@ -945,9 +944,9 @@ export function SettingsTab() {
             // else, rather than silently falling back to placeholder.
             missingLabel={v => `${v}（已保存，不在当前列表中）`}
             renderItem={opt => (
-              <div class='lc:flex lc:flex-col lc:gap-0.5'>
-                <span class={cn('lc:break-all', opt.value === llmModel.value && 'lc:font-bold')}>{opt.value}</span>
-                {opt.priceStr && <span class='lc:text-ga6 lc:text-[.85em]'>{opt.priceStr}</span>}
+              <div class='flex flex-col gap-0.5'>
+                <span class={cn('break-all', opt.value === llmModel.value && 'font-bold')}>{opt.value}</span>
+                {opt.priceStr && <span class='text-[.85em] text-ga6'>{opt.priceStr}</span>}
               </div>
             )}
           />
@@ -964,7 +963,7 @@ export function SettingsTab() {
           // Status colour cycles through neutral / success / error driven
           // by the fetch state machine; inline color matches the remote
           // keyword sync line above so the same visual language repeats.
-          <div class='lc:text-[.9em]' style={{ color: llmFetchStatusColor.value }}>
+          <div class='text-[.9em]' style={{ color: llmFetchStatusColor.value }}>
             {llmFetchStatus.value}
           </div>
         )}
@@ -983,11 +982,11 @@ export function SettingsTab() {
             same order the LLM ultimately does. The bottom divider
             visually splits "shared baseline" from "per-feature
             instructions" so the hierarchy is obvious at a glance. */}
-        <div class='lc:mb-3 lc:pb-3 lc:border-b lc:border-b-solid lc:border-b-ga2'>
-          <Label htmlFor='llmPromptGlobal' className='lc:block lc:font-bold lc:mb-1'>
+        <div class='mb-3 border-b border-b-ga2 border-b-solid pb-3'>
+          <Label htmlFor='llmPromptGlobal' className='mb-1 block font-bold'>
             全局提示词
           </Label>
-          <div class='lc:text-ga6 lc:text-[.9em] lc:mb-1'>
+          <div class='mb-1 text-[.9em] text-ga6'>
             会拼接到下方每个功能提示词的前面。常用于设置统一的角色、语气、安全规则等。留空则只发送对应功能的提示词
           </div>
           <PromptManager
@@ -1008,11 +1007,11 @@ export function SettingsTab() {
             shape (label + hint + PromptManager) so the user can scan
             top-to-bottom and trust that "find the right block, edit the
             prompt" works the same way for every feature. */}
-        <div class='lc:mb-3'>
-          <Label htmlFor='llmPromptNormalSend' className='lc:block lc:font-bold lc:mb-1'>
+        <div class='mb-3'>
+          <Label htmlFor='llmPromptNormalSend' className='mb-1 block font-bold'>
             常规发送
           </Label>
-          <div class='lc:text-ga6 lc:text-[.9em] lc:mb-1'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写</div>
+          <div class='mb-1 text-[.9em] text-ga6'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写</div>
           <PromptManager
             selectId='llmPromptNormalSend'
             prompts={llmPromptsNormalSend.value}
@@ -1027,13 +1026,11 @@ export function SettingsTab() {
           />
         </div>
 
-        <div class='lc:mb-3'>
-          <Label htmlFor='llmPromptAutoBlend' className='lc:block lc:font-bold lc:mb-1'>
+        <div class='mb-3'>
+          <Label htmlFor='llmPromptAutoBlend' className='mb-1 block font-bold'>
             自动融入
           </Label>
-          <div class='lc:text-ga6 lc:text-[.9em] lc:mb-1'>
-            用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词
-          </div>
+          <div class='mb-1 text-[.9em] text-ga6'>用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词</div>
           <PromptManager
             selectId='llmPromptAutoBlend'
             prompts={llmPromptsAutoBlend.value}
@@ -1048,11 +1045,11 @@ export function SettingsTab() {
           />
         </div>
 
-        <div class='lc:mb-3'>
-          <Label htmlFor='llmPromptAutoSend' className='lc:block lc:font-bold lc:mb-1'>
+        <div class='mb-3'>
+          <Label htmlFor='llmPromptAutoSend' className='mb-1 block font-bold'>
             独轮车
           </Label>
-          <div class='lc:text-ga6 lc:text-[.9em] lc:mb-1'>用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写</div>
+          <div class='mb-1 text-[.9em] text-ga6'>用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写</div>
           <PromptManager
             selectId='llmPromptAutoSend'
             prompts={llmPromptsAutoSend.value}
@@ -1068,10 +1065,10 @@ export function SettingsTab() {
         </div>
 
         <div>
-          <Label htmlFor='llmPromptAiChat' className='lc:block lc:font-bold lc:mb-1'>
+          <Label htmlFor='llmPromptAiChat' className='mb-1 block font-bold'>
             AI 陪聊
           </Label>
-          <div class='lc:text-ga6 lc:text-[.9em] lc:mb-1'>
+          <div class='mb-1 text-[.9em] text-ga6'>
             用于「同传 → AI 陪聊」根据语音转录和观众弹幕生成模拟观众弹幕的角色设定与生成规则
           </div>
           <PromptManager
@@ -1091,7 +1088,7 @@ export function SettingsTab() {
 
       <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>其他设置</div>
-        <div class='lc:flex lc:flex-col lc:gap-2'>
+        <div class='flex flex-col gap-2'>
           <Checkbox
             id='danmakuDirectMode'
             checked={danmakuDirectMode.value}
@@ -1100,7 +1097,7 @@ export function SettingsTab() {
             }}
             label='+1模式（在聊天消息旁显示偷弹幕和+1按钮）'
           />
-          <div class='lc:pl-[1.5em]'>
+          <div class='flex pl-5'>
             <Checkbox
               id='danmakuDirectConfirm'
               checked={danmakuDirectConfirm.value}
@@ -1111,7 +1108,7 @@ export function SettingsTab() {
               label='+1弹幕发送前需确认（防误触）'
             />
           </div>
-          <div class='lc:pl-[1.5em]'>
+          <div class='flex pl-5'>
             <Checkbox
               id='danmakuDirectAlwaysShow'
               checked={danmakuDirectAlwaysShow.value}
@@ -1159,14 +1156,14 @@ export function SettingsTab() {
 
       <div class={SECTION_CLASS}>
         <div class={HEADING_CLASS}>日志设置</div>
-        <div class='lc:flex lc:gap-2 lc:items-center lc:flex-wrap'>
+        <div class='flex flex-wrap items-center gap-2'>
           <Label htmlFor='maxLogLines'>最大日志行数:</Label>
           <Input
             id='maxLogLines'
             type='number'
             min='1'
             max='1000'
-            className='lc:w-[80px]'
+            className='w-20'
             value={maxLogLines.value}
             onChange={e => {
               let v = parseInt(e.currentTarget.value, 10)
@@ -1175,11 +1172,11 @@ export function SettingsTab() {
               maxLogLines.value = v
             }}
           />
-          <span class='lc:text-ga6 lc:text-[.9em]'>(1-1000)</span>
+          <span class='text-[.9em] text-ga6'>(1-1000)</span>
         </div>
       </div>
 
-      <div class={SECTION_NO_BORDER}>
+      <div class={'my-2 pb-4'}>
         <div class={HEADING_CLASS}>导入 / 导出设置</div>
         <div class={HINT_CLASS}>
           导出当前所有设置（包括替换规则、自动融入黑名单等）为 JSON 文件。导入会覆盖当前所有设置。
@@ -1198,7 +1195,7 @@ export function SettingsTab() {
             ref={importFileInputRef}
             type='file'
             accept='application/json,.json'
-            class='lc:hidden'
+            class='hidden'
             onChange={e => {
               const input = e.currentTarget
               const file = input.files?.[0]

@@ -16,7 +16,7 @@ export interface AccordionProps extends AccordionBase {
 
 export function Accordion({ className, children, ...props }: AccordionProps) {
   return (
-    <div class={cn('lc:flex lc:flex-col', className)} {...props}>
+    <div class={cn('flex flex-col', className)} {...props}>
       {children}
     </div>
   )
@@ -70,20 +70,20 @@ export function AccordionTrigger({ className, children, ...props }: AccordionTri
   return (
     <summary
       class={cn(
-        'lc:flex lc:items-center lc:justify-between lc:gap-2',
-        'lc:cursor-pointer lc:select-none lc:font-bold',
-        'lc:bg-ga1 lc:px-1 lc:py-0.5 lc:rounded-sm',
+        'flex items-center justify-between gap-2',
+        'cursor-pointer select-none font-bold',
+        'rounded-sm bg-ga1 px-1 py-0.5',
         // Hide the disclosure triangle two ways: `list-style: none` for browsers
         // that respect it, and the WebKit-specific pseudo-element for Safari.
-        'lc:list-none',
-        'lc:[&::-webkit-details-marker]:hidden',
+        'list-none',
+        '[&::-webkit-details-marker]:hidden',
         className
       )}
       {...props}
     >
-      <span class='lc:flex-1 lc:min-w-0'>{children}</span>
+      <span class='min-w-0 flex-1'>{children}</span>
       <svg
-        class={'lc:shrink-0 lc:transition-transform lc:[details[open]_&]:rotate-180'}
+        class={'shrink-0 transition-transform [details[open]_&]:rotate-180'}
         xmlns='http://www.w3.org/2000/svg'
         width='12'
         height='12'
