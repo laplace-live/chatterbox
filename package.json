@@ -57,7 +57,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
-    "@laplace.live/internal": "^1.3.13",
+    "@laplace.live/internal": "^1.3.16",
     "@lhci/cli": "^0.15.1",
     "@preact/preset-vite": "^2.10.5",
     "@size-limit/file": "^12.1.0",
