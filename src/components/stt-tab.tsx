@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals'
-import type { SonioxClient } from '@soniox/speech-to-text-web'
+import type { RealtimeResult } from '@soniox/client'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
@@ -21,6 +21,7 @@ import {
   sttRunning,
   sttTranscriptBuffer,
 } from '../lib/store'
+import { useSonioxRecording } from '../lib/use-soniox-recording'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { AiChatSection } from './ai-chat-section'
 import { Button } from './ui/button'
@@ -47,12 +48,16 @@ export function SttTab() {
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
 
-  const clientRef = useRef<SonioxClient | null>(null)
   const accFinal = useRef('')
   const accTranslated = useRef('')
   const sendBuffer = useRef('')
   const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFlushing = useRef(false)
+  // Translation toggle / target captured at start() time and stashed in
+  // refs so the SDK event handlers — which fire across the lifetime of
+  // the recording — observe the values the user picked when they
+  // clicked 开始同传, not whatever they've flipped to since.
+  const translationModeRef = useRef(false)
 
   const enumerateMics = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return
@@ -103,7 +108,6 @@ export function SttTab() {
     sttRunning.value = false
     statusText.value = '未启动'
     statusColor.value = '#666'
-    clientRef.current = null
     sendBuffer.current = ''
     isFlushing.current = false
     accFinal.current = ''
@@ -172,6 +176,183 @@ export function SttTab() {
     }
   }
 
+  // Result handler — extracted from the inline `onResult` callback the
+  // legacy SDK took. Same fan-out: tokens get bucketed into final vs
+  // non-final (or translation vs non-translation), the running display
+  // gets refreshed with a 500-char sliding window, the danmaku send
+  // buffer gets fed for auto-send, and the AI-Chat transcript buffer
+  // gets the same final stream the captions show.
+  const handleResult = (result: RealtimeResult) => {
+    const translationEnabled = translationModeRef.current
+    let newFinal = ''
+    let nonFinal = ''
+    let newTransFinal = ''
+    let transNonFinal = ''
+    for (const token of result.tokens ?? []) {
+      if (translationEnabled) {
+        if (token.translation_status === 'translation') {
+          if (token.is_final) newTransFinal += token.text
+          else transNonFinal += token.text
+        }
+      } else {
+        if (token.is_final) newFinal += token.text
+        else nonFinal += token.text
+      }
+    }
+    if (translationEnabled) {
+      if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal)
+      accTranslated.current += newTransFinal
+      let display = accTranslated.current
+      if (display.length > 500) display = `…${display.slice(-500)}`
+      finalText.value = display
+      nonFinalText.value = transNonFinal
+      // Forward whichever final stream the user is listening to
+      // (translation here, original below) into the global AI
+      // Chat buffer. The engine doesn't care which it gets —
+      // it's just "the thing the streamer's audience is hearing
+      // turned into text" — so feeding the translation when
+      // it's on keeps the context aligned with what the
+      // viewers actually see in captions.
+      if (newTransFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newTransFinal
+    } else {
+      if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
+      accFinal.current += newFinal
+      let display = accFinal.current
+      if (display.length > 500) display = `…${display.slice(-500)}`
+      finalText.value = display
+      nonFinalText.value = nonFinal
+      if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
+    }
+  }
+
+  const handleEndpoint = () => {
+    if (sonioxAutoSend.value) {
+      // The translation pipeline lags the original transcript by a
+      // few hundred ms, so when we're sending translated text we
+      // delay the flush slightly to avoid clipping the tail of the
+      // current utterance before its translation lands.
+      setTimeout(() => void flushBuffer(), translationModeRef.current ? 300 : 0)
+    }
+    // Surface the endpoint to AI Chat unconditionally (independent
+    // of auto-send gating above) so the engine still fires when the
+    // user has same-tab danmaku auto-send turned off — the engine
+    // treats endpoint as a stronger "ready to generate" signal than
+    // buffer length alone.
+    sttEndpointReached.value = true
+  }
+
+  const handleFinished = async () => {
+    // Wait briefly for any in-flight flush triggered by the last
+    // result frame to settle before declaring the session over.
+    // 100 × 100 ms = 10 s upper bound; longer than that is a stuck
+    // network call and we'd rather move on than hang the UI.
+    let waitCount = 0
+    while (isFlushing.current && waitCount < 100) {
+      await new Promise(r => setTimeout(r, 100))
+      waitCount++
+    }
+    await flushBuffer()
+    appendLog('🎤 同传已停止')
+    resetState()
+  }
+
+  const handleError = (err: Error) => {
+    console.error('Soniox error:', err)
+    const message = err.message || String(err)
+    // Surface platform-typed mic errors with friendly Chinese copy.
+    // The SDK's `AudioPermissionError` / `AudioDeviceError` /
+    // `AudioUnavailableError` subclasses each set distinct codes;
+    // we sniff by name (string-compatible across loader boundaries)
+    // rather than `instanceof`, which wouldn't survive the
+    // page-context ↔ sandbox boundary the SDK is loaded across.
+    if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
+      statusText.value = '麦克风权限被拒绝'
+    } else if (err.name === 'AudioDeviceError' || err.name === 'NotFoundError') {
+      appendLog('❌ 未找到麦克风设备')
+      statusText.value = '未找到麦克风'
+    } else {
+      appendLog(`🔴 Soniox 错误：${message}`)
+      statusText.value = `错误: ${message}`
+    }
+    statusColor.value = '#f44'
+    if (state.value !== 'stopping' && state.value !== 'stopped') resetState()
+  }
+
+  const handleConnected = () => {
+    state.value = 'running'
+    sttRunning.value = true
+    const translationEnabled = translationModeRef.current
+    if (translationEnabled) {
+      const target = sonioxTranslationTarget.value
+      const langNames: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' }
+      statusText.value = `正在识别并翻译为${langNames[target] ?? target}…`
+      appendLog(`🎤 同传已启动（翻译模式：${target}）`)
+    } else {
+      statusText.value = '正在识别…'
+      appendLog('🎤 同传已启动')
+    }
+    statusColor.value = '#36a185'
+  }
+
+  // ---------------------------------------------------------------
+  // Reactive config for the recording hook
+  // ---------------------------------------------------------------
+  // Read all relevant signals here so the config object passed into
+  // the hook re-evaluates on each render — that way callback refs
+  // inside the hook always see the latest event handlers.
+  //
+  // The api key / language hints / translation target are all read
+  // at start() time anyway (captured into the hook's `cfg` snapshot),
+  // so this is just keeping the contract honest.
+  const apiKeyForHook = sonioxApiKey.value.trim()
+  const langHintsForHook = sonioxLanguageHints.value
+  const translationEnabledForHook = sonioxTranslationEnabled.value
+  const translationTargetForHook = sonioxTranslationTarget.value
+  const savedDeviceIdForHook = sonioxAudioDeviceId.value
+
+  // Validate the saved device is still present at the moment we'd use
+  // it. If it isn't, fall back to the system default (matching what
+  // <NativeSelect> renders as "系统默认") and surface the swap once.
+  // The persisted reset happens lazily inside toggle() to avoid
+  // mutating store state during render.
+  const deviceStillAvailable =
+    !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
+  const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
+
+  // Mirror the SDK's MicrophoneSource defaults (raw mono, no DSP) so
+  // that pinning a deviceId doesn't silently flip echo cancellation /
+  // noise suppression / AGC back to the browser's "true" defaults —
+  // Soniox recommends raw audio for best transcription quality.
+  const micConstraints: MediaTrackConstraints | undefined = effectiveDeviceId
+    ? {
+        deviceId: { exact: effectiveDeviceId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+        sampleRate: 16000,
+      }
+    : undefined
+
+  const recording = useSonioxRecording({
+    apiKey: apiKeyForHook,
+    // stt-rt-v4 is the current real-time model; v3 was retired by
+    // Soniox in Feb 2026 and now auto-routes to v4 anyway.
+    model: 'stt-rt-v4',
+    language_hints: langHintsForHook,
+    enable_endpoint_detection: true,
+    ...(translationEnabledForHook
+      ? { translation: { type: 'one_way' as const, target_language: translationTargetForHook } }
+      : {}),
+    ...(micConstraints ? { microphoneConstraints: micConstraints } : {}),
+    onResult: handleResult,
+    onEndpoint: handleEndpoint,
+    onError: handleError,
+    onFinished: handleFinished,
+    onConnected: handleConnected,
+  })
+
   const toggle = async () => {
     if (state.value === 'stopped') {
       const apiKey = sonioxApiKey.value.trim()
@@ -181,6 +362,13 @@ export function SttTab() {
         statusColor.value = '#f44'
         return
       }
+      // Persist the device fallback now (deferred from render to keep
+      // it out of the render path's signal-write side effects).
+      if (savedDeviceIdForHook && !deviceStillAvailable) {
+        appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
+        sonioxAudioDeviceId.value = ''
+      }
+      // Reset display and accumulators for the new session.
       finalText.value = ''
       nonFinalText.value = ''
       accFinal.current = ''
@@ -188,158 +376,28 @@ export function SttTab() {
       state.value = 'starting'
       statusText.value = '正在连接…'
       statusColor.value = '#666'
-
+      // Capture translation mode for the lifetime of this session —
+      // user toggling it mid-session shouldn't reinterpret tokens that
+      // were tagged on the way out from the server.
+      translationModeRef.current = translationEnabledForHook
+      // Pre-warm the loader. Without this the user's first 开始同传
+      // press would race the CDN fetch silently; doing it here lets
+      // us surface load errors with our usual error path.
       try {
-        // Fetch the SDK from CDN on first use; subsequent toggles
-        // hit the in-flight cache in `loadScript()` and resolve
-        // synchronously off `unsafeWindow` once it's installed.
-        const Soniox = await loadSoniox()
-        const client = new Soniox.SonioxClient({ apiKey })
-        clientRef.current = client
-
-        const hints = sonioxLanguageHints.value
-        const translationEnabled = sonioxTranslationEnabled.value
-        const translationTarget = sonioxTranslationTarget.value
-
-        // Validate the saved device is still present; auto-fall back to
-        // system default (and persist the reset) if the user unplugged it
-        // since they last picked it.
-        const savedDeviceId = sonioxAudioDeviceId.value
-        const deviceStillAvailable = !savedDeviceId || audioDevices.value.some(d => d.deviceId === savedDeviceId)
-        if (savedDeviceId && !deviceStillAvailable) {
-          appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
-          sonioxAudioDeviceId.value = ''
-        }
-        const effectiveDeviceId = deviceStillAvailable ? savedDeviceId : ''
-
-        const startConfig: Parameters<SonioxClient['start']>[0] = {
-          model: 'stt-rt-v3',
-          languageHints: hints,
-          enableEndpointDetection: true,
-          onStarted: () => {
-            state.value = 'running'
-            sttRunning.value = true
-            if (translationEnabled) {
-              const langNames: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' }
-              statusText.value = `正在识别并翻译为${langNames[translationTarget] ?? translationTarget}…`
-            } else {
-              statusText.value = '正在识别…'
-            }
-            statusColor.value = '#36a185'
-            appendLog(translationEnabled ? `🎤 同传已启动（翻译模式：${translationTarget}）` : '🎤 同传已启动')
-          },
-          onPartialResult: result => {
-            let newFinal = ''
-            let nonFinal = ''
-            let newTransFinal = ''
-            let transNonFinal = ''
-            let endpointDetected = false
-            for (const token of result.tokens ?? []) {
-              if (token.text === '<end>' && token.is_final) {
-                endpointDetected = true
-                continue
-              }
-              if (translationEnabled) {
-                if (token.translation_status === 'translation') {
-                  if (token.is_final) newTransFinal += token.text
-                  else transNonFinal += token.text
-                }
-              } else {
-                if (token.is_final) newFinal += token.text
-                else nonFinal += token.text
-              }
-            }
-            if (translationEnabled) {
-              if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal)
-              accTranslated.current += newTransFinal
-              let display = accTranslated.current
-              if (display.length > 500) display = `…${display.slice(-500)}`
-              finalText.value = display
-              nonFinalText.value = transNonFinal
-              // Forward whichever final stream the user is listening to
-              // (translation here, original below) into the global AI
-              // Chat buffer. The engine doesn't care which it gets —
-              // it's just "the thing the streamer's audience is hearing
-              // turned into text" — so feeding the translation when
-              // it's on keeps the context aligned with what the
-              // viewers actually see in captions.
-              if (newTransFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newTransFinal
-            } else {
-              if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
-              accFinal.current += newFinal
-              let display = accFinal.current
-              if (display.length > 500) display = `…${display.slice(-500)}`
-              finalText.value = display
-              nonFinalText.value = nonFinal
-              if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
-            }
-            if (endpointDetected && sonioxAutoSend.value) {
-              setTimeout(() => void flushBuffer(), translationEnabled ? 300 : 0)
-            }
-            // Surface Soniox's `<end>` endpoint marker to the AI Chat
-            // engine — its debounce treats endpoint as a stronger
-            // "ready to generate" signal than buffer length alone.
-            // Set unconditionally on endpoint (independent of auto-send
-            // gating above) so the engine still fires when the user
-            // has the same-tab danmaku auto-send turned off.
-            if (endpointDetected) sttEndpointReached.value = true
-          },
-          onFinished: async () => {
-            let waitCount = 0
-            while (isFlushing.current && waitCount < 100) {
-              await new Promise(r => setTimeout(r, 100))
-              waitCount++
-            }
-            await flushBuffer()
-            appendLog('🎤 同传已停止')
-            resetState()
-          },
-          onError: (_status, message) => {
-            console.error('Soniox error:', message)
-            appendLog(`🔴 Soniox 错误：${message}`)
-            statusText.value = `错误: ${message}`
-            statusColor.value = '#f44'
-            if (state.value !== 'stopping' && state.value !== 'stopped') resetState()
-          },
-        }
-        if (translationEnabled) {
-          startConfig.translation = { type: 'one_way', target_language: translationTarget }
-        }
-        if (effectiveDeviceId) {
-          // Mirror the SDK's internal defaults (raw mono, no DSP) so that
-          // adding a deviceId doesn't silently flip echo cancellation /
-          // noise suppression / AGC back to the browser's "true" defaults
-          // — Soniox recommends raw audio for best transcription quality.
-          startConfig.audioConstraints = {
-            deviceId: { exact: effectiveDeviceId },
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 1,
-            sampleRate: 44100,
-          }
-        }
-        client.start(startConfig)
+        await loadSoniox()
       } catch (err) {
-        console.error('Soniox startup error:', err)
         const message = err instanceof Error ? err.message : String(err)
-        if (err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
-          appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
-          statusText.value = '麦克风权限被拒绝'
-        } else if (err instanceof Error && err.name === 'NotFoundError') {
-          appendLog('❌ 未找到麦克风设备')
-          statusText.value = '未找到麦克风'
-        } else {
-          appendLog(`🔴 启动同传失败：${message}`)
-          statusText.value = `启动失败: ${message}`
-        }
+        appendLog(`🔴 加载 Soniox SDK 失败：${message}`)
+        statusText.value = `加载失败: ${message}`
         statusColor.value = '#f44'
         resetState()
+        return
       }
+      recording.start()
     } else if (state.value === 'running') {
       state.value = 'stopping'
       statusText.value = '正在停止…'
-      if (clientRef.current) clientRef.current.stop()
+      void recording.stop()
     }
   }
 

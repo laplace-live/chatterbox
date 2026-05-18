@@ -76,6 +76,7 @@ import type Mpegts from 'mpegts.js'
 
 import { unsafeWindow } from '$'
 import { ensureRoomId } from './api'
+import { MPEGTS_CDN_URL } from './const'
 import { loadScript } from './load-script'
 import { appendLog } from './log'
 import { audioOnlyEnabled } from './store'
@@ -83,14 +84,6 @@ import { audioOnlyEnabled } from './store'
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
 const AUDIO_EL_ID = 'lc-audio-only-stream'
-
-// Pinned mpegts.js version. Locked rather than `latest` so a breaking
-// upstream change doesn't silently land in user browsers on next CDN
-// cache miss. Bump deliberately when validating a new version, and
-// keep it in sync with the version range in `package.json` (installed
-// purely for `import type Mpegts from 'mpegts.js'`) so the locally-
-// checked types stay accurate against the runtime UMD we fetch.
-const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js'
 
 // Stream URLs from getRoomPlayInfo are signed with ~1 hour expiry. We
 // refresh well before that window closes; 50 minutes matches the

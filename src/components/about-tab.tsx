@@ -48,10 +48,9 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: 'Soniox SDK',
     host: 'unpkg.com',
-    url: 'https://github.com/soniox/speech-to-text-web',
+    url: 'https://github.com/soniox/soniox-js',
     trigger: '首次启动同传时',
-    description:
-      '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/speech-to-text-web)，仅在首次点击「开始同传」时下载。',
+    description: '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/client)，仅在首次点击「开始同传」时下载。',
   },
   {
     name: 'mpegts.js',
@@ -109,11 +108,11 @@ export function AboutTab() {
                   service.name
                 )}
               </div>
-              <div class='mb-1 font-mono text-ga6 text-[.9em]'>{service.host}</div>
+              <div class='mb-1 font-mono text-[.9em] text-ga6'>{service.host}</div>
               <div class='mb-1 text-[.9em]'>
                 <span class='text-brand'>触发条件:</span> {service.trigger}
               </div>
-              <div class='text-ga6 text-[.9em]'>{service.description}</div>
+              <div class='text-[.9em] text-ga6'>{service.description}</div>
             </div>
           ))}
         </div>

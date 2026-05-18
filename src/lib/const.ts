@@ -31,6 +31,22 @@ export const PROJECT_NAME = 'LAPLACE Chatterbox'
 export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
 
 /**
+ * Soniox real-time speech-to-text SDK. ESM-only package; we point
+ * at the package's own `dist/index.mjs` (fully self-contained —
+ * zero bare-specifier imports verified against the published
+ * artifact) so no transitive-dep waterfall and no third-party CDN
+ * rewriter in the loop.
+ */
+export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.0.2/dist/index.mjs'
+
+/**
+ * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
+ * to `window.mpegts` at runtime, picked up via the shared
+ * `loadScript()` probe path.
+ */
+export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js'
+
+/**
  * API endpoint URLs used by the script.
  */
 export const BASE_URL = {
