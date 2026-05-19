@@ -37,7 +37,7 @@ export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
  * artifact) so no transitive-dep waterfall and no third-party CDN
  * rewriter in the loop.
  */
-export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.0.2/dist/index.mjs'
+export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.1.0/dist/index.mjs'
 
 /**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
