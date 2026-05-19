@@ -107,7 +107,7 @@ function AutoSeekMetrics(props: AutoSeekMetricsProps) {
     <div class='rounded border border-ga2 border-solid bg-ga1 p-2'>
       <div class='flex flex-wrap gap-x-4 gap-y-1'>
         <div>
-          缓当前延迟 <span style={{ color: bufferColor, fontWeight: 600 }}>{bufferLen.toFixed(2)} 秒</span>
+          当前延迟 <span style={{ color: bufferColor, fontWeight: 600 }}>{bufferLen.toFixed(2)} 秒</span>
           <span class='text-ga6'>
             {' '}
             (目标 {threshold.toFixed(2)}，差 {delta >= 0 ? '+' : ''}
