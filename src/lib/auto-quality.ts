@@ -1,50 +1,76 @@
 /**
- * Auto-quality (自动原画): on page load, wait for bilibili's `livePlayer`
- * to exist and switch it to 原画 (qn=10000) if it landed on a lower
- * quality. One-shot per page load — does NOT keep enforcing across the
- * session, so a user who manually picks 720p later stays on 720p.
+ * Auto-quality (自动原画/最高画质): on page load, wait for bilibili's
+ * `livePlayer` to exist and switch it to the highest available quality.
+ * One-shot per page load — does NOT keep enforcing across the session,
+ * so a user who manually picks 720p later stays on 720p.
  *
  * Credits / prior art:
- *   The `switchQuality('10000')` mechanism is adapted from c-basalt's
+ *   The `switchQuality(...)` mechanism is adapted from c-basalt's
  *   `Bilibili 直播自动追帧` userscript
  *   (https://github.com/c-basalt/bilibili-live-seeker-script, GPL-3.0).
  *   We intentionally implement only the minimum slice — no `qn=0→10000`
  *   URL rewrite, no `__NEPTUNE_IS_MY_WAIFU__` SSR interception, no
- *   `getPlayerInfo.qualityCandidates` patch — because the active
+ *   `getPlayerInfo.qualityCandidates` filter patch — because the active
  *   `switchQuality` call alone catches most "started on lower quality"
  *   cases without taking on the document-start hook complexity those
  *   other tricks require.
  *
+ * Strategy — event-driven, not interval-polled:
+ *
+ *   `window.livePlayer` is set by bilibili's player bundle as part of
+ *   initialization, alongside mounting `#live-player video` in the DOM.
+ *   Rather than polling for `livePlayer` to appear (the upstream's
+ *   approach, ~120 wakeups across 60s), we watch the document via a
+ *   `MutationObserver` and react when `#live-player video` mounts —
+ *   that's a tight proxy for "the player is ready". This mirrors the
+ *   element-swap observer `lib/auto-seek.ts` uses, and means a tab
+ *   that's never going to mount a player (e.g. user opens a deleted
+ *   room) sits idle instead of grinding through a polling loop.
+ *
+ *   In the rare case where `<video>` mounts but `getPlayerInfo()` /
+ *   `qualityCandidates` aren't populated yet (the JS state lags the
+ *   DOM mount by a few frames), we fall back to a few short
+ *   setTimeout retries rather than restarting a full poll loop.
+ *
  * Audio-only interaction:
  *
- * The 仅音频 module calls `livePlayer.stopPlayback()` and runs a 1.5s
- * watchdog that re-stops the player whenever someone (us, BLTH, etc.)
- * re-engages the HLS pull. If we called `switchQuality()` while
- * audio-only is active, we'd ping-pong against that watchdog and waste
- * bandwidth. So:
+ *   The 仅音频 module calls `livePlayer.stopPlayback()` and runs a 1.5s
+ *   watchdog that re-stops the player whenever someone (us, BLTH, etc.)
+ *   re-engages the HLS pull. If we called `switchQuality()` while
+ *   audio-only is active, we'd ping-pong against that watchdog and
+ *   waste bandwidth. So:
  *
- * 1. The pre-flight check skips entirely if `audioOnlyEnabled` is true
- *    at the moment the player becomes available.
- * 2. The mode is one-shot: we don't re-fire later if the user toggles
- *    audio-only off mid-session. The expectation is "set quality on
- *    page load, then leave alone" — matching how the user's manual
- *    quality choice survives subsequent toggles.
+ *   1. The pre-flight check skips entirely if `audioOnlyEnabled` is
+ *      true at the moment the player becomes available.
+ *   2. The mode is one-shot: we don't re-fire later if the user toggles
+ *      audio-only off mid-session. The expectation is "set quality on
+ *      page load, then leave alone" — matching how the user's manual
+ *      quality choice survives subsequent toggles.
  */
 
 import { unsafeWindow } from '$'
 import { appendLog } from './log'
 import { audioOnlyEnabled, autoQualityEnabled } from './store'
 
-/** How long to keep polling for `livePlayer` before giving up. Bilibili's
- *  player typically mounts within 2-5s of page load even on a cold tab,
- *  so 60s is generous — covers slow networks and the SPA round-trip
- *  for a deep-linked room URL. */
-const PLAYER_WAIT_TIMEOUT_MS = 60_000
+/** Short retry delay for the rare race where `<video>` is in the DOM
+ *  but `livePlayer.getPlayerInfo()` hasn't been populated yet. The JS
+ *  state usually catches up within a frame or two; 200ms covers slow
+ *  initialisation without dragging out the user-visible delay. */
+const STATE_LAG_RETRY_MS = 200
 
-/** Poll cadence while waiting for `livePlayer`. 500ms matches c-basalt's
- *  upstream and is low enough to feel instantaneous on a fast load
- *  while not burning CPU on slow loads. */
-const PLAYER_POLL_INTERVAL_MS = 500
+/** Maximum retries for the state-lag race. 5 × 200ms = 1s of grace
+ *  before we conclude that this isn't a transient race (e.g. the room
+ *  is off-air / private) and stop nudging. The observer stays
+ *  installed in case a fresh mount fires later. */
+const MAX_STATE_LAG_RETRIES = 10
+
+/** CSS selector for the live player's `<video>` element. Used as both
+ *  the player-ready proxy (this mounting means bilibili's player bundle
+ *  has initialised far enough that `window.livePlayer` should be
+ *  available) and as the cheap filter inside our MutationObserver
+ *  callback. Hoisted to a single constant so a future bilibili DOM
+ *  shake-up only needs to be updated here. */
+const PLAYER_VIDEO_SELECTOR = '#live-player video'
 
 /**
  * Minimal shape of `window.livePlayer` we depend on. We deliberately
@@ -81,25 +107,41 @@ function getLivePlayer(): LivePlayerLike | null {
   return candidate ?? null
 }
 
-let pollTimer: ReturnType<typeof setTimeout> | null = null
+let mountObserver: MutationObserver | null = null
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let retryCount = 0
 let started = false
+/** Set true once `tryApply()` has returned 'done' (success OR audio-
+ *  only skip). All subsequent observer fires + retries no-op. */
+let done = false
 
 /**
- * Attempt the quality switch. Returns true iff we either successfully
- * fired `switchQuality` or determined no switch was needed (already at
- * 原画) — i.e. the polling loop can stop. Returns false if `livePlayer`
- * isn't ready yet so the caller should keep polling.
+ * Outcome of one attempt at applying the quality switch. Three states
+ * because the caller needs to distinguish "transient — try again" from
+ * "we did our job, stop" from "player not mounted yet, sit on the
+ * observer".
  */
-function tryApply(): boolean {
-  const player = getLivePlayer()
-  if (!player?.getPlayerInfo || !player.switchQuality) return false
+type ApplyResult =
+  | 'done' // Switched OR already at top OR audio-only — stop.
+  | 'wait-state' // <video> exists but livePlayer JS state lags — short retry.
+  | 'wait-mount' // <video> not in DOM yet — keep waiting on the observer.
 
+function tryApply(): ApplyResult {
   // Don't fight the audio-only watchdog. If audio-only is engaged at
   // the moment we'd act, just declare success — we don't want to fire
   // later when it disengages because by then the user has been
   // explicitly using the player and might have manually set a quality.
-  if (audioOnlyEnabled.value) {
-    return true
+  if (audioOnlyEnabled.value) return 'done'
+
+  // The `<video>` mount is what triggers us via the observer; if it's
+  // gone the player isn't ready in any sense and there's nothing to do.
+  if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return 'wait-mount'
+
+  const player = getLivePlayer()
+  if (!player?.getPlayerInfo || !player.switchQuality) {
+    // `<video>` is in the DOM but `livePlayer` isn't installed yet —
+    // the JS-state-lag race. Short retry handles this.
+    return 'wait-state'
   }
 
   let info: {
@@ -110,20 +152,19 @@ function tryApply(): boolean {
     info = player.getPlayerInfo() ?? null
   } catch (err) {
     console.warn('[auto-quality] getPlayerInfo threw:', err)
-    return false
+    return 'wait-state'
   }
-  if (!info) return false
+  if (!info) return 'wait-state'
 
   const current = Number(info.quality)
-  if (!Number.isFinite(current)) return false
+  if (!Number.isFinite(current)) return 'wait-state'
 
-  // Wait for the candidate list to populate. Empty candidates means
-  // the player hasn't finished negotiating with the server; trying to
-  // switch now would either no-op or fall back to whatever default
-  // bilibili chose. Returning false here keeps the polling loop alive
-  // so we retry on the next tick.
   const candidates = info.qualityCandidates ?? []
-  if (candidates.length === 0) return false
+  if (candidates.length === 0) {
+    // Player object exists but hasn't finished negotiating with the
+    // server yet — the menu's just empty. Try again shortly.
+    return 'wait-state'
+  }
 
   // Pick the highest qn the player advertises. This is the menu's top
   // entry — historically 原画 (qn=10000) but now 高码率 (qn=30000) on rooms
@@ -134,7 +175,7 @@ function tryApply(): boolean {
     const n = Number(c.qn)
     if (Number.isFinite(n) && n > maxQn) maxQn = n
   }
-  if (maxQn <= current) return true // already at the top, nothing to do
+  if (maxQn <= current) return 'done' // already at the top, nothing to do
 
   try {
     player.switchQuality(String(maxQn))
@@ -144,20 +185,101 @@ function tryApply(): boolean {
     console.warn('[auto-quality] switchQuality failed:', err)
     appendLog(`⚠️ 切换最高画质失败：${msg}`)
   }
-  return true
+  return 'done'
 }
 
-function clearPoll(): void {
-  if (pollTimer !== null) {
-    clearTimeout(pollTimer)
-    pollTimer = null
+function clearRetry(): void {
+  if (retryTimer !== null) {
+    clearTimeout(retryTimer)
+    retryTimer = null
   }
 }
 
+function destroyObserver(): void {
+  mountObserver?.disconnect()
+  mountObserver = null
+}
+
+function shutdown(): void {
+  done = true
+  destroyObserver()
+  clearRetry()
+}
+
 /**
- * Public entrypoint. Wired up once from `app.tsx` (or `main.tsx`) on
- * the live host. Idempotent — repeat calls do nothing once the one-shot
- * has fired.
+ * Try a switch and route the outcome through the observer / retry
+ * state machine. Called from three places: the cold-start probe in
+ * `ensureMountObserver`, the `MutationObserver` callback, and the
+ * state-lag setTimeout.
+ */
+function attempt(): void {
+  if (done) return
+  const result = tryApply()
+  if (result === 'done') {
+    shutdown()
+    return
+  }
+  if (result === 'wait-state') {
+    // `<video>` is up but JS state isn't ready. Schedule a short
+    // retry rather than waiting for the next mutation, which might
+    // never come in this transient window. The observer stays
+    // installed so a later full re-mount can also fire us.
+    if (retryTimer !== null) return // already scheduled
+    if (retryCount >= MAX_STATE_LAG_RETRIES) {
+      // Likely a not-actually-streaming room (off-air / private).
+      // Stop retrying so we don't keep nudging the bilibili player
+      // module. The observer stays alive so a later mutation (e.g.
+      // room goes live) can reset things via the mount path.
+      return
+    }
+    retryCount++
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      attempt()
+    }, STATE_LAG_RETRY_MS)
+  }
+  // result === 'wait-mount' is implicit: just let the observer keep
+  // listening for the next mutation.
+}
+
+function ensureMountObserver(): void {
+  if (mountObserver) return
+  // Reset retry counter on each fresh observer install. The "wait-
+  // state" path increments it per scheduled retry until success or
+  // the max; a subsequent observer-driven mount also resets it.
+  retryCount = 0
+  const onMutation = (): void => {
+    if (done) {
+      destroyObserver()
+      return
+    }
+    // Cheap query: most mutations on bilibili pages don't touch
+    // `#live-player video`, so this returns null fast and we no-op.
+    const v = document.querySelector(PLAYER_VIDEO_SELECTOR)
+    if (!v) return
+    // Reset retry counter on each fresh mount — a new `<video>`
+    // appearing means a new state-lag window is acceptable.
+    retryCount = 0
+    attempt()
+  }
+  mountObserver = new MutationObserver(onMutation)
+  // Observe document-wide so we catch the mount regardless of where
+  // bilibili's SPA renders the player. `childList + subtree` is the
+  // cheapest tier that catches added nodes anywhere in the tree; the
+  // actual filter is the `querySelector` inside the callback (also
+  // cheap — no live `<video>` element on most pages until the player
+  // mounts).
+  mountObserver.observe(document.documentElement, { childList: true, subtree: true })
+  // Cold-start probe: in case the `<video>` is already in the DOM by
+  // the time we get wired up (e.g. SPA navigation within the same
+  // tab), run one attempt immediately rather than waiting for the
+  // next unrelated mutation to fire the callback.
+  onMutation()
+}
+
+/**
+ * Public entrypoint. Wired up once from `app.tsx` on the live host.
+ * Idempotent — repeat calls do nothing once the one-shot has fired.
  *
  * Reads `autoQualityEnabled` at start time, NOT reactively, because the
  * feature is conceptually "on page load, do this thing once". Toggling
@@ -168,24 +290,14 @@ export function startAutoQuality(): void {
   if (started) return
   started = true
   if (!autoQualityEnabled.value) return
-
-  const deadline = Date.now() + PLAYER_WAIT_TIMEOUT_MS
-  const poll = (): void => {
-    pollTimer = null
-    if (tryApply()) return
-    if (Date.now() >= deadline) {
-      console.warn('[auto-quality] timed out waiting for livePlayer')
-      return
-    }
-    pollTimer = setTimeout(poll, PLAYER_POLL_INTERVAL_MS)
-  }
-  poll()
+  ensureMountObserver()
 }
 
 export function stopAutoQuality(): void {
-  clearPoll()
-  // `started` deliberately NOT reset: the one-shot semantics mean a
-  // remount (e.g. HMR) should NOT re-fire the switch. A real page
-  // reload resets module state anyway, which is the correct way to
-  // re-arm this feature.
+  destroyObserver()
+  clearRetry()
+  // `started` and `done` deliberately NOT reset: the one-shot
+  // semantics mean a remount (e.g. HMR) should NOT re-fire the
+  // switch. A real page reload resets module state anyway, which is
+  // the correct way to re-arm this feature.
 }
