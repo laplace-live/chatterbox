@@ -12,7 +12,7 @@ const { reset: resetGmStore } = installGmStoreMock()
 const { _setGmXhrForTests } = await import('../src/lib/gm-fetch')
 const { _resetTrendingMemesForTests, buildTrendingMap, lookupTrendingMatch, refreshTrendingMemes, trendingMemeKeys } =
   await import('../src/lib/meme-trending')
-const { radarBackendUrlOverride } = await import('../src/lib/store-radar')
+const { radarBackendUrlOverride, radarConsultEnabled } = await import('../src/lib/store-radar')
 
 interface CapturedReq {
   url: string
@@ -51,6 +51,11 @@ beforeEach(() => {
   captured.length = 0
   responder = () => ({ status: 200, body: '{"items": []}' })
   radarBackendUrlOverride.value = ''
+  // refreshTrendingMemes is now gated by `radarConsultEnabled` (default OFF
+  // for user-privacy opt-in). These tests exercise the *happy* network path
+  // and need the gate open. A dedicated consent-off test below covers the
+  // gated-out branch.
+  radarConsultEnabled.value = true
   _resetTrendingMemesForTests()
 
   _setGmXhrForTests(((opts: XhrOpts) => {
@@ -168,6 +173,60 @@ describe('buildTrendingMap (pure)', () => {
     expect(map.size).toBe(1)
     expect(map.get('冲')?.rank).toBe(1)
     expect(map.get('冲')?.clusterId).toBe(1)
+  })
+})
+
+describe('refreshTrendingMemes — radarConsultEnabled gate (default OFF)', () => {
+  test('consent off: short-circuits with no network and empty signal', async () => {
+    radarConsultEnabled.value = false
+    responder = () => ({
+      status: 200,
+      body: JSON.stringify({
+        items: [
+          {
+            id: 9,
+            representativeText: '冲',
+            memberCount: 1,
+            distinctRoomCount: 1,
+            distinctUidCount: 1,
+            heatScore: 1,
+            slopeScore: 1,
+            firstSeenTs: 0,
+            lastSeenTs: 0,
+            status: 'active',
+          },
+        ],
+      }),
+    })
+    await refreshTrendingMemes()
+    expect(captured.length).toBe(0)
+    expect(trendingMemeKeys.value.size).toBe(0)
+  })
+
+  test('toggle-off clears already-loaded badges immediately', async () => {
+    responder = () => ({
+      status: 200,
+      body: JSON.stringify({
+        items: [
+          {
+            id: 11,
+            representativeText: '冲',
+            memberCount: 1,
+            distinctRoomCount: 1,
+            distinctUidCount: 1,
+            heatScore: 1,
+            slopeScore: 1,
+            firstSeenTs: 0,
+            lastSeenTs: 0,
+            status: 'active',
+          },
+        ],
+      }),
+    })
+    await refreshTrendingMemes()
+    expect(trendingMemeKeys.value.size).toBe(1)
+    radarConsultEnabled.value = false
+    expect(trendingMemeKeys.value.size).toBe(0)
   })
 })
 

@@ -94,6 +94,17 @@ describe('sanitizeKeywordsRecord', () => {
     expect(sanitizeKeywordsRecord({ ok: overVal }, 100)).toEqual({})
   })
 
+  test('non-string `to` value is dropped (kills CondExpr false on L25)', () => {
+    // Use values whose `.length` access is benign (not null/undefined) so
+    // the mutated path doesn't crash — we want to observe the *behavior*
+    // change (entry kept vs dropped), not a throw. The CondExpr-false
+    // mutant on `typeof to !== 'string'` lets non-string `to` through;
+    // a strict-equality assertion below catches the leak.
+    expect(sanitizeKeywordsRecord({ a: 42 as unknown as string }, 100)).toEqual({})
+    expect(sanitizeKeywordsRecord({ a: true as unknown as string }, 100)).toEqual({})
+    expect(sanitizeKeywordsRecord({ a: {} as unknown as string }, 100)).toEqual({})
+  })
+
   test('non-string TO does not crash on .length and the entry is dropped', () => {
     // Mutation-test trap: the `typeof to !== 'string'` half of the L25 guard
     // is what prevents the next line's `to.length` from blowing up on `null`
@@ -192,6 +203,37 @@ describe('sanitizeRemoteKeywords', () => {
     expect(sanitizeRemoteKeywords({ rooms: 'string' })).toEqual({})
     expect(sanitizeRemoteKeywords({ rooms: { not: 'an array' } })).toEqual({})
     expect(sanitizeRemoteKeywords({ rooms: 42 })).toEqual({})
+  })
+
+  test('null/undefined entries in rooms[] are dropped without crashing (locks L52 guard)', () => {
+    // L52 CondExpr-false mutant removes the `typeof entry !== 'object' ||
+    // entry === null` guard → `null.room` throws. The existing
+    // `drops malformed room entries silently` test should catch this via
+    // an implicit throw, but pin it explicitly via not.toThrow + a
+    // strict-equality check so the regression is unambiguous.
+    expect(() => sanitizeRemoteKeywords({ rooms: [null, undefined, { room: '101' }] })).not.toThrow()
+    const out = sanitizeRemoteKeywords({ rooms: [null, undefined, { room: '101' }] })
+    expect(out.rooms).toEqual([{ room: '101', keywords: {} }])
+  })
+
+  test('room entry with `room: undefined` is dropped, not coerced to a sentinel string (kills L54 StringLiteral)', () => {
+    // L54 mutates `roomEntry.room ?? ''` → `roomEntry.room ?? "Stryker was here!"`.
+    // For room=undefined, original yields roomId='' → !roomId truthy → dropped.
+    // Mutated yields roomId='Stryker was here!' → entry pushed with that as id.
+    const out = sanitizeRemoteKeywords({
+      rooms: [{ room: undefined as unknown as string, keywords: { a: 'b' } }],
+    })
+    expect(out.rooms).toEqual([])
+  })
+
+  test('room entry with `room` field missing entirely is dropped (same StringLiteral kill via undefined access)', () => {
+    // `roomEntry.room` is `undefined` when the property is absent — same
+    // codepath as the explicit `room: undefined` test above but documents
+    // the realistic shape: a malformed JSON row from the upstream CDN.
+    const out = sanitizeRemoteKeywords({
+      rooms: [{ keywords: { a: 'b' } } as unknown as { room: string }],
+    })
+    expect(out.rooms).toEqual([])
   })
 
   test('top-level non-object/null/array input returns {} without throwing', () => {

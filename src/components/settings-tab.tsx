@@ -1,5 +1,3 @@
-import { useSignal } from '@preact/signals'
-
 import { debugLogVisible, maxLogLines } from '../lib/log'
 import {
   llmActivePromptAutoBlend,
@@ -23,13 +21,7 @@ import { DanmakuDirectSection } from './settings/danmaku-direct-section'
 import { LayoutSection } from './settings/layout-section'
 import { MedalCheckSection } from './settings/medal-check-section'
 import { RadarSection } from './settings/radar-section'
-import {
-  CloudReplacementSection,
-  LocalGlobalReplacementSection,
-  LocalRoomReplacementSection,
-} from './settings/replacement-section'
 import { matchesSearchQuery } from './settings/search'
-import { ShadowObservationSection } from './settings/shadow-observation-section'
 
 function GroupHeading({ children, query }: { children: string; query: string }) {
   if (query) return null
@@ -62,29 +54,18 @@ function GroupHeading({ children, query }: { children: string; query: string }) 
  * 的直觉。
  */
 export function SettingsTab() {
-  const settingsSearch = useSignal('')
-  const query = settingsSearch.value.trim().toLowerCase()
-  // 搜索激活时，所有 section 都参与匹配（无视高级开关）。
-  const showAdvanced = settingsAdvancedVisible.value || query.length > 0
+  const showAdvanced = settingsAdvancedVisible.value
+
+  // Jobs 式 #10: 搜索框已删除——"需要搜索"本身就是设置过多的征兆。
+  // 替换规则的 5 个 section 已经在 #7 砍掉,剩下的设置走"5 常用 + 10 高级"
+  // 两级分类,通过 GroupHeading 锚定语义,通过<details>折叠减压。空 query
+  // 一律命中(`matchesSearchQuery` 早返 true),所有 section 接受 query=''
+  // 默认值。子 section 内部仍保留 KEYWORDS 常量是 forward-compat:若未来
+  // 重新引入搜索,只需在这里挂一个输入框就够。
+  const query = ''
 
   return (
     <>
-      <div className='cb-section cb-stack' style={{ margin: '.5em 0', gap: '.35em' }}>
-        <label htmlFor='settingsSearch' className='cb-label'>
-          搜索设置
-        </label>
-        <input
-          id='settingsSearch'
-          type='search'
-          value={settingsSearch.value}
-          placeholder='输入关键词（可空格分隔多词），例如：表情、粉丝牌、CSS、API key、备份'
-          style={{ width: '100%' }}
-          onInput={e => {
-            settingsSearch.value = e.currentTarget.value
-          }}
-        />
-      </div>
-
       <GroupHeading query={query}>常用</GroupHeading>
       <CustomChatSection query={query} />
       <DanmakuDirectSection query={query} />
@@ -97,7 +78,7 @@ export function SettingsTab() {
             style={{ margin: '.5em 0', paddingBottom: '1em', borderBottom: '1px solid var(--Ga2, #eee)' }}
           >
             <div className='cb-heading' style={{ fontWeight: 'bold', marginBottom: '.5em' }}>
-              表情（复制后可在独轮车或常规发送中直接发送）
+              表情（复制后可在独轮车或手动发送中直接发送）
             </div>
             <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
               <EmoteIds />
@@ -126,43 +107,52 @@ export function SettingsTab() {
             aria-expanded={false}
             aria-controls='cb-advanced-settings'
           >
-            ▸ 显示高级设置（替换规则 / LLM / 粉丝牌巡检 / 雷达 / 日志…）
+            ▸ 显示高级设置（LLM / 粉丝牌巡检 / 雷达 / 日志…）
           </button>
           <div className='cb-note' style={{ color: '#999', fontSize: '0.8em', marginTop: '.25em' }}>
-            常用 5 项已展开；剩下 10+ 项大多数用户不需要碰。
+            常用 5 项已展开；剩下大多数用户不需要碰。
           </div>
         </div>
       )}
 
       {showAdvanced && (
         <div id='cb-advanced-settings'>
-          {!query && (
-            <div style={{ margin: '1.25em 0 .5em' }}>
-              <button
-                type='button'
-                className='cb-disclosure-link'
-                onClick={() => {
-                  settingsAdvancedVisible.value = false
-                }}
-                aria-expanded={true}
-                aria-controls='cb-advanced-settings'
-              >
-                ▾ 收起高级设置
-              </button>
-            </div>
-          )}
+          <div style={{ margin: '1.25em 0 .5em' }}>
+            <button
+              type='button'
+              className='cb-disclosure-link'
+              onClick={() => {
+                settingsAdvancedVisible.value = false
+              }}
+              aria-expanded={true}
+              aria-controls='cb-advanced-settings'
+            >
+              ▾ 收起高级设置
+            </button>
+          </div>
 
           <GroupHeading query={query}>智能识别</GroupHeading>
           <ChatfilterSection query={query} />
 
-          <GroupHeading query={query}>替换规则</GroupHeading>
-          <CloudReplacementSection query={query} />
-          <LocalGlobalReplacementSection query={query} />
-          <LocalRoomReplacementSection query={query} />
-          <ShadowObservationSection query={query} />
+          {/*
+           * 「替换规则」section 组已删除(2026 Jobs 式审计):云端规则、本地全局
+           * 规则、本地房间规则、影子屏蔽观察列表 5 个 section 全部从设置面板移除。
+           * 用户从来不应该思考"规则有几层、我在哪一层加"——这是数据库设计师的
+           * 心智,不是用户的心智。
+           *
+           * 后台机制全部保留:
+           *  - 云端规则继续由 `cloud-replacement-sync.ts` 每 10 分钟拉一次
+           *    (boot 阶段就启动,与 UI 解耦)。
+           *  - 本地全局/本地房间规则:已有的 GM 持久值仍然被 `replacement.ts`
+           *    读取并应用,但不再有添加/删除入口。
+           *  - 影子屏蔽自动学习:`shadow-learn.ts` 继续运行;候选改写气泡仍
+           *    通过 `<ShadowBypassChip>` 出现在「手动发送」输入框旁边。
+           *  - hidden GM 键 `disableCloudReplacement` 留给少数派用户(Apple
+           *    'hidden defaults' 风格,不在 UI 上暴露)。
+           */}
 
           <GroupHeading query={query}>
-            LLM（智驾选梗 + YOLO 润色共用）·「YOLO」= LLM 在你发出去之前先重写一遍
+            LLM（智驾选梗 + AI 润色共用）·「AI 润色」= LLM 在你发出去之前用你写的 prompt 重写一遍（原代号 YOLO）
           </GroupHeading>
           <LlmApiSection query={query} />
           <LlmPromptsSection query={query} />
@@ -236,21 +226,24 @@ export function SettingsTab() {
  * LLM API 凭证（provider / key / model / baseURL）。
  *
  * 这个 section 必须在所有房间都可见——之前 LLM 凭证嵌在「智能辅助驾驶」面板里，
- * 而 HZM 面板只对注册了梗源的房间渲染（目前仅灰泽满），导致别的房间用户开了
- * YOLO 三档却找不到地方填 API key。把它搬到设置里、永远可见。
+ * 而 HZM 面板只对注册了梗源的房间渲染（目前仅灰泽满），导致别的房间用户开了三个
+ * 发送路径的 AI 润色却找不到地方填 API key。把它搬到设置里、永远可见。
  *
- * 同一份 signal 既给智能辅助驾驶选梗用，也给 YOLO 三档润色用——配置一次两用。
+ * 同一份 signal 既给智能辅助驾驶选梗用，也给三处 AI 润色（自动跟车 / 独轮车 / 手动
+ * 发送）用——配置一次两用。
  */
 function LlmApiSection({ query }: { query: string }) {
+  // KEYWORDS 同时收录新旧术语（AI 润色 + YOLO + 常规发送 + 手动发送），保证旧用户
+  // 用旧词搜索仍能找到这一节。
   const KEYWORDS =
-    'llm api key model 模型 anthropic openai deepseek moonshot openrouter ollama 智能辅助驾驶 智驾 yolo 润色 base url 凭证 token 选梗'
+    'llm api key model 模型 anthropic openai deepseek moonshot openrouter ollama 智能辅助驾驶 智驾 ai 润色 yolo 改写 base url 凭证 token 选梗'
   if (!matchesSearchQuery(KEYWORDS, query)) return null
   return (
     <details className='cb-settings-accordion' open>
-      <summary>LLM API 配置（智驾选梗 + YOLO 润色共用）</summary>
+      <summary>LLM API 配置（智驾选梗 + AI 润色共用）</summary>
       <div className='cb-section cb-stack' style={{ margin: '.5em 0', paddingBottom: '1em', gap: '.75em' }}>
         <div className='cb-note' style={{ color: '#666', fontSize: '0.85em' }}>
-          填一次，「智能辅助驾驶」选梗 与「自动跟车 / 独轮车 / 常规发送」的 YOLO 润色都能用。
+          填一次，「智能辅助驾驶」选梗 与「自动跟车 / 独轮车 / 手动发送」的 AI 润色都能用。
         </div>
         <div
           className='cb-note'
@@ -263,9 +256,9 @@ function LlmApiSection({ query }: { query: string }) {
             borderRadius: '6px',
           }}
         >
-          <strong>名词解释 ·「YOLO」</strong> —— You Only Live Once，本项目里指"发出去之前先让 LLM
-          重写一遍弹幕"的开关。代价：每条弹幕都会调用一次大模型 API，产生 token
-          消耗；好处：可以套你写的提示词（卖萌/化身VTuber/避敏感词等）。 关闭后弹幕原样发出。
+          <strong>名词解释 ·「AI 润色」</strong>（原代号 YOLO）—— 发出去之前先让 LLM 按你写的提示词
+          重写一遍弹幕。代价：每条弹幕都会调用一次大模型 API，产生 token 消耗；好处：可以套 你写的提示词（卖萌 / 化身
+          VTuber / 避敏感词等）。关闭后弹幕原样发出。提示词在下面 的「LLM 提示词」section 里管理。
         </div>
         <LlmApiConfigPanel showTestConnection />
       </div>
@@ -274,21 +267,23 @@ function LlmApiSection({ query }: { query: string }) {
 }
 
 /**
- * LLM 提示词管理（YOLO 用）。
+ * LLM 提示词管理（AI 润色用）。
  *
  * 全局基线 + 三个功能特定的 PromptManager。getActiveLlmPrompt 在调用时会把
  * 全局拼到功能前面（详见 `src/lib/prompts.ts`）。
  * 设计参考自 upstream chatterbox 0c8706f / 090bd1e。
  */
 function LlmPromptsSection({ query }: { query: string }) {
-  const KEYWORDS = 'llm 提示词 prompt yolo 润色 ai openai anthropic 全局基线 常规发送 自动跟车 独轮车 system prompt'
+  // 收录新旧术语，保证旧用户用「yolo」「常规发送」搜索仍能找到这里。
+  const KEYWORDS =
+    'llm 提示词 prompt ai 润色 yolo 改写 openai anthropic 全局基线 手动发送 常规发送 自动跟车 独轮车 system prompt'
   if (!matchesSearchQuery(KEYWORDS, query)) return null
   return (
     <details className='cb-settings-accordion'>
-      <summary>LLM 提示词（YOLO 用）</summary>
+      <summary>LLM 提示词（AI 润色用）</summary>
       <div className='cb-section cb-stack' style={{ margin: '.5em 0', paddingBottom: '1em', gap: '.75em' }}>
         <div className='cb-note' style={{ color: '#666', fontSize: '0.85em' }}>
-          这里只管理 YOLO 用的提示词。API 凭证（key / 模型 / base URL）在上面的「LLM API 配置」section 里填一次。
+          这里只管理 AI 润色用的提示词。API 凭证（key / 模型 / base URL）在上面的「LLM API 配置」section 里填一次。
         </div>
 
         <div>
@@ -313,7 +308,7 @@ function LlmPromptsSection({ query }: { query: string }) {
 
         <div>
           <div className='cb-heading' style={{ fontWeight: 'bold', marginBottom: '.25em' }}>
-            常规发送
+            手动发送
           </div>
           <div className='cb-note' style={{ color: '#666', fontSize: '0.85em', marginBottom: '.4em' }}>
             手动输入框 / 偷 / +1 等手动发送场景的修改提示。空 = 跳过 LLM。

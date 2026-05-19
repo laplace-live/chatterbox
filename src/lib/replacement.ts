@@ -1,6 +1,16 @@
 import { effect } from '@preact/signals'
 
+import { GM_getValue } from '$'
 import { cachedRoomId, localGlobalRules, localRoomRules, remoteKeywords, replacementMap } from './store'
+
+/**
+ * 未文档化的"少数派"GM 键。Jobs 式审计后把替换规则的可见 UI 全部砍掉了
+ * (云端规则隐形、永远开),个别 power user 想关掉云端规则只用本地的,
+ * 给他们一个 escape hatch。没有 UI 入口(Apple 风格的 hidden defaults)。
+ */
+function isCloudReplacementDisabled(): boolean {
+  return GM_getValue<boolean>('disableCloudReplacement', false) === true
+}
 
 /**
  * Builds the replacement map from remote and local rules.
@@ -9,6 +19,8 @@ import { cachedRoomId, localGlobalRules, localRoomRules, remoteKeywords, replace
  * Skips the write when `cachedRoomId` is mid-resolution (null) so we don't
  * clobber a previously-correct map with one missing the room-specific rules.
  * The effect below re-runs when the room id resolves.
+ *
+ * 云端规则可被 hidden `disableCloudReplacement` GM 键关掉(默认开)。
  */
 export function buildReplacementMap(): void {
   // Touch all 4 signals up-front so the @preact/signals `effect` that wraps
@@ -25,7 +37,7 @@ export function buildReplacementMap(): void {
 
   const map = new Map<string, string>()
 
-  if (rk) {
+  if (rk && !isCloudReplacementDisabled()) {
     const globalKeywords = rk.global?.keywords ?? {}
     for (const [from, to] of Object.entries(globalKeywords)) {
       if (from) map.set(from, to)

@@ -252,9 +252,10 @@ describe('PanelHeader — activity chips', () => {
     autoBlendDryRun.value = true
     mount()
     expect(text()).toContain('跟车·试')
-    // The bottom-line "⚠ 试运行" emphasis chip should also appear so users
-    // can't miss that no real sends are happening.
-    expect(text()).toContain('试运行')
+    // The standalone "⚠ 试运行" emphasis chip was removed (visual redundancy
+    // with the per-feature `·试` suffix + orange chip color). Single source
+    // of truth: each feature's own chip carries its dryRun state.
+    expect(text()).not.toContain('⚠ 试运行')
   })
 
   test('shows 智驾 chip when HZM is on', () => {

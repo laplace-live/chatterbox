@@ -1,3 +1,14 @@
+/**
+ * Live-desk heartbeat loop: every N seconds, snapshot the current room's
+ * activity (message count, unique uids, risk level) and POST to the
+ * multi-room dashboard so other devices / tabs can see room state at a
+ * glance. Restarts heartbeat with the new interval when the user changes
+ * the cadence signal.
+ *
+ * (Briefly slated for spinoff under the wrong premise; staying. See
+ * guard-room-sync.ts header for the retrospective.)
+ */
+
 import { ensureRoomId } from './api'
 import { subscribeCustomChatEvents } from './custom-chat-events'
 import {

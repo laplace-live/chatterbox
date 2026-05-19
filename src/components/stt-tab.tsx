@@ -24,9 +24,12 @@ import {
   sonioxTranslationEnabled,
   sonioxTranslationTarget,
   sonioxWrapBrackets,
+  sttEndpointReached,
   sttRunning,
+  sttTranscriptBuffer,
 } from '../lib/store'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
+import { AiCandidateSection } from './ai-candidate-section'
 
 const SONIOX_FLUSH_DELAY_MS = 5000
 
@@ -252,6 +255,9 @@ export function SttTab() {
               if (display.length > 500) display = `…${display.slice(-500)}`
               finalText.value = display
               nonFinalText.value = transNonFinal
+              // AI 候选桥接：发布翻译后的文本（中文 prompt 期望中文输入）。
+              // 见 store-stt.ts 的 sttTranscriptBuffer 注释。
+              if (newTransFinal) sttTranscriptBuffer.value += newTransFinal
             } else {
               if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
               accFinal.current += newFinal
@@ -259,9 +265,17 @@ export function SttTab() {
               if (display.length > 500) display = `…${display.slice(-500)}`
               finalText.value = display
               nonFinalText.value = nonFinal
+              // AI 候选桥接：发布原文 final tokens。AI 候选引擎在生成时
+              // atomic snapshot+清空这个 buffer。
+              if (newFinal) sttTranscriptBuffer.value += newFinal
             }
-            if (endpointDetected && sonioxAutoSend.value) {
-              setTimeout(() => void flushBuffer(), translationEnabled ? 300 : 0)
+            if (endpointDetected) {
+              // AI 候选桥接：句子端点信号。引擎用它来把已排队的 debounce
+              // 时间提前（READY_MS 而非 FALLBACK_MS）。
+              sttEndpointReached.value = true
+              if (sonioxAutoSend.value) {
+                setTimeout(() => void flushBuffer(), translationEnabled ? 300 : 0)
+              }
             }
           },
           onFinished: async () => {
@@ -664,6 +678,7 @@ export function SttTab() {
             <span style={{ color: '#999' }}>{nonFinalText.value}</span>
           </div>
         </div>
+        <AiCandidateSection />
       </div>
     </>
   )

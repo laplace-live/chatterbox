@@ -11,12 +11,17 @@
 import { gmSignal } from './gm-signal'
 
 /**
- * @public Future-reserved (not currently read by any production path).
+ * 是否允许烂梗库从 live-meme-radar 拉取"今日跨房间热门"列表来给烂梗库面板
+ * 加 🔥 徽章。默认 OFF——Jobs 式审计后改为 opt-in:即便只是 GET 公开 JSON,
+ * 也会在 HTTP 层透露"这位用户装了 chatterbox userscript",用户应该能拒绝。
  *
- * Was the user-facing "radar 软门 / boost" toggle in 2.11.0–2.11.1; removed
- * from the UI in 2.11.2 once we decided radar should only feed passive
- * surfaces (烂梗库徽章). Kept declared so any persisted `false`/`true` from
- * old users round-trips through gm-signal type guards without warnings.
+ * 关闭后:
+ *   - memes-list 不再调用 refreshTrendingMemes(),网络请求 0
+ *   - meme-trending.ts 的 effect 把 trendingMemeKeys 清空,已显示的 🔥 徽章立刻消失
+ *
+ * 历史:这个 signal 在 2.11.0–2.11.1 期间叫"radar 软门 / boost"开关,
+ * 2.11.2 改为只走被动徽章后被从 UI 移除(默认 false 但代码层不读)。
+ * Jobs 审计后被重新激活,用作 lookup 路径的 opt-in 闸门。
  */
 export const radarConsultEnabled = gmSignal('radarConsultEnabled', false)
 

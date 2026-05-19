@@ -1,11 +1,9 @@
 import { useComputed, useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 
-import { GM_deleteValue, GM_getValue } from '$'
 import { checkMedalRoomRestriction, fetchMedalRooms, getDedeUid, type MedalRestrictionCheck } from '../../lib/api'
 import { copyTextToClipboard } from '../../lib/clipboard'
 import { VERSION } from '../../lib/const'
-import { gmSignal } from '../../lib/gm-signal'
 import {
   guardRoomAgentConnected,
   guardRoomAgentLastSyncAt,
@@ -17,6 +15,21 @@ import {
   guardRoomLiveDeskSessionId,
 } from '../../lib/guard-room-live-desk-state'
 import { appendLog } from '../../lib/log'
+// 共享状态(原本是本文件的私有 const,Jobs 式 #8 把主面板的"我的状态" section
+// 接进来后,提到了 lib/medal-check-state.ts)。helpers + GM signals + 一次性
+// migration 都在那边——本文件只负责完整设置 UI(发起巡检、Guard Room 同步、
+// 详细列表/筛选)。
+import {
+  getFilteredMedalResults,
+  getMedalCheckCounts,
+  type MedalCheckFilter,
+  medalCheckFilterByUid,
+  medalCheckResultsByUid,
+  medalCheckStatusByUid,
+  medalFilterLabel,
+  medalStatusColor,
+  medalStatusTitle,
+} from '../../lib/medal-check-state'
 import {
   clearGuardRoomSyncKey,
   guardRoomEndpoint,
@@ -27,57 +40,8 @@ import {
 } from '../../lib/store'
 import { matchesSearchQuery } from './search'
 
-type MedalCheckFilter = 'issues' | 'restricted' | 'unknown' | 'deactivated' | 'ok' | 'all'
-
 const DEFAULT_STATUS = '尚未巡检 — 点击「检查粉丝牌禁言」开始'
 const NOT_LOGGED_IN_STATUS = '未登录 Bilibili — 请先登录再执行巡检'
-
-const medalCheckStatusByUid = gmSignal<Record<string, string>>('medalCheckStatusByUid', {})
-const medalCheckResultsByUid = gmSignal<Record<string, MedalRestrictionCheck[]>>('medalCheckResultsByUid', {})
-const medalCheckFilterByUid = gmSignal<Record<string, MedalCheckFilter>>('medalCheckFilterByUid', {})
-
-// One-time migration: previous versions stored medal-check state as flat
-// globals (medalCheckResults, medalCheckStatus, medalCheckFilter) that were
-// not bound to any account. Move whatever is there into the slot for the
-// account that's currently logged in, so users keep their last results
-// instead of seeing them silently apply to a different account.
-;(() => {
-  const uid = getDedeUid()
-  if (!uid) return
-  const legacyResults = GM_getValue<MedalRestrictionCheck[] | undefined>('medalCheckResults')
-  const legacyStatus = GM_getValue<string | undefined>('medalCheckStatus')
-  const legacyFilter = GM_getValue<MedalCheckFilter | undefined>('medalCheckFilter')
-  let migrated = false
-  if (Array.isArray(legacyResults) && legacyResults.length > 0 && !medalCheckResultsByUid.value[uid]) {
-    medalCheckResultsByUid.value = { ...medalCheckResultsByUid.value, [uid]: legacyResults }
-    migrated = true
-  }
-  if (typeof legacyStatus === 'string' && legacyStatus && !medalCheckStatusByUid.value[uid]) {
-    medalCheckStatusByUid.value = { ...medalCheckStatusByUid.value, [uid]: legacyStatus }
-    migrated = true
-  }
-  if (typeof legacyFilter === 'string' && !medalCheckFilterByUid.value[uid]) {
-    medalCheckFilterByUid.value = { ...medalCheckFilterByUid.value, [uid]: legacyFilter }
-    migrated = true
-  }
-  if (migrated) {
-    try {
-      GM_deleteValue('medalCheckResults')
-    } catch {
-      // best-effort cleanup; legacy keys may already be gone
-    }
-    try {
-      GM_deleteValue('medalCheckStatus')
-    } catch {
-      // best-effort cleanup; legacy keys may already be gone
-    }
-    try {
-      GM_deleteValue('medalCheckFilter')
-    } catch {
-      // best-effort cleanup; legacy keys may already be gone
-    }
-  }
-})()
 
 /**
  * The guard-room client refuses non-HTTPS endpoints except loopback. Surface
@@ -102,15 +66,6 @@ function validateGuardRoomEndpoint(raw: string): string | null {
   return null
 }
 
-function getMedalCheckCounts(results: MedalRestrictionCheck[]) {
-  return {
-    restricted: results.filter(result => result.status === 'restricted').length,
-    deactivated: results.filter(result => result.status === 'deactivated').length,
-    unknown: results.filter(result => result.status === 'unknown').length,
-    ok: results.filter(result => result.status === 'ok').length,
-  }
-}
-
 function signalKindLabel(kind: string): string {
   if (kind === 'muted') return '房间禁言'
   if (kind === 'blocked') return '房间屏蔽/拉黑'
@@ -130,37 +85,6 @@ function formatCheckTime(ts: number): string {
   })
 }
 
-function sortMedalResults(results: MedalRestrictionCheck[]): MedalRestrictionCheck[] {
-  const rank = { restricted: 0, unknown: 1, deactivated: 2, ok: 3 } satisfies Record<
-    MedalRestrictionCheck['status'],
-    number
-  >
-  return [...results].sort(
-    (a, b) => rank[a.status] - rank[b.status] || a.room.anchorName.localeCompare(b.room.anchorName)
-  )
-}
-
-function medalStatusTitle(status: MedalRestrictionCheck['status']): string {
-  if (status === 'restricted') return '发现限制'
-  if (status === 'unknown') return '无法确认'
-  if (status === 'deactivated') return '主播已注销'
-  return '未发现限制'
-}
-
-function medalStatusColor(status: MedalRestrictionCheck['status']): string {
-  if (status === 'restricted') return 'var(--cb-warning-text)'
-  if (status === 'unknown') return '#666'
-  if (status === 'deactivated') return '#8e8e93'
-  return 'var(--cb-success-text)'
-}
-
-function getFilteredMedalResults(results: MedalRestrictionCheck[], filter: MedalCheckFilter): MedalRestrictionCheck[] {
-  const sorted = sortMedalResults(results)
-  if (filter === 'all') return sorted
-  if (filter === 'issues') return sorted.filter(result => result.status !== 'ok')
-  return sorted.filter(result => result.status === filter)
-}
-
 function formatMedalResultLine(result: MedalRestrictionCheck): string {
   const room = `${result.room.anchorName} / ${result.room.medalName}`
   const header = `${medalStatusTitle(result.status)}｜${room}｜房间号：${result.room.roomId}｜检查时间：${formatCheckTime(result.checkedAt)}`
@@ -171,15 +95,6 @@ function formatMedalResultLine(result: MedalRestrictionCheck): string {
     )
     .join('\n')
   return `${header}\n${details}`
-}
-
-function medalFilterLabel(filter: MedalCheckFilter): string {
-  if (filter === 'issues') return '异常'
-  if (filter === 'restricted') return '限制'
-  if (filter === 'unknown') return '未知'
-  if (filter === 'deactivated') return '主播注销'
-  if (filter === 'ok') return '正常'
-  return '全部'
 }
 
 function formatMedalCheckReport(
@@ -467,7 +382,7 @@ export function MedalCheckSection({ query = '' }: { query?: string }) {
         </div>
         <details className='cb-panel cb-stack' style={{ marginBottom: '.5em' }}>
           <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }} className='cb-heading'>
-            直播间保安室同步（外部服务）
+            直播间保安室同步（外部服务 · 可选）
           </summary>
           <div className='cb-note' style={{ color: '#666', marginTop: '.5em' }}>
             保安室是独立的开源项目，需要自行搭建或加入。同步会上传：房间号、主播昵称、粉丝牌、限制信号、脚本版本。

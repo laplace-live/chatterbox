@@ -1,11 +1,16 @@
 /**
  * Defends `computeJitteredSleepMs` against the boundary failures called out in
  * the QA audit (A2):
- *   - jitter > base interval ⇒ negative ms ⇒ setTimeout fires synchronously,
- *     turning the auto-loop into a tight spin.
+ *   - jitter pushing below zero ⇒ setTimeout fires synchronously, turning the
+ *     auto-loop into a tight spin.
  *   - corrupted GM storage / hand-edited backup leaves `msgSendInterval` as
  *     NaN/Infinity/non-positive ⇒ `interval * 1000` propagates the bad value
  *     into `abortableSleep`.
+ *
+ * Also pins the Gaussian-jitter math (cherry-pick from
+ * laplace-live/chatterbox@760fb31): σ = 10% of baseMs, ±2σ clamp, Box-Muller
+ * sampling. Detector defeat depends on the distribution shape, not on the
+ * fact that we randomize at all — so we lock the formula here.
  *
  * The helper is pure and side-effect-free, so we can test it directly without
  * spinning up the full loop module.
@@ -24,61 +29,83 @@ describe('computeJitteredSleepMs', () => {
     expect(computeJitteredSleepMs(0.5, false)).toBe(500)
   })
 
-  test('subtracts up to 500ms of jitter when enabled, never going below 0', () => {
-    // 100 trials: every result must be in [interval*1000 - 500, interval*1000].
+  test('with jitter, result stays within ±2σ (±20% of baseMs)', () => {
+    // 200 trials at baseMs=4000: every result must land in [3200, 4800]
+    // (sample is clamped to [-2, +2] before being multiplied by sigmaMs=400).
+    // Allow ±1ms slack for `Math.round`.
     const interval = 2
     const baseMs = interval * 1000
-    for (let i = 0; i < 100; i++) {
+    const lo = Math.floor(baseMs * 0.8) - 1
+    const hi = Math.ceil(baseMs * 1.2) + 1
+    for (let i = 0; i < 200; i++) {
       const ms = computeJitteredSleepMs(interval, true)
-      expect(ms).toBeGreaterThanOrEqual(0)
-      expect(ms).toBeLessThanOrEqual(baseMs)
-      expect(ms).toBeGreaterThanOrEqual(baseMs - 500)
+      expect(ms).toBeGreaterThanOrEqual(lo)
+      expect(ms).toBeLessThanOrEqual(hi)
     }
   })
 
-  test('clamps at 0 when jitter would exceed base interval (regression A2)', () => {
-    // intervalSec=0.1 ⇒ baseMs=100, but jitter goes up to 500. Without the
-    // `Math.max(0, …)` guard, this would produce negative ms and turn the
-    // auto-loop into a tight spin.
+  test('jitter is bell-shaped (most samples cluster near baseMs)', () => {
+    // With σ=10% of baseMs, ~68% of unclamped samples land within ±1σ. The
+    // ±2σ clamp barely changes that — true rate stays close to 68%. Allow
+    // generous margin for sample noise: assert >50% of 500 trials are
+    // within [baseMs - σ, baseMs + σ]. A uniform implementation (the
+    // legacy ±500ms on baseMs=4000) would land ~25% in that band, so this
+    // test catches a regression to uniform.
+    const interval = 2
+    const baseMs = interval * 1000
+    const sigmaMs = baseMs * 0.1
+    let within1Sigma = 0
+    for (let i = 0; i < 500; i++) {
+      const ms = computeJitteredSleepMs(interval, true)
+      if (ms >= baseMs - sigmaMs && ms <= baseMs + sigmaMs) within1Sigma++
+    }
+    expect(within1Sigma).toBeGreaterThan(250)
+  })
+
+  test('result is always non-negative (defensive floor)', () => {
+    // The ±20% clamp on valid baseMs ≥ 1000 (corruption fallback) means the
+    // negative path can't actually reach ≤ 0 — but `Math.max(0, …)` stays
+    // as a backstop for the future-proofing case where SEND_JITTER_SIGMA
+    // gets bumped past 1.0. Lock the non-negative contract.
     for (let i = 0; i < 100; i++) {
-      const ms = computeJitteredSleepMs(0.1, true)
-      expect(ms).toBeGreaterThanOrEqual(0)
-      expect(ms).toBeLessThanOrEqual(100)
+      expect(computeJitteredSleepMs(0.1, true)).toBeGreaterThanOrEqual(0)
     }
   })
 
   test('falls back to a 1s floor when intervalSec is non-finite or non-positive', () => {
-    // These are the three ways a corrupted gmSignal could land here.
+    // These are the four ways a corrupted gmSignal could land here.
     expect(computeJitteredSleepMs(Number.NaN, false)).toBe(1000)
     expect(computeJitteredSleepMs(Number.POSITIVE_INFINITY, false)).toBe(1000)
     expect(computeJitteredSleepMs(-5, false)).toBe(1000)
     expect(computeJitteredSleepMs(0, false)).toBe(1000)
   })
 
-  test('with deterministic random=0.5, jitter is exactly 250ms (locks `* 500` constant)', () => {
-    // Mutation-test trap: `Math.random() * 500` mutated to `Math.random() / 500`
-    // collapses jitter to 0 (random()/500 ∈ [0, 0.002), floored to 0). Both
-    // shapes still produce a non-negative ms in [0, baseMs], so the existing
-    // statistical assertions can't tell them apart. Stub random and lock
-    // the exact subtraction.
+  test('with deterministic random=0.5, Gaussian sample matches Box-Muller (locks formula)', () => {
+    // Mutation-test trap: catches typos in the Box-Muller math. With
+    // Math.random returning 0.5 for both u1 and u2:
+    //   sample = sqrt(-2 * ln(0.5)) * cos(π) = sqrt(2 * ln 2) * (-1) ≈ -1.17741
+    // Within ±2σ clamp, so no clamping kicks in. baseMs=1000, σ=100:
+    //   result = round(1000 + (-1.17741) * 100) = 882
     const realRandom = Math.random
     Math.random = () => 0.5
     try {
-      // baseMs=1000, jitter=floor(0.5*500)=250 → 750
-      expect(computeJitteredSleepMs(1, true)).toBe(750)
-      // baseMs=2000, jitter=floor(0.5*500)=250 → 1750
-      expect(computeJitteredSleepMs(2, true)).toBe(1750)
+      const sample = Math.sqrt(-2 * Math.log(0.5)) * Math.cos(2 * Math.PI * 0.5)
+      const expected = Math.round(1000 + sample * 100)
+      expect(computeJitteredSleepMs(1, true)).toBe(expected)
     } finally {
       Math.random = realRandom
     }
   })
 
-  test('with random=0.999, jitter is 499ms (locks `Math.floor`)', () => {
+  test('extreme random triggers ±2σ clamp (locks the clamp range)', () => {
+    // Math.random()=0 makes u1 fall through the `|| 1e-9` guard, producing
+    // sample = sqrt(-2 * ln(1e-9)) * cos(0) ≈ sqrt(41.4) ≈ 6.43 — well past
+    // the +2 clamp. Without the clamp, the result would be 1000 + 643 = 1643;
+    // with the clamp it caps at 1000 + 2*100 = 1200.
     const realRandom = Math.random
-    Math.random = () => 0.999
+    Math.random = () => 0
     try {
-      // baseMs=1000, jitter=floor(0.999*500)=floor(499.5)=499 → 501
-      expect(computeJitteredSleepMs(1, true)).toBe(501)
+      expect(computeJitteredSleepMs(1, true)).toBe(1200)
     } finally {
       Math.random = realRandom
     }

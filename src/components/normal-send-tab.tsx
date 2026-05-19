@@ -28,11 +28,11 @@ export function NormalSendTab() {
     return (
       <details open data-cb-normal-send-redirected>
         <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>
-          <span>常规发送</span>
+          <span>手动发送</span>
         </summary>
         <div className='cb-body cb-note' style={{ color: '#666', fontSize: '0.9em', padding: '.25em 0' }}>
           Chatterbox Chat 已接管聊天区——请直接在右侧自定义聊天面板的输入框里发送弹幕。
-          要恢复这里的「常规发送」框，可以到「设置 → Chatterbox Chat」关闭该功能。
+          要恢复这里的「手动发送」框，可以到「设置 → Chatterbox Chat」关闭该功能。
         </div>
       </details>
     )
@@ -52,7 +52,7 @@ export function NormalSendTab() {
   return (
     <details open>
       <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>
-        <span>常规发送</span>
+        <span>手动发送</span>
       </summary>
       <div className='cb-body cb-stack'>
         <div style={{ position: 'relative' }} data-cb-send-tab-anchor>
@@ -143,9 +143,9 @@ export function NormalSendTab() {
             />
             <label
               htmlFor='normalSendYolo'
-              title='YOLO：手动发送的文本先送 LLM 润色再发。失败时回退原文。LLM 凭证在「设置 → LLM」里集中配置。'
+              title='AI 润色（原 YOLO）：手动发送的文本先送 LLM 改写再发。失败时回退原文。LLM 凭证在「设置 → LLM」里集中配置。'
             >
-              🤖 YOLO（LLM 润色后再发）
+              🤖 AI 润色（LLM 改写后再发）
             </label>
             <PromptPicker
               prompts={llmPromptsNormalSend.value}
@@ -155,7 +155,7 @@ export function NormalSendTab() {
               }}
               previewGraphemes={12}
               className='lc-min-w-[120px] lc-max-w-[180px] lc-truncate'
-              title='当前提示词（在「设置 → LLM 提示词 → 常规发送」里管理）'
+              title='当前提示词（在「设置 → LLM 提示词 → 手动发送」里管理）'
               emptyText='暂无提示词，请到设置里添加'
               disabled={!normalSendYolo.value}
             />

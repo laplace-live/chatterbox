@@ -208,9 +208,9 @@ export function AutoSendControls() {
             />
             <label
               htmlFor='autoSendYolo'
-              title='YOLO：循环里每条非表情消息发出前先送 LLM 润色。配置不全会自动停车。LLM 凭证在「设置 → LLM」里集中配置。'
+              title='AI 润色（原 YOLO）：循环里每条非表情消息发出前先送 LLM 改写。配置不全会自动停车。LLM 凭证在「设置 → LLM」里集中配置。'
             >
-              🤖 YOLO（LLM 润色后再发）
+              🤖 AI 润色（LLM 改写后再发）
             </label>
             <PromptPicker
               prompts={llmPromptsAutoSend.value}

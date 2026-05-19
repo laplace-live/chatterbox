@@ -2,7 +2,7 @@ import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 
 import { CUSTOM_CHAT_CSS_MAX_LENGTH, sanitizeCustomChatCss } from '../../lib/custom-chat-css-sanitize'
-import { MILK_GREEN_IMESSAGE_CSS } from '../../lib/custom-chat-presets'
+import { MIDNIGHT_INDIGO_IMESSAGE_CSS, MILK_GREEN_IMESSAGE_CSS } from '../../lib/custom-chat-presets'
 import {
   customChatCss,
   customChatEnabled,
@@ -135,6 +135,16 @@ export function CustomChatSection({ query = '' }: { query?: string }) {
                   }}
                 >
                   奶绿 iMessage
+                </button>
+                <button
+                  type='button'
+                  disabled={!customChatEnabled.value}
+                  onClick={() => {
+                    cssDraft.value = MIDNIGHT_INDIGO_IMESSAGE_CSS
+                  }}
+                  title='深夜直播 / 二次元房间适用:深色基底 + 高对比 SC + 渐变 guard'
+                >
+                  午夜深蓝 iMessage
                 </button>
                 <button
                   type='button'

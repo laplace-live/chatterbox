@@ -219,4 +219,281 @@ describe('sanitizeCustomChatCss', () => {
     expect(() => sanitizeCustomChatCss({} as unknown as string)).not.toThrow()
     expect(sanitizeCustomChatCss(42 as unknown as string).css).toBe('')
   })
+
+  // ---------------------------------------------------------------------------
+  // normalizeEscapes — CSS hex / single-char escape resolver
+  //
+  // The function is responsible for resolving `\41 ` → `A`, `\\` → `\`, etc.
+  // Without this, payloads like `@\69 mport url(evil)` and `expressi\6Fn(...)`
+  // would slip past the literal-character regexes. Mutation testing surfaced
+  // ~30 survivors here — every regex flag, every range guard, every fallback
+  // path was untested by the existing test set.
+  // ---------------------------------------------------------------------------
+
+  test('normalizeEscapes: 2-digit hex `\\41 ` decodes to `A` (locks decoder enabled at all)', () => {
+    // Mutant: BlockStatement {} on the replace callback → callback returns
+    // undefined → match replaced with literal "undefined". This test fails
+    // if the escape isn't decoded to A.
+    const r = sanitizeCustomChatCss('.\\41 { color: red; }')
+    // After escape resolution the selector becomes `.A`.
+    expect(r.css).toContain('.A')
+    expect(r.css).toContain('color: red')
+    // And no literal escape sequence survives.
+    expect(r.css).not.toContain('\\41')
+  })
+
+  test('normalizeEscapes: 6-digit hex `\\000041 ` still decodes to `A` (locks `{1,6}` upper bound)', () => {
+    // Mutant `{1,6}` → `{1,5}` would fail to match the 6-digit form.
+    const r = sanitizeCustomChatCss('.\\000041 { color: red; }')
+    expect(r.css).toContain('.A')
+    expect(r.css).not.toContain('\\000041')
+  })
+
+  test('normalizeEscapes: hex WITHOUT trailing whitespace also decodes (locks `\\s?` as optional)', () => {
+    // Mutant `\s?` → `\s` would require trailing whitespace; `\41xyz` would
+    // fail to match. Real CSS often has `\41` directly followed by a char.
+    const r = sanitizeCustomChatCss('.\\41xyz')
+    expect(r.css).toContain('.Axyz')
+  })
+
+  test('normalizeEscapes: hex with trailing space consumes the space (no leftover whitespace)', () => {
+    // Mutant `\s?` → `\S?` would consume non-ws (0 chars in practice) and
+    // leave the space behind → output `.A xyz` instead of `.Axyz`.
+    const r = sanitizeCustomChatCss('.\\41 xyz')
+    expect(r.css).toContain('.Axyz')
+    expect(r.css).not.toContain('.A xyz')
+  })
+
+  test('normalizeEscapes: non-hex single-char escape `\\g` decodes to `g` (kills `[^\\n]` → `[\\n]`)', () => {
+    // `g` is not in [0-9a-fA-F] so the hex branch fails; the char branch
+    // fires and returns `g`. Mutated regex (`[\n]` instead of `[^\n]`)
+    // requires the matched char to be a newline — `\g` no longer matches,
+    // so the backslash and `g` both survive in output.
+    //
+    // Pin the EXACT post-resolution form (not just removedImports) so
+    // downstream IMPORT_RE behavior doesn't mask the difference.
+    const r = sanitizeCustomChatCss('.a { color: \\g; }')
+    expect(r.css).toBe('.a { color: g; }')
+  })
+
+  test('normalizeEscapes: bypass attack `@\\69 mport url(evil)` is caught by IMPORT_RE post-resolution', () => {
+    // \69 → 'i'. So `@\69 mport ...` → `@import ...`. The sanitizer must
+    // strip the resolved form. This test exercises the *purpose* of
+    // normalizeEscapes: making escape-obfuscated payloads visible.
+    const r = sanitizeCustomChatCss(`@\\69 mport url('https://evil');\nbody{}`)
+    expect(r.removedImports).toBe(1)
+    expect(r.css).not.toContain('import')
+    expect(r.css).toContain('body{}')
+  })
+
+  test('normalizeEscapes: bypass attack `expressi\\6Fn(...)` is caught by EXPRESSION_RE post-resolution', () => {
+    // \6F → 'o'. So `expressi\6Fn(...)` → `expression(...)`.
+    const r = sanitizeCustomChatCss('.x { width: expressi\\6Fn(alert(1)); color: red; }')
+    expect(r.removedLegacyHooks).toBe(1)
+    expect(r.css).not.toContain('expression')
+    expect(r.css).toContain('color: red')
+  })
+
+  test('normalizeEscapes: invalid codepoint `\\0` (null) yields U+FFFD (NOT empty string)', () => {
+    // Mutants on L69: StringLiteral '"" or "Stryker was here!"' would change
+    // the replacement char. Also kills EqualityOperator `code !== 0`.
+    //
+    // Note: we need a non-hex char (and non-whitespace) immediately after `\0`
+    // so the greedy `[0-9a-fA-F]{1,6}` regex stops at "0" and doesn't extend
+    // to e.g. `0b` (which would decode to U+000B vertical tab, not invalid).
+    const r = sanitizeCustomChatCss('a\\0xyz')
+    expect(r.css).toContain('�')
+    expect(r.css).toContain('a')
+    expect(r.css).toContain('xyz')
+    // And specifically NOT empty between `a` and `xyz`.
+    expect(r.css).not.toBe('axyz')
+  })
+
+  test('normalizeEscapes: surrogate-range lower boundary `\\d800` yields U+FFFD (kills `>= 0xd800` → `> 0xd800`)', () => {
+    // Mutant: `code >= 0xd800` → `code > 0xd800`. With input `\d800`, code is
+    // exactly 0xd800 which is no longer in the surrogate range → falls through
+    // to String.fromCodePoint(0xd800) = lone high surrogate U+D800 (NOT U+FFFD).
+    // Use charCodeAt for an unambiguous assertion that bypasses any surrogate
+    // normalization the test runner might perform.
+    const r = sanitizeCustomChatCss('a\\d800 b')
+    expect(r.css.charCodeAt(0)).toBe(0x61) // 'a'
+    expect(r.css.charCodeAt(1)).toBe(0xfffd) // replacement, NOT 0xd800
+    expect(r.css.charCodeAt(2)).toBe(0x62) // 'b'
+    expect(r.css.length).toBe(3)
+  })
+
+  test('normalizeEscapes: surrogate-range upper boundary `\\dfff` yields U+FFFD (kills `<= 0xdfff` → `< 0xdfff`)', () => {
+    // Mutant: `code <= 0xdfff` → `code < 0xdfff`. With input `\dfff`, code is
+    // exactly 0xdfff which falls out of the (mutated) surrogate range and
+    // gets decoded as a lone low surrogate U+DFFF. Charcode assertion makes
+    // the diff between U+FFFD and U+DFFF unambiguous.
+    const r = sanitizeCustomChatCss('a\\dfff b')
+    expect(r.css.charCodeAt(0)).toBe(0x61) // 'a'
+    expect(r.css.charCodeAt(1)).toBe(0xfffd) // replacement, NOT 0xdfff
+    expect(r.css.charCodeAt(2)).toBe(0x62) // 'b'
+    expect(r.css.length).toBe(3)
+  })
+
+  test('normalizeEscapes: out-of-range codepoint `\\110000` yields U+FFFD (kills `> 0x10ffff` boundary)', () => {
+    // Locks `code > 0x10ffff`. 0x110000 is the first out-of-range codepoint
+    // (one past Unicode max). Mutant `>= 0x10ffff` would mark 0x10ffff itself
+    // invalid — the next test pins the just-valid side.
+    const r = sanitizeCustomChatCss('a\\110000 b')
+    expect(r.css).toContain('�')
+  })
+
+  test('normalizeEscapes: max-valid codepoint `\\10ffff` decodes to the actual character (kills `>= 0x10ffff`)', () => {
+    // Pins the valid side of the upper boundary. 0x10ffff is the Unicode max.
+    // Mutant `>= 0x10ffff` would reject this valid codepoint as U+FFFD.
+    const r = sanitizeCustomChatCss('a\\10ffff b')
+    const expected = String.fromCodePoint(0x10ffff)
+    expect(r.css).toContain(expected)
+    expect(r.css).not.toContain('�')
+  })
+
+  test('normalizeEscapes: just-before-surrogate `\\d7ff` decodes to a valid char (kills `> 0xd800`)', () => {
+    // Pins the valid side BELOW the surrogate range. Mutant `code > 0xd800`
+    // would reject 0xd7ff as invalid.
+    const r = sanitizeCustomChatCss('a\\d7ff b')
+    const expected = String.fromCodePoint(0xd7ff)
+    expect(r.css).toContain(expected)
+    expect(r.css).not.toContain('�')
+  })
+
+  test('normalizeEscapes: just-after-surrogate `\\e000` decodes to a valid char (kills `< 0xdfff`)', () => {
+    // Pins the valid side ABOVE the surrogate range. Mutant `code < 0xdfff`
+    // would reject 0xe000 (Private Use Area start) as invalid.
+    const r = sanitizeCustomChatCss('a\\e000 b')
+    const expected = String.fromCodePoint(0xe000)
+    expect(r.css).toContain(expected)
+    expect(r.css).not.toContain('�')
+  })
+
+  test('normalizeEscapes: BMP codepoint `\\4e2d` decodes to `中` (locks `String.fromCodePoint` enabled)', () => {
+    // A normal CJK codepoint, well inside the valid range. Establishes that
+    // the decoder produces the *actual* character and not a replacement or
+    // empty string for legitimate input.
+    const r = sanitizeCustomChatCss('.\\4e2d  font')
+    expect(r.css).toContain('.中')
+  })
+
+  test('normalizeEscapes: SMP codepoint `\\1f600` decodes to the 😀 emoji (locks 6-digit handling)', () => {
+    // Beyond BMP — exercises String.fromCodePoint's surrogate-pair output.
+    const r = sanitizeCustomChatCss('a\\1f600 b')
+    expect(r.css).toContain('\u{1f600}')
+  })
+
+  // ---------------------------------------------------------------------------
+  // COMMENT_RE — `/\/\*[\s\S]*?\*\//g`
+  //
+  // Four regex mutants on this single line. The existing tests never assert
+  // that two SEPARATE comments are stripped individually (non-greedy), nor
+  // that a comment containing newlines is stripped, nor that a comment with
+  // non-whitespace content is stripped.
+  // ---------------------------------------------------------------------------
+
+  test('COMMENT_RE: two separate comments are stripped INDIVIDUALLY (kills `*?` → `*` greedy)', () => {
+    // With original lazy `*?`: input `/*a*/keep/*b*/` → output `keep`.
+    // With greedy `*` mutant:  input matches everything from first `/*` to
+    //                          last `*/` → output is empty.
+    // Note: comments fire BEFORE the @import/expression strippers, so this
+    // assertion is on the final css output.
+    const r = sanitizeCustomChatCss('/*a*/keep/*b*/')
+    expect(r.css).toBe('keep')
+  })
+
+  test('COMMENT_RE: comment with newlines inside is stripped (kills `[\\s\\S]` → `[\\S\\S]`)', () => {
+    // `[\S\S]` is just `\S` — wouldn't match the newline inside the comment.
+    const css = '/* line1\nline2 */body { color: red; }'
+    const r = sanitizeCustomChatCss(css)
+    expect(r.css).not.toContain('line1')
+    expect(r.css).not.toContain('line2')
+    expect(r.css).toContain('body { color: red; }')
+  })
+
+  test('COMMENT_RE: comment with non-whitespace content is stripped (kills `[\\s\\S]` → `[\\s\\s]`)', () => {
+    // `[\s\s]` is just `\s` — would only match whitespace. A comment whose
+    // body has letters/digits would be left intact.
+    const r = sanitizeCustomChatCss('/*hostile-content*/body{}')
+    expect(r.css).not.toContain('hostile-content')
+    expect(r.css).toContain('body{}')
+  })
+
+  test('COMMENT_RE: a comment is stripped at all (kills `[\\s\\S]*?` → `[^\\s\\S]*?` empty-class)', () => {
+    // `[^\s\S]` is the empty class — matches nothing. So the regex degrades
+    // to literal `/\/\*\*\//` (just `/**/`). A comment with any body would
+    // not be touched. Original strips any comment.
+    const r = sanitizeCustomChatCss('body { /* note */ color: red; }')
+    expect(r.css).not.toContain('note')
+    expect(r.css).toContain('body')
+    expect(r.css).toContain('color: red')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Truncation slice — locks the `css.slice(0, MAX_LENGTH)` step.
+  // ---------------------------------------------------------------------------
+
+  test('over-length input is sliced to exactly MAX_LENGTH (kills MethodExpression `css.slice → css`)', () => {
+    // Mutant MethodExpression: `css.slice(0, MAX)` → `css` keeps full input,
+    // truncated=true is set but css.length stays > MAX. The "<=" boundary
+    // assertion already catches that, but pin equality so a mutation that
+    // returns the wrong slice (e.g., a different argument) also dies.
+    const over = 'b'.repeat(CUSTOM_CHAT_CSS_MAX_LENGTH + 100)
+    const r = sanitizeCustomChatCss(over)
+    expect(r.css.length).toBe(CUSTOM_CHAT_CSS_MAX_LENGTH)
+    expect(r.truncated).toBe(true)
+  })
+
+  test('post-strip second-pass truncation sets truncated=true (kills BooleanLiteral on L139)', () => {
+    // We need a case where the FIRST length check (L99) does NOT fire but
+    // the SECOND one (L137) does. That happens when the strip operations
+    // can grow the css (URL_SCHEME_RE replaces with `url("about:blank")`).
+    // For most inputs this rarely overruns the cap; we construct one here
+    // by feeding right at the cap with many neutralizable url() schemes.
+    //
+    // Each `url(javascript:a)` is 18 chars; `url("about:blank")` is 18 chars.
+    // Same length — won't grow. Use a shorter source to force expansion:
+    // `url(vbscript:)` is 14 chars → expands to 18 → grows by 4 per match.
+    const padFiller = ' '.repeat(CUSTOM_CHAT_CSS_MAX_LENGTH - 14 * 30)
+    const attacks = 'url(vbscript:)'.repeat(30)
+    const input = padFiller + attacks
+    expect(input.length).toBe(CUSTOM_CHAT_CSS_MAX_LENGTH)
+    const r = sanitizeCustomChatCss(input)
+    // First-pass: length == MAX → no truncation.
+    // Strip: 30 url() expansions each grow by 4 → length is now MAX+120.
+    // Second-pass: length > MAX → truncate, set truncated=true.
+    expect(r.css.length).toBe(CUSTOM_CHAT_CSS_MAX_LENGTH)
+    expect(r.truncated).toBe(true)
+  })
+
+  test('@import strip replaces match with `""` (kills StringLiteral mutant on `css.replace(COMMENT_RE, "")`)', () => {
+    // The comment-strip replacement string is `''`. Mutated to
+    // `"Stryker was here!"` would leak that sentinel into the output.
+    // Pin the exact post-strip form so the leak is caught.
+    const r = sanitizeCustomChatCss('a /* note */ b')
+    expect(r.css).toBe('a  b') // two spaces because the comment between them collapses
+    expect(r.css).not.toContain('Stryker')
+  })
+
+  test('url() regex needs `\\s*` (whitespace allowed) BETWEEN the optional quote and the scheme', () => {
+    // The URL_SCHEME_RE has TWO `\s*` clusters:
+    //   url\(\s*    (["']?)   \s*    (javascript:|...)
+    //         ^ first         ^ second
+    // The first one is already pinned by an earlier test. This pins the
+    // SECOND `\s*` — input has whitespace between the quote and the
+    // scheme keyword, which is unusual but legal CSS.
+    const r = sanitizeCustomChatCss(`.x { background: url(" javascript:alert(1) "); }`)
+    expect(r.removedUrlSchemes).toBe(1)
+    expect(r.css).not.toContain('javascript:')
+  })
+
+  test('behavior regex matches WITHOUT trailing semicolon (kills `;?` → `;` mandatory)', () => {
+    // Mutated BEHAVIOR_RE = /behavior\s*:[^;]*;/gi (no `?`). Real CSS may
+    // end a rule with `behavior: url(a)` followed by `}` and no semicolon.
+    // Mutant fails to match; original strips it.
+    const r = sanitizeCustomChatCss('.x { color: red; behavior: url(a)}')
+    expect(r.removedLegacyHooks).toBe(1)
+    expect(r.css).not.toContain('behavior')
+    expect(r.css).toContain('color: red')
+  })
 })

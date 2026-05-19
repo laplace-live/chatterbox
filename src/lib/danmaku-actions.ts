@@ -170,28 +170,29 @@ export async function sendManualDanmaku(originalMessage: string): Promise<boolea
     return false
   }
 
-  // YOLO（常规发送的 LLM 润色）：开启后把用户输入用 LLM 润色一遍再走原管道。
-  // - 表情类 unique ID 不送 LLM（润色无意义）
+  // AI 润色（原代号 YOLO；手动发送的 LLM 改写）：开启后把用户输入用 LLM 改写一遍再走原管道。
+  // - 表情类 unique ID 不送 LLM（改写无意义）
   // - 配置不全或 LLM 失败：保留原文继续走，让用户的本次发送不被阻塞——这是
-  //   "立刻发出去"的手动场景,不像独轮车循环可以悄悄停下；任何 YOLO 副作用
+  //   "立刻发出去"的手动场景,不像独轮车循环可以悄悄停下；任何 AI 润色副作用
   //   都会出现在日志里,用户能看见即可。
+  // - signal 名仍叫 `normalSendYolo`（GM 持久化键），保留以避免用户配置迁移。
   let polishedMessage = trimmed
   if (normalSendYolo.value && !isEmote) {
     const gap = describeLlmGap('normalSend')
     if (gap) {
-      appendLog(`🤖 常规发送 YOLO 跳过：${gap}（已发送原文）`)
+      appendLog(`🤖 手动发送 AI 润色 跳过：${gap}（已发送原文）`)
     } else {
       try {
         const out = (await polishWithLlm('normalSend', trimmed)).trim()
         if (out) {
           polishedMessage = out
-          appendLog(`🤖 常规发送 YOLO：${trimmed} → ${polishedMessage}`)
+          appendLog(`🤖 手动发送 AI 润色：${trimmed} → ${polishedMessage}`)
         } else {
-          appendLog('🤖 常规发送 YOLO 跳过：LLM 返回为空（已发送原文）')
+          appendLog('🤖 手动发送 AI 润色 跳过：LLM 返回为空（已发送原文）')
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
-        appendLog(`🤖 常规发送 YOLO 跳过：${errMsg}（已发送原文）`)
+        appendLog(`🤖 手动发送 AI 润色 跳过：${errMsg}（已发送原文）`)
       }
     }
   }

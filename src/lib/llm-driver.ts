@@ -9,10 +9,10 @@
  * 都走 GM_xmlhttpRequest（gm-fetch.ts），因为浏览器直连这些 LLM 端点会被 CORS 拦截。
  *
  * 这个模块由 `hzm-auto-drive.ts` 通过 `await import('./llm-driver')` 懒加载（智驾路径），
- * 同时也被 `llm-polish.ts` 静态 import（YOLO 路径）。vite-plugin-monkey 把所有 chunk 合
- * 进单个 user.js，所以两种 import 风格在 userscript 上效果相同；YOLO 走静态导入是因为
- * 实测懒加载会让 vite 多发一份 chunk，反而把 user.js 体积撑大 ~80KB（超出 1024KB
- * release 预算），不值得。
+ * 同时也被 `llm-polish.ts` 静态 import（AI 润色路径，原代号 YOLO）。vite-plugin-monkey
+ * 把所有 chunk 合进单个 user.js，所以两种 import 风格在 userscript 上效果相同；AI 润色
+ * 走静态导入是因为实测懒加载会让 vite 多发一份 chunk，反而把 user.js 体积撑大 ~80KB
+ * （超出 1024KB release 预算），不值得。
  */
 
 import type { LlmProvider } from './store-llm'

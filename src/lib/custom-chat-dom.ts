@@ -39,7 +39,7 @@ import {
   usefulBadgeText,
   wheelFoldKey,
 } from './custom-chat-native-adapter'
-import { formatMilliyuanAmount } from './custom-chat-pricing'
+import { formatMilliyuanAmount, stripCardCountSuffix } from './custom-chat-pricing'
 import {
   CUSTOM_CHAT_MAX_MESSAGES,
   customChatBadgeType,
@@ -50,6 +50,7 @@ import {
   trimRenderQueue,
   visibleRenderMessages,
 } from './custom-chat-render'
+import { createScPinStrip } from './custom-chat-sc-pinstrip'
 import { customChatSearchHint, kindLabel, messageMatchesCustomChatSearch } from './custom-chat-search'
 import { ensureCustomChatStyles } from './custom-chat-style'
 import { calculateVirtualContentHeight, calculateVirtualRange } from './custom-chat-virtualizer'
@@ -101,6 +102,7 @@ let unsubscribeWsStatus: (() => void) | null = null
 let disposeSettings: (() => void) | null = null
 let disposeComposer: (() => void) | null = null
 let disposeActionsIsland: (() => void) | null = null
+let disposePinStrip: (() => void) | null = null
 let fallbackMountTimer: ReturnType<typeof setTimeout> | null = null
 let nativeEventObserver: MutationObserver | null = null
 // The container the native observer is currently bound to. Used so we can
@@ -998,13 +1000,15 @@ function createMessageRow(message: CustomChatEvent, animate = false, virtualInde
 
   if (message.kind !== 'danmaku') meta.append(kind)
   meta.append(name, time)
+  // ×N 折叠徽章不在 meta(用户名行)里 ——挂在用户名后会被误读成"这个用户的属性"。
+  // 实际语义是"这条文本最近 9 秒出现 N 次",所以挂在文本气泡的末尾(见下面 text
+  // 内容块构建完之后)。pattern 参考 iMessage 的 "Sent N times" 标签。
   const mergeCount = message.mergeCount ?? 1
-  if (mergeCount > 1) {
-    const mergeBadge = document.createElement('span')
+  const mergeBadge = mergeCount > 1 ? document.createElement('span') : null
+  if (mergeBadge) {
     mergeBadge.className = 'lc-chat-merge-count'
     mergeBadge.textContent = `×${mergeCount}`
     mergeBadge.title = `近 9 秒内同一弹幕共出现 ${mergeCount} 次`
-    meta.append(mergeBadge)
   }
   if (message.isReply) {
     const reply = document.createElement('span')
@@ -1058,7 +1062,11 @@ function createMessageRow(message: CustomChatEvent, animate = false, virtualInde
 
     const content = document.createElement('span')
     content.className = 'lc-chat-card-text'
-    setText(content, message.text)
+    // Gift / guard 的 message.text 末尾常带 "× 1" / "x3" 等数量后缀(B 站源数据),
+    // 跟 .lc-chat-merge-count 的折叠 ×N 符号撞车 (Jobs 2026-05-18)。strip 逻辑
+    // 抽到 custom-chat-pricing.ts 的 stripCardCountSuffix 便于单测。
+    const contentText = card === 'gift' || card === 'guard' ? stripCardCountSuffix(message.text) : message.text
+    setText(content, contentText)
 
     const fields = cardFields(message, card, guard).slice(0, 3)
     const fieldsEl = document.createElement('div')
@@ -1095,6 +1103,12 @@ function createMessageRow(message: CustomChatEvent, animate = false, virtualInde
   } else {
     setText(text, message.text)
   }
+  // ×N 角标 ——append 到气泡里,CSS 用 absolute top-right 把它浮到气泡右上角
+  // (custom-chat-style.ts .lc-chat-merge-count 块,Jobs P0-4 修复:原 inline-block
+  // 长文本换行时变成视觉孤儿)。card / emote / plain 三种形态都靠同一份 CSS
+  // 处理;card 上额外有 .lc-chat-card-event 子规则切到白色 chip 防止跟 SC 橙红
+  // 渐变冲突(Jobs P1-6)。
+  if (mergeBadge) text.append(mergeBadge)
   body.append(meta, text)
 
   row.append(avatarEl, body, actions)
@@ -1458,20 +1472,13 @@ function createRoot(): HTMLElement {
   const toolbar = document.createElement('div')
   toolbar.className = 'lc-chat-toolbar'
 
-  // 工具栏左侧的搜索快捷按钮：之前 search input 藏在 ⋯ 菜单里，用户根本找不到。
-  // 这里加一个 🔍 直接打开菜单 + 聚焦 search input，把搜索做得「1 次点击就能用」。
-  const searchBtn = makeButton('lc-chat-icon', '🔍', '搜索消息（按 / 也行）', () => {
-    panel?.classList.add('lc-chat-menu-open')
-    // 等 menu 显示后再聚焦——CSS 是 `display:none → block`，立即聚焦会被忽略。
-    requestAnimationFrame(() => searchInput?.focus())
-  })
-  searchBtn.setAttribute('aria-label', '搜索消息')
-
-  const title = document.createElement('div')
-  title.className = 'lc-chat-title'
-  title.textContent = '直播聊天'
-
-  const menuBtn = makeButton('lc-chat-icon', '…', '聊天工具', () => {
+  // 2026-05-18 重构(Jobs 反馈):原本 🔍 按钮 + ⋯ 按钮**功能重叠** ——两个都打开
+  // 同一个 menu drawer,而且 🔍 用 `classList.add` 只能开不能关。
+  // 解药:删 🔍 按钮,把 search input **直接放进 toolbar 始终可见**,代替原
+  // "直播聊天" 居中标题。⋯ 现在只管 filters/clear/status drawer,语义彻底分开。
+  // search input 作为 toolbar 的第一公民,用户随时打字就行,不需要先点按钮。
+  // "/" 快捷键(toggle-button.tsx 里注册)继续聚焦 search input 兼容老习惯。
+  const menuBtn = makeButton('lc-chat-icon', '…', '过滤 / 暂停 / 清屏 / 状态', () => {
     panel.classList.toggle('lc-chat-menu-open')
   })
   menuBtn.setAttribute('aria-label', '聊天工具')
@@ -1507,7 +1514,10 @@ function createRoot(): HTMLElement {
   searchInput = document.createElement('input')
   searchInput.type = 'search'
   searchInput.className = 'lc-chat-search'
-  searchInput.placeholder = '搜索 user:名 kind:gift -词'
+  // toolbar 里现在是 search input 当家,placeholder 写短一点免得截断 ——
+  // 高级搜索语法(user:名 / kind:gift / -词)写在 README 跟提示 title 里就行。
+  searchInput.placeholder = '搜索消息'
+  searchInput.title = '支持 user:名 / kind:gift / -词;按 / 也能聚焦'
   searchInput.setAttribute('aria-label', '搜索直播聊天消息')
   searchInput.value = searchQuery
   // Debounce keystrokes — every input event would otherwise re-filter all 220
@@ -1546,10 +1556,9 @@ function createRoot(): HTMLElement {
     filterbar.append(btn)
   }
 
-  const searchRow = document.createElement('div')
-  searchRow.className = 'lc-chat-menu-row'
-  searchRow.append(searchInput, matchCountEl)
-
+  // searchRow 删了 ——search input 现在直接住在 toolbar(见下方 toolbar.append),
+  // matchCountEl 跟着 searchInput 也搬到 toolbar 右边,菜单 drawer 完全聚焦 filters
+  // / 控制 / 状态 三件事,跟 search 语义彻底拆开(Jobs 2026-05-18 反馈)。
   const controlRow = document.createElement('div')
   controlRow.className = 'lc-chat-menu-row'
   controlRow.append(pauseBtn, unreadBtn, clearBtn)
@@ -1568,8 +1577,10 @@ function createRoot(): HTMLElement {
   filterRow.className = 'lc-chat-menu-row'
   filterRow.append(filterLabel, filterbar)
 
-  menu.append(searchRow, controlRow, filterRow, statusRow, perfEl)
-  toolbar.append(searchBtn, title, menuBtn)
+  menu.append(controlRow, filterRow, statusRow, perfEl)
+  // toolbar 布局:[search input (flex 1)] [match count] [⋯]
+  // search input 永远可见,不需要先点 🔍 切换 ——降低发现门槛 + 消除按钮重复。
+  toolbar.append(searchInput, matchCountEl, menuBtn)
 
   debugEl = document.createElement('div')
   debugEl.className = 'lc-chat-event-debug'
@@ -1663,7 +1674,16 @@ function createRoot(): HTMLElement {
   })
   jumpBottomBtn.style.display = 'none'
   composer.append(jumpBottomBtn, inputWrap, sendRow)
-  panel.append(toolbar, menu, debugEl, listEl, composer)
+
+  // SC pin strip sits between toolbar and the menu / debug / list rows. When
+  // there are no active SCs the strip carries `.lc-chat-sc-pinstrip-empty`
+  // which collapses it to `display:none` (zero grid row) — so empty chats
+  // pay no layout cost. See custom-chat-sc-pinstrip.ts for the rationale
+  // (horizontal time-multiplex, reader-focused durations, 3 input modes).
+  const pinStrip = createScPinStrip()
+  disposePinStrip = pinStrip.dispose
+
+  panel.append(toolbar, pinStrip.element, menu, debugEl, listEl, composer)
   updateUnread()
   updateEmptyState()
   return panel
@@ -2027,6 +2047,10 @@ export function stopCustomChatDom(): void {
   if (disposeActionsIsland) {
     disposeActionsIsland()
     disposeActionsIsland = null
+  }
+  if (disposePinStrip) {
+    disposePinStrip()
+    disposePinStrip = null
   }
   abortRootEventListeners()
   nativeEventObserver?.disconnect()

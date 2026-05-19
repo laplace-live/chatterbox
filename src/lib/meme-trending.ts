@@ -19,10 +19,11 @@
  *   - 不在 store 里做持久化: 雷达数据是实时分钟级的,缓存进 GM storage 反而过期。
  */
 
-import { signal } from '@preact/signals'
+import { effect, signal } from '@preact/signals'
 
 import { memeContentKey } from './meme-content-key'
 import { fetchTodayRadar, type RadarClusterSummary } from './radar-client'
+import { radarConsultEnabled } from './store-radar'
 
 export interface TrendingMatch {
   /** Position in today's trending list. 1 = hottest. */
@@ -46,10 +47,18 @@ let inflight: Promise<void> | null = null
  * same in-flight promise; callers within TTL get a no-op resolution. Errors
  * are swallowed (logged inside fetchTodayRadar). Resolves to undefined.
  *
+ * Gated by `radarConsultEnabled` (default OFF, opt-in). When toggle is off
+ * this short-circuits without touching the network — production callers
+ * (`memes-list.tsx`) ALSO check the toggle before calling, but defense in
+ * depth here means a stray import in another component doesn't accidentally
+ * hit live-meme-radar.aijc-eric.workers.dev.
+ *
  * Pass `force = true` to bypass the TTL — used by tests; production callers
- * should leave it `false`.
+ * should leave it `false`. Tests can also flip `radarConsultEnabled.value`
+ * directly to exercise the gated branch.
  */
 export async function refreshTrendingMemes(force = false): Promise<void> {
+  if (!radarConsultEnabled.value) return undefined
   const now = Date.now()
   if (!force && now - lastFetchAt < TTL_MS) return undefined
   if (inflight) return inflight
@@ -65,6 +74,16 @@ export async function refreshTrendingMemes(force = false): Promise<void> {
   })()
   return inflight
 }
+
+// 用户关掉 toggle 时,立刻把已加载的 🔥 徽章 map 清空,这样面板里现存的徽章
+// 立即消失而不是等下次 refresh 才生效。同时把 lastFetchAt 归零,允许用户再次
+// 打开后立刻拉新数据(否则会被 10 分钟 TTL 拦下)。
+effect(() => {
+  if (!radarConsultEnabled.value) {
+    trendingMemeKeys.value = new Map()
+    lastFetchAt = 0
+  }
+})
 
 /**
  * Pure mapper: turns a sorted-by-trending cluster array into the lookup map

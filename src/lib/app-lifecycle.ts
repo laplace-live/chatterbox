@@ -626,10 +626,6 @@ const PANEL_STYLE = `
 
       #laplace-chatterbox-dialog .cb-panel-header-chip--on { background: #0a7f55; }
       #laplace-chatterbox-dialog .cb-panel-header-chip--dry { background: #a15c00; }
-      #laplace-chatterbox-dialog .cb-panel-header-chip--dry-emphasis {
-        background: #a15c00;
-        font-weight: 600;
-      }
 
       #laplace-chatterbox-dialog .cb-panel-header .cb-ws-degraded-banner {
         margin-top: 6px;
@@ -1391,10 +1387,6 @@ const PANEL_STYLE = `
 
         #laplace-chatterbox-dialog .cb-panel-header-chip--on { background: #30d158 !important; color: #1d1d1f !important; }
         #laplace-chatterbox-dialog .cb-panel-header-chip--dry { background: #ff9f0a !important; color: #1d1d1f !important; }
-        #laplace-chatterbox-dialog .cb-panel-header-chip--dry-emphasis {
-          background: #ff9f0a !important;
-          color: #1d1d1f !important;
-        }
 
         #laplace-chatterbox-dialog .cb-panel-header .cb-ws-degraded-banner {
           background: rgba(255, 69, 58, .14) !important;

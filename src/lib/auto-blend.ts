@@ -673,8 +673,8 @@ async function triggerSend(triggeredText: string, reason: string): Promise<void>
 
   // Cooldown + trendMap.delete are deferred to the first target that actually
   // reaches the send step (see `engageCooldownOnce` below). If every target
-  // is filtered out (locked/unavailable emoticon, YOLO LLM gap or empty
-  // output, LLM error), nothing fires — and we must not consume a 20–45s
+  // is filtered out (locked/unavailable emoticon, AI 润色 (YOLO) LLM gap or
+  // empty output, LLM error), nothing fires — and we must not consume a 20–45s
   // cooldown for a no-op wave the user never saw followed.
   let cooldownEngaged = false
   const engageCooldownOnce = (): void => {
@@ -729,32 +729,33 @@ async function triggerSend(triggeredText: string, reason: string): Promise<void>
       }
       const isEmote = isEmoticonUnique(originalText)
 
-      // YOLO（自动跟车的 LLM 润色）：在所有 fork-specific 过滤都过完后,在
-      // applyReplacements 之前。这样：
+      // AI 润色（原代号 YOLO；自动跟车的 LLM 改写）：在所有 fork-specific 过滤都过完后,
+      // 在 applyReplacements 之前。这样：
       //   - 文本/UID/locked/unavailable/large-emote 黑名单都已经把不该跟的拦下来了
-      //     （润色不会绕过黑名单），
-      //   - 替换规则仍然作为最后一道安全网套用在润色结果上,
-      //   - 表情类（unique ID）一律不送 LLM——它是一串不透明的标识符,润色没意义。
+      //     （改写不会绕过黑名单），
+      //   - 替换规则仍然作为最后一道安全网套用在改写结果上,
+      //   - 表情类（unique ID）一律不送 LLM——它是一串不透明的标识符,改写没意义。
       // 失败/未配置：跳过该 target,不耗冷却（continue 让外层多 target 的 burst 继续）。
+      // signal 名仍叫 `autoBlendYolo`（GM 持久化键），保留以避免用户配置迁移。
       let polished = originalText
       if (autoBlendYolo.value && !isEmote) {
         const gap = describeLlmGap('autoBlend')
         if (gap) {
-          autoBlendLastActionText.value = `自动跟车 YOLO 跳过：${gap}`
-          logAutoBlend(`🤖 自动跟车 YOLO 跳过（${shortAutoBlendText(originalText)}）：${gap}`, 'warning')
+          autoBlendLastActionText.value = `自动跟车 AI 润色 跳过：${gap}`
+          logAutoBlend(`🤖 自动跟车 AI 润色 跳过（${shortAutoBlendText(originalText)}）：${gap}`, 'warning')
           continue
         }
         try {
           const out = (await polishWithLlm('autoBlend', originalText)).trim()
           if (!out) {
-            logAutoBlend(`🤖 自动跟车 YOLO 跳过（${shortAutoBlendText(originalText)}）：LLM 返回为空`, 'warning')
+            logAutoBlend(`🤖 自动跟车 AI 润色 跳过（${shortAutoBlendText(originalText)}）：LLM 返回为空`, 'warning')
             continue
           }
           polished = out
-          logAutoBlend(`🤖 自动跟车 YOLO：${shortAutoBlendText(originalText)} → ${shortAutoBlendText(polished)}`)
+          logAutoBlend(`🤖 自动跟车 AI 润色：${shortAutoBlendText(originalText)} → ${shortAutoBlendText(polished)}`)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          logAutoBlend(`🤖 自动跟车 YOLO 跳过（${shortAutoBlendText(originalText)}）：${msg}`, 'warning')
+          logAutoBlend(`🤖 自动跟车 AI 润色 跳过（${shortAutoBlendText(originalText)}）：${msg}`, 'warning')
           continue
         }
       }
@@ -914,7 +915,7 @@ async function triggerSend(triggeredText: string, reason: string): Promise<void>
     autoBlendLastActionText.value = `出错：${msg}`
     logAutoBlend('自动跟车出错', 'error', msg)
   } finally {
-    // 防紧凑重触发：如果所有 target 都因为表情过滤 / YOLO 失败 / LLM 空返回被
+    // 防紧凑重触发：如果所有 target 都因为表情过滤 / AI 润色 (YOLO) 失败 / LLM 空返回被
     // 跳过（cooldownEngaged 仍为 false），但 trendMap 里那些已达标的 entry 仍在,
     // 下一条同样的弹幕进来会立刻再触发同一波。强制一个短冷却 + 清掉本批
     // trendMap entry，避免日志被刷屏 + 浪费 LLM 配额。短冷却（5s）比正常冷却

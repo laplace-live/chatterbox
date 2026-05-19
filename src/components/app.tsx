@@ -1,14 +1,17 @@
 import { useEffect } from 'preact/hooks'
 
+import { startAiCandidateEngine, stopAiCandidateEngine } from '../lib/ai-candidate'
 import {
   installOptimizedLayoutStyle,
   installPanelStyles,
   startCbBackendHealthProbe,
   startCustomChatRoomRearm,
 } from '../lib/app-lifecycle'
+import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
 import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
 import { installRemoteClusterLifecycle } from '../lib/chatfilter/remote-controller'
 import { startReplacementFeed, stopReplacementFeed } from '../lib/chatfilter-replacement-feed'
+import { startCloudReplacementSync } from '../lib/cloud-replacement-sync'
 import { startCustomChat, stopCustomChat } from '../lib/custom-chat'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { startGuardRoomAgent, stopGuardRoomAgent } from '../lib/guard-room-agent'
@@ -20,6 +23,7 @@ import { loop } from '../lib/loop'
 import { startNativeChatFold, stopNativeChatFold } from '../lib/native-chat-fold'
 import { startRadarReportLoop } from '../lib/radar-report'
 import {
+  aiCandidateEnabled,
   autoBlendEnabled,
   chatfilterFeedReplacementLearn,
   customChatEnabled,
@@ -65,6 +69,14 @@ export function App() {
     startRadarReportLoop()
   }, [])
 
+  // 云端替换规则后台 sync:Jobs 式审计后把替换规则的 UI 砍掉了,原本的同步
+  // 逻辑挂在 CloudReplacementSection 的 useEffect 里,意味着用户不打开设置
+  // 就不刷新。现在搬到 boot 路径,与 UI 解耦——10 分钟一次,失败静默。
+  // hidden GM 键 `disableCloudReplacement` 可关掉(少数派用户的逃生口)。
+  useEffect(() => {
+    startCloudReplacementSync()
+  }, [])
+
   // chatfilter 远程聚类：用户在设置里打开 chatfilterRemoteEnabled 时自动启动，
   // 关闭或换 endpoint 时自动重连。失败 / 网络错误一律静默，主路径不受影响。
   useEffect(() => installRemoteClusterLifecycle(), [])
@@ -108,6 +120,26 @@ export function App() {
     startUserBlacklistHijack()
     return () => stopUserBlacklistHijack()
   }, [])
+
+  // 仅音频模式：始终挂载 signal-driven effect & stylesheet，按钮的开关
+  // 由用户在右下角点击切换。模块本身 idempotent，feature 不启用时零成本
+  // （CDN 库不下载、player 不被动）。
+  useEffect(() => {
+    startAudioOnly()
+    return () => stopAudioOnly()
+  }, [])
+
+  // AI 陪聊（候选）引擎：用户在同传 tab 里打开开关时启动。Review-only —
+  // 引擎只生成候选，用户点确认才发。无 auto-send 路径（设计约束，见
+  // store-ai-candidate.ts）。
+  useEffect(() => {
+    if (aiCandidateEnabled.value) {
+      startAiCandidateEngine()
+    } else {
+      stopAiCandidateEngine()
+    }
+    return () => stopAiCandidateEngine()
+  }, [aiCandidateEnabled.value])
 
   useEffect(() => {
     if (guardRoomLiveDeskSessionId.value) {

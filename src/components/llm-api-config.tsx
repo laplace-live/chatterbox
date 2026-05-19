@@ -16,7 +16,8 @@ import {
  *
  * 历史背景：这套 UI 原本嵌在「智能辅助驾驶」(`HzmDrivePanel`) 里。但 HZM 面板
  * 受 `meme-sources` 注册表 gate（目前只有灰泽满 1713546334 房间会渲染），导致
- * 别的房间用户开了 YOLO 三档却找不到地方填 API key。这次抽出来：
+ * 别的房间用户开了三个 AI 润色（原代号 YOLO）开关却找不到地方填 API key。
+ * 这次抽出来：
  *  - 设置 → LLM 永远显示这块（凭证集中管理）
  *  - HZM 面板不再内嵌 API 配置，只读地显示状态 + 跳设置链接
  *
@@ -41,6 +42,84 @@ const PROVIDER_TITLE: Record<LlmProvider, string> = {
   anthropic: 'Anthropic（推荐 claude-haiku-4-5-20251001）',
   openai: 'OpenAI（推荐 gpt-4o-mini）',
   'openai-compat': 'OpenAI 兼容（DeepSeek / Moonshot / OpenRouter / Ollama / 小米 mimo）',
+}
+
+/**
+ * openai-compat 预设：一键填 base URL + 推荐 model。Jobs 式审计后的 #11——
+ * UI 只露 3 个 provider 选项,5 个常见 OpenAI-compatible 后端做成 preset 按钮,
+ * 用户点一下自动填两个字段,不用记 URL。能力不减(`openai-compat` 仍可手填任意
+ * base URL),可见性压一半。
+ *
+ * URL 标准化策略:存盘的形式跟用户在文档里看到的形式一致(带 /v1 或不带),
+ * 因为 `llm-driver` 内部会自动补全到 `/v1/chat/completions`(见
+ * `llm-base-url-validate.ts`)。preset 按钮存的是"通常文档示例的最短形式"。
+ */
+interface OpenAICompatPreset {
+  id: string
+  label: string
+  baseURL: string
+  /** 该 provider 上的推荐模型——填进 llmModel input,用户仍可改。 */
+  model: string
+  /** hover title:简短描述这个 provider 是什么。 */
+  hint: string
+}
+const OPENAI_COMPAT_PRESETS: readonly OpenAICompatPreset[] = [
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    baseURL: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    hint: 'DeepSeek（国内便宜、中文好；deepseek-chat 是 V3 模型别名）',
+  },
+  {
+    id: 'moonshot',
+    label: 'Moonshot',
+    baseURL: 'https://api.moonshot.cn',
+    model: 'moonshot-v1-8k',
+    hint: 'Moonshot Kimi（国内、长上下文；8k 足够单条弹幕改写）',
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    baseURL: 'https://openrouter.ai/api',
+    model: 'meta-llama/llama-3.2-3b-instruct:free',
+    hint: 'OpenRouter（一个 key 路由到任意模型；这里默认填免费的 Llama 3.2 3B,你可以换）',
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    baseURL: 'http://localhost:11434',
+    model: 'llama3.2',
+    hint: 'Ollama 本地模型（先在本机 ollama pull llama3.2；@connect localhost 自动满足）',
+  },
+  {
+    id: 'mimo',
+    label: '小米 mimo',
+    baseURL: 'https://token-plan-sgp.xiaomimimo.com/v1',
+    model: '',
+    hint: '小米 mimo（你需要从内部渠道拿到 model 名）',
+  },
+] as const
+
+/**
+ * 把 base URL 归一化用于"哪个 preset 当前匹配"对比。两端做最小程度的清洗:
+ * - 删除 trailing `/`
+ * - 删除 trailing `/v1`(用户文档里可能带或不带)
+ * - lowercase scheme/host(`localhost` vs `LOCALHOST`)
+ *
+ * 这只用于 UI 高亮 active preset,不会改变 GM 存储的实际值。
+ */
+function normalizePresetUrl(url: string): string {
+  try {
+    const trimmed = url.trim()
+    if (!trimmed) return ''
+    const parsed = new URL(trimmed)
+    let pathname = parsed.pathname.replace(/\/+$/, '')
+    if (pathname.endsWith('/v1')) pathname = pathname.slice(0, -3)
+    return `${parsed.protocol}//${parsed.host}${pathname}`.toLowerCase()
+  } catch {
+    return url.trim().toLowerCase().replace(/\/+$/, '').replace(/\/v1$/, '')
+  }
 }
 
 /** 把 API key 显示成 `sk-1234…abcd` 这种半遮罩形态。 */
@@ -201,6 +280,46 @@ export function LlmApiConfigPanel({ showTestConnection = true }: LlmApiConfigPan
 
       {llmProvider.value === 'openai-compat' && (
         <div style={STACK_STYLE}>
+          {/*
+            预设按钮:5 个常见 OpenAI 兼容后端,点一下自动填 base URL + 推荐模型。
+            highlight 当前匹配的 preset(归一化后比 baseURL),让用户知道自己处于
+            哪个"位置"。任何 preset 没匹配 = 用户自己填的自定义 base URL,所有
+            按钮都不高亮——这本身也是信号。
+           */}
+          <span style={FIELD_LABEL_STYLE}>预设（一键填 base URL + 推荐模型）</span>
+          <div
+            className='cb-segment'
+            style={{
+              // 5 个 preset 在 320px 面板里大约能挤 2 行(3+2 或 2+2+1),挑 70px
+              // minmax 让"OpenRouter"、"小米 mimo" 不被压字。
+              gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+              gridAutoFlow: 'row',
+            }}
+          >
+            {OPENAI_COMPAT_PRESETS.map(preset => {
+              const isActive = normalizePresetUrl(llmBaseURL.value) === normalizePresetUrl(preset.baseURL)
+              return (
+                <button
+                  key={preset.id}
+                  type='button'
+                  aria-pressed={isActive}
+                  style={modeButtonStyle(isActive)}
+                  title={preset.hint}
+                  onClick={() => {
+                    // 一键填两个字段;model 已有非空值时不覆盖(避免用户精调过模型名又被
+                    // preset 一键清掉)。preset.model 为空的也跳过。
+                    llmBaseURL.value = preset.baseURL
+                    if (preset.model && !llmModel.value.trim()) {
+                      llmModel.value = preset.model
+                    }
+                    testStatus.value = 'idle'
+                  }}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
           <span style={FIELD_LABEL_STYLE}>Base URL</span>
           <input
             type='url'
@@ -210,7 +329,7 @@ export function LlmApiConfigPanel({ showTestConnection = true }: LlmApiConfigPan
               testStatus.value = 'idle'
             }}
             placeholder='https://api.deepseek.com'
-            title='DeepSeek=https://api.deepseek.com / Moonshot=https://api.moonshot.cn / OpenRouter=https://openrouter.ai/api / 小米 mimo=https://token-plan-sgp.xiaomimimo.com/v1'
+            title='点上面的预设按钮一键填,或手动输入任意 OpenAI 兼容 base URL。'
             style={inputStyle}
           />
           <span style={FIELD_HINT_STYLE}>带不带 /v1 都行，自动补全到 /v1/chat/completions。</span>

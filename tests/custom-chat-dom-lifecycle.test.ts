@@ -229,7 +229,10 @@ describe('custom chat DOM lifecycle and rendering', () => {
     const sendBox = host?.querySelector<HTMLElement>('.chat-control-panel-vm')
 
     expect(panel.dataset.theme).toBe('light')
-    expect(panel.querySelector('.lc-chat-title')?.textContent).toBe('直播聊天')
+    // toolbar 重构后(Jobs 2026-05-18):.lc-chat-title 已删除,search input 常驻
+    // toolbar 占据原标题位置。验证 search input 存在且 placeholder 正确。
+    const searchInput = panel.querySelector<HTMLInputElement>('.lc-chat-toolbar .lc-chat-search')
+    expect(searchInput?.placeholder).toBe('搜索消息')
     expect(panel.querySelector('.lc-chat-empty')?.textContent).toBe('还没有收到消息')
     expect(document.documentElement.classList.contains('lc-custom-chat-mounted')).toBe(true)
     expect(sendBox?.style.display).toBe('none')

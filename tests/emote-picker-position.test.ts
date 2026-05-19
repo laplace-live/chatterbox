@@ -107,7 +107,7 @@ describe('emote picker positioning (computePos)', () => {
       left: VW - 328,
       right: VW - 8,
     })
-    // Trigger button somewhere inside the panel (the 普通发送 smiley).
+    // Trigger button somewhere inside the panel (the 手动发送 smiley).
     const triggerInPanel = (): PickerRect => rect(VW - 300, 600)
 
     test('places picker to the LEFT of the panel when room allows', () => {

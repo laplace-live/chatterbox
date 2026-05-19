@@ -57,7 +57,8 @@ export interface PromptPickerProps {
  *
  * Used by the Settings PromptManager (with 24-grapheme previews and a
  * domain-specific empty hint) and the inline picker on each feature
- * tab (smaller previews to fit alongside the YOLO toggles).
+ * tab (smaller previews to fit alongside the AI 润色 toggles, internal
+ * name still `yolo`).
  *
  * 设计参考自 upstream chatterbox 090bd1e。
  */

@@ -373,7 +373,7 @@ describe('loop() — empty template', () => {
 // ---------------------------------------------------------------------------
 
 describe('loop() — YOLO gap (config incomplete)', () => {
-  test('logs "🤖 独轮车 YOLO 已开启但配置不完整" and stops', async () => {
+  test('logs "🤖 独轮车 AI 润色 已开启但配置不完整" and stops', async () => {
     store.autoSendYolo.value = true
     yoloOutcome = 'gap'
     ensureLoopRunning()
@@ -385,7 +385,7 @@ describe('loop() — YOLO gap (config incomplete)', () => {
 
     expect(enqueueCalls).toHaveLength(0)
     expect(store.sendMsg.value).toBe(false)
-    expect(JSON.stringify(logged)).toMatch(/独轮车 YOLO 已开启但配置不完整/)
+    expect(JSON.stringify(logged)).toMatch(/独轮车 AI 润色 已开启但配置不完整/)
   })
 })
 
@@ -403,7 +403,7 @@ describe('loop() — YOLO empty result', () => {
 
     // No enqueue happened (the skip path continues to next iteration).
     expect(enqueueCalls.length).toBe(0)
-    expect(JSON.stringify(logged)).toMatch(/独轮车 YOLO 跳过本条/)
+    expect(JSON.stringify(logged)).toMatch(/独轮车 AI 润色 跳过本条/)
   })
 })
 
@@ -420,7 +420,7 @@ describe('loop() — YOLO throw', () => {
     await wait(40)
 
     expect(enqueueCalls.length).toBe(0)
-    expect(JSON.stringify(logged)).toMatch(/独轮车 YOLO 跳过本条.*yolo-broke/)
+    expect(JSON.stringify(logged)).toMatch(/独轮车 AI 润色 跳过本条.*yolo-broke/)
   })
 })
 
@@ -439,7 +439,7 @@ describe('loop() — YOLO success polishes text before send', () => {
 
     expect(enqueueCalls.length).toBeGreaterThanOrEqual(1)
     expect(enqueueCalls[0].msg).toBe('哥哥厉害')
-    expect(JSON.stringify(logged)).toMatch(/独轮车 YOLO：你好世界 → 哥哥厉害/)
+    expect(JSON.stringify(logged)).toMatch(/独轮车 AI 润色：你好世界 → 哥哥厉害/)
   })
 })
 

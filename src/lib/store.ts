@@ -6,6 +6,7 @@ import { appendLog } from './log'
 import { memeContributorCandidatesByRoom, memeContributorSeenTextsByRoom } from './store-meme'
 import { persistSendState, sendMsg } from './store-send'
 
+export * from './store-ai-candidate'
 export * from './store-auto-blend'
 export * from './store-chat'
 export * from './store-chatfilter'

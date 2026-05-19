@@ -4,18 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository builds a Bilibili Live userscript named `B站独轮车 + 自动跟车`. It is a fork of LAPLACE Chatterbox, packaged for Greasy Fork/Tampermonkey/Violentmonkey, and focuses on live-room danmaku workflows:
+This repository builds a Bilibili Live userscript named `弹幕助手 · 替你说，替你看` (Greasy Fork title still reads `B站独轮车 + 自动跟车` for SEO). Originally forked from [LAPLACE Chatterbox](https://github.com/laplace-live/chatterbox); product direction has diverged enough that wholesale sync is no longer practical, but **upstream cherry-picks are still welcome on a case-by-case basis** — if LAPLACE ships a bug fix or feature that's a clean win, port it. There is no formal "we are independent now" stance to defend; that kind of declaration only closes doors.
 
+### Target user (anchor for every product decision)
+
+**Heavy-active Bilibili-live viewer at shadow-ban / mute / blacklist risk.** Daily live-room dweller, very active in danmaku. Because they send a lot, they regularly get rate-limited, muted, shadow-banned, or blacklisted by streamers — so they need:
+
+1. **Send-side acceleration**: auto-send loops (独轮车), auto-follow (跟车), one-line manual send (手动发送), +1, AI 润色, shadow-ban auto-rewrite.
+2. **Self-defense visibility**: fan-medal inspection to see *which rooms have muted/restricted/blacklisted them today*.
+3. **Better-reading affordance**: Chatterbox Chat for a cleaner right-side chat.
+
+**Note on Guard Room / live-desk modules**: an earlier audit (2026-05-15) misread these as "guild administrator tooling" and queued them for spin-off. That was wrong. The real audience for Guard Room sync + live-desk heartbeat + monitoring-room agent is **the same heavy-active viewer above, watching multiple rooms simultaneously and hopping between them** — they need cross-room state sync, cross-tab handoff, and remote-pushed presets so all their open chatterbox instances stay coordinated. The spin-off has been reverted (`docs/guard-room-spinoff-plan.md` carries a DECISION REVERSED banner). The user-facing terminology ("保安室 / 监控室代理") **stays**: it's a deliberately concrete metaphor — picture an old guy sitting in a security guard's room watching N monitors and switching attention between them, which is exactly what a multi-room viewer does. The Apple-style precedent is Finder / Time Machine / Mission Control / Dashboard: a vivid noun beats a generic functional label every time. Don't flatten these names into "多房间观察台" or "跨房间挂机" — those describe the function, the original names evoke the experience.
+
+**When in doubt about whether to add / keep a feature, ask:** *does this serve the heavy-active viewer who's worried about getting silenced?* If yes, keep it; if no, defer or remove from main UI surface.
+
+### Capability surface
+
+The product does **two things**: 替你说 (send) + 替你看 (read).
+
+**替你说 (Tier 1, primary):**
 - auto-send loops (`独轮车`)
 - repeated-danmaku auto-follow (`自动跟车`) with broadcast verification
+- one-line manual send (`手动发送`, formerly `普通发送`) with optional AI 润色 (single switch, user-supplied prompt via `PromptManager`) and shadow-ban candidates
+
+**替你看 (Tier 1, supporting):**
+- Chatterbox Chat — custom right-side live chat replacement (WS + DOM fallback, dark mode aware)
+- fan-medal room mute/restriction inspection — slated to surface as a `我的状态` main-panel section
+
+**Supporting / background machinery (Tier 2, mostly invisible to the user):**
 - Smart Auto-Drive (`智能辅助驾驶`) — heuristic + optional LLM meme picker that runs alongside auto-follow
-- Chatterbox Chat, a custom right-side live chat replacement (WS source + DOM fallback, dark mode aware)
-- fan-medal room mute/restriction inspection, with optional Guard Room sync and live-desk handoff
-- normal danmaku sending, +1/steal actions, replacement rules, AI evasion
-- Shadow-ban subsystem: send-broadcast verification, candidate rewrites, persistent observations, optional rule learning
+- Shadow-ban subsystem: send-broadcast verification, candidate rewrites, persistent observations, rule auto-learning (all backgrounded; no user-facing rule-editing UI)
 - Multi-source meme library: LAPLACE + SBHZM + chatterbox-cloud aggregator + per-room community sources
-- Soniox speech-to-text
-- LLM provider matrix: Anthropic, OpenAI, and any OpenAI-compatible base URL (DeepSeek/Moonshot/OpenRouter/Ollama/...) used by AI evasion and Smart Auto-Drive
+- Soniox speech-to-text (`同传`)
+- LLM provider matrix (Anthropic, OpenAI, OpenAI-compatible base URL) used by AI 润色 + AI evasion + Smart Auto-Drive
+
+**Multi-room observation (`guard-room-*`, `live-desk-sync`):**
+- Cross-room state sync to `bilibili-guard-room.vercel.app` dashboard so a viewer running chatterbox in N tabs / devices sees aggregated state in one place.
+- Live-desk heartbeat from each room.
+- Monitoring-room agent that pulls a unified control profile (auto-blend preset, dry-run, heartbeat cadence) and applies it to every chatterbox instance bound to the same sync key.
+- URL handoff (`?guard_room_*` query params) so dashboard links can land you on a room with the right config pre-armed.
 
 Most UI text is Chinese. Keep Markdown, HTML, and TypeScript files encoded as UTF-8.
 
@@ -199,7 +226,7 @@ The floating panel has **no top-level Tab bar**. It's a single-page waterfall wi
 - **Three core primitive cards on the home page**, each visually paired with its supporting widget through a `<section class="cb-core-group">` wrapper:
   - `AutoSendControls` (独轮车) + `MemesList` as a `<details class="cb-supporting-feature">` summary "📚 从烂梗库挑模板"
   - `AutoBlendControls` (自动跟车) + `HzmDrivePanelMount` (智驾) as "🤖 用 LLM 选梗"
-  - `NormalSendTab` (普通发送 / +1 / 复制 / 影子屏蔽候选) + `SttTab` (同传) as "🎤 语音输入弹幕"
+  - `NormalSendTab` (手动发送, formerly 普通发送/常规发送; +1 / 复制 / 影子屏蔽候选) + `SttTab` (同传) as "🎤 语音输入弹幕"
   Supporting features are visually subordinate (smaller, indented, dimmer background) — the design encodes "X serves Y" through layout, not through equal Tabs.
 - **Settings page** ([`src/components/settings-tab.tsx`](src/components/settings-tab.tsx)): default view shows only 5 essential sections (Chatterbox Chat, +1 直接动作, 布局, 表情, 备份/恢复). A "▸ 显示高级设置" button reveals 10+ advanced sections (智能识别 / 替换规则 / 影子屏蔽 / LLM / 粉丝牌巡检 / chatterbox-cloud 后端 / 雷达 / 日志). Search query overrides the toggle — typing in the search box always matches across all sections. State lives in `settingsAdvancedVisible` ([`store-ui.ts`](src/lib/store-ui.ts)).
 - **Esc key two-stage behavior** ([`src/components/toggle-button.tsx`](src/components/toggle-button.tsx)): on a sub-page (settings/about), Esc returns to home; on home, Esc closes the panel. Editable-field focus suppresses both (so Esc still clears inputs).

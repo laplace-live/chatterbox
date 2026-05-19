@@ -1,3 +1,15 @@
+/**
+ * Multi-room observation agent: connects to the shared dashboard, fetches a
+ * unified control profile (auto-blend preset, dry-run toggle, heartbeat
+ * cadence, hot-room thresholds), syncs the watchlist of medal / follow
+ * rooms. Built for the heavy-active viewer who runs chatterbox in several
+ * tabs / devices and wants their settings + room state coordinated.
+ *
+ * (Was briefly marked @deprecated under the assumption it served guild
+ * admins — that was a misreading; see guard-room-sync.ts header for the
+ * full retrospective. Module is staying in chatterbox.)
+ */
+
 import { type FollowingRoom, fetchFollowingRooms, fetchMedalRooms, fetchRoomLiveStatus, type MedalRoom } from './api'
 import { applyAutoBlendPreset } from './auto-blend-presets'
 import {

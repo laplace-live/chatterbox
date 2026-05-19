@@ -2,7 +2,6 @@ import { computed, signal } from '@preact/signals'
 
 import type { AutoBlendCandidateProgress } from './auto-blend-status'
 
-import { GM_getValue, GM_setValue } from '$'
 import { AUTO_BLEND_PRESETS, type AutoBlendPreset } from './auto-blend-preset-config'
 import { gmSignal, numericGmSignal } from './gm-signal'
 
@@ -33,12 +32,19 @@ export const autoBlendPreset = gmSignal<'safe' | 'normal' | 'hot' | 'custom'>('a
 // a preset button (initial preset is also 'normal').
 export const lastAppliedPresetBaseline = gmSignal<AutoBlendPreset>('lastAppliedPresetBaseline', 'normal')
 export const autoBlendAdvancedOpen = gmSignal('autoBlendAdvancedOpen', false)
-const autoBlendDryRunMigrationKey = 'autoBlendDryRunVisibleDefaultMigrated'
-if (!GM_getValue(autoBlendDryRunMigrationKey, false)) {
-  if (GM_getValue('autoBlendDryRun', false) === true) GM_setValue('autoBlendDryRun', false)
-  GM_setValue(autoBlendDryRunMigrationKey, true)
-}
-export const autoBlendDryRun = gmSignal('autoBlendDryRun', false)
+// 自动跟车试运行默认 ON（新用户安全起步）。从用户视角："第一次开跟车不会真发,
+// 让你先看看脚本想发什么,确认后再切到真发"——这是 Apple 的招数:危险默认 → 安全。
+//
+// 历史包袱：之前 v2.x 期间，autoBlendDryRunVisibleDefaultMigrated 这个一次性
+// migration 曾经把已有用户的 dryRun=true 强制改回 false（当时默认是 false，
+// 想清理掉一波早期默认 true 留下的"为什么不发"困惑）。Jobs 式审计后翻转回
+// 默认 true:对没改过设置的新用户更安全,有改过的老用户依然保留他们的最后
+// 选择（GM 持久值优先）。
+//
+// 旧 migration 已删除——它是一个单次清理,已跑过的用户全部已被它写入 false,
+// 不再生效;没跑过的用户极少（早就升级过了）,即便他们撞上新默认 true 也是
+// 朝安全方向收敛。
+export const autoBlendDryRun = gmSignal('autoBlendDryRun', true)
 /**
  * @public Forward-compat GM key — UI removed but GM storage / backup payloads
  * still round-trip through this signal so old values aren't lost. Not currently

@@ -29,9 +29,14 @@ const {
   llmPromptsNormalSend,
   DEFAULT_GLOBAL_PROMPT,
 } = await import('../src/lib/store-llm')
-const { getActiveFeaturePrompt, getActiveGlobalPrompt, getActiveLlmPrompt, getPromptPreview } = await import(
-  '../src/lib/prompts'
-)
+const {
+  DEFAULT_FEATURE_PROMPTS,
+  getActiveFeaturePrompt,
+  getActiveFeaturePromptRaw,
+  getActiveGlobalPrompt,
+  getActiveLlmPrompt,
+  getPromptPreview,
+} = await import('../src/lib/prompts')
 
 beforeEach(() => {
   resetGmStore()
@@ -56,7 +61,7 @@ describe('DEFAULT_GLOBAL_PROMPT', () => {
   })
 })
 
-describe('getActiveFeaturePrompt', () => {
+describe('getActiveFeaturePromptRaw — user value, no default fallback', () => {
   test('returns the active draft for each feature', () => {
     llmPromptsNormalSend.value = ['ns0', 'ns1']
     llmActivePromptNormalSend.value = 1
@@ -64,9 +69,9 @@ describe('getActiveFeaturePrompt', () => {
     llmActivePromptAutoBlend.value = 0
     llmPromptsAutoSend.value = ['as0', 'as1', 'as2']
     llmActivePromptAutoSend.value = 2
-    expect(getActiveFeaturePrompt('normalSend')).toBe('ns1')
-    expect(getActiveFeaturePrompt('autoBlend')).toBe('ab0')
-    expect(getActiveFeaturePrompt('autoSend')).toBe('as2')
+    expect(getActiveFeaturePromptRaw('normalSend')).toBe('ns1')
+    expect(getActiveFeaturePromptRaw('autoBlend')).toBe('ab0')
+    expect(getActiveFeaturePromptRaw('autoSend')).toBe('as2')
   })
 
   test('returns "" when the active index is past the end of the list', () => {
@@ -74,13 +79,50 @@ describe('getActiveFeaturePrompt', () => {
     // past the array. We must NOT throw or read undefined as a string.
     llmPromptsNormalSend.value = ['only-one']
     llmActivePromptNormalSend.value = 5
-    expect(getActiveFeaturePrompt('normalSend')).toBe('')
+    expect(getActiveFeaturePromptRaw('normalSend')).toBe('')
   })
 
   test('returns "" when the prompt list is empty (default state)', () => {
-    expect(getActiveFeaturePrompt('normalSend')).toBe('')
-    expect(getActiveFeaturePrompt('autoBlend')).toBe('')
-    expect(getActiveFeaturePrompt('autoSend')).toBe('')
+    expect(getActiveFeaturePromptRaw('normalSend')).toBe('')
+    expect(getActiveFeaturePromptRaw('autoBlend')).toBe('')
+    expect(getActiveFeaturePromptRaw('autoSend')).toBe('')
+  })
+})
+
+describe('getActiveFeaturePrompt — falls back to DEFAULT_FEATURE_PROMPTS when user blank', () => {
+  test('returns user prompt verbatim when set', () => {
+    llmPromptsNormalSend.value = ['my custom']
+    llmActivePromptNormalSend.value = 0
+    expect(getActiveFeaturePrompt('normalSend')).toBe('my custom')
+  })
+
+  test('returns the per-feature default when user list is empty', () => {
+    expect(getActiveFeaturePrompt('normalSend')).toBe(DEFAULT_FEATURE_PROMPTS.normalSend)
+    expect(getActiveFeaturePrompt('autoBlend')).toBe(DEFAULT_FEATURE_PROMPTS.autoBlend)
+    expect(getActiveFeaturePrompt('autoSend')).toBe(DEFAULT_FEATURE_PROMPTS.autoSend)
+  })
+
+  test('returns the default when index is past the end of list', () => {
+    llmPromptsAutoBlend.value = ['oops']
+    llmActivePromptAutoBlend.value = 99
+    expect(getActiveFeaturePrompt('autoBlend')).toBe(DEFAULT_FEATURE_PROMPTS.autoBlend)
+  })
+
+  test('returns the default when user prompt is whitespace-only', () => {
+    llmPromptsAutoSend.value = ['   \n\t  ']
+    llmActivePromptAutoSend.value = 0
+    expect(getActiveFeaturePrompt('autoSend')).toBe(DEFAULT_FEATURE_PROMPTS.autoSend)
+  })
+})
+
+describe('DEFAULT_FEATURE_PROMPTS — Jobs #21 safe defaults', () => {
+  test('three non-empty defaults, one per feature', () => {
+    expect(DEFAULT_FEATURE_PROMPTS.normalSend.length).toBeGreaterThan(10)
+    expect(DEFAULT_FEATURE_PROMPTS.autoBlend.length).toBeGreaterThan(10)
+    expect(DEFAULT_FEATURE_PROMPTS.autoSend.length).toBeGreaterThan(10)
+    // Defaults are distinct — each scenario gets bespoke wording.
+    expect(DEFAULT_FEATURE_PROMPTS.normalSend).not.toBe(DEFAULT_FEATURE_PROMPTS.autoBlend)
+    expect(DEFAULT_FEATURE_PROMPTS.autoBlend).not.toBe(DEFAULT_FEATURE_PROMPTS.autoSend)
   })
 })
 
@@ -94,14 +136,19 @@ describe('getActiveGlobalPrompt', () => {
 })
 
 describe('getActiveLlmPrompt', () => {
-  test('returns "" when feature prompt is missing — caller skips LLM call', () => {
-    // Even a non-empty global is not enough to engage the LLM: without a
-    // feature prompt, the model wouldn't know what task to perform. The
-    // empty string is the contract that callers (llm-polish.ts) check.
-    llmPromptsGlobal.value = ['Global only, no task']
-    expect(getActiveLlmPrompt('normalSend')).toBe('')
-    expect(getActiveLlmPrompt('autoBlend')).toBe('')
-    expect(getActiveLlmPrompt('autoSend')).toBe('')
+  test('returns global + per-feature DEFAULT_FEATURE_PROMPTS when user feature prompt is empty (Jobs #21)', () => {
+    // Pre-#21 this was '' (caller would skip LLM). After #21 the per-feature
+    // safe default kicks in so AI 润色 stays usable for new users who never
+    // wrote a custom prompt. Global baseline still composes ahead of it.
+    llmPromptsGlobal.value = ['Global baseline']
+    const out = getActiveLlmPrompt('normalSend')
+    expect(out.startsWith('Global baseline')).toBe(true)
+    expect(out).toContain('以下是用户的修改提示')
+    expect(out.endsWith(DEFAULT_FEATURE_PROMPTS.normalSend)).toBe(true)
+  })
+
+  test('returns DEFAULT alone when both user feature prompt and user global are empty', () => {
+    expect(getActiveLlmPrompt('autoBlend')).toBe(DEFAULT_FEATURE_PROMPTS.autoBlend)
   })
 
   test('returns the feature prompt verbatim when no global is set', () => {
@@ -121,10 +168,12 @@ describe('getActiveLlmPrompt', () => {
     expect(out).toContain('\n\n')
   })
 
-  test('whitespace-only feature draft is treated as missing (no LLM call)', () => {
+  test('whitespace-only feature draft falls back to default (Jobs #21)', () => {
     llmPromptsGlobal.value = ['GLOBAL']
     llmPromptsAutoSend.value = ['   \n  \t']
-    expect(getActiveLlmPrompt('autoSend')).toBe('')
+    const out = getActiveLlmPrompt('autoSend')
+    expect(out.startsWith('GLOBAL')).toBe(true)
+    expect(out.endsWith(DEFAULT_FEATURE_PROMPTS.autoSend)).toBe(true)
   })
 
   test('whitespace-only global is dropped — feature prompt returned alone', () => {

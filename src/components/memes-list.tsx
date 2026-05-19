@@ -352,6 +352,9 @@ export function MemesList() {
       // inside the helper so calling this from every 30s loadMemes tick
       // collapses to one network request per 10 min. Failures are silent —
       // worst case the 🔥 badges just don't appear.
+      // ALSO gated inside refreshTrendingMemes by `radarConsultEnabled`
+      // (default OFF, opt-in via 设置 → live-meme-radar). When the toggle
+      // is off this is a cheap no-op — zero network.
       void refreshTrendingMemes()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

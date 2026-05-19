@@ -15,10 +15,18 @@ const bundlePath = new URL('../dist/bilibili-live-wheel-auto-follow.user.js', im
 // onboarding flow, settings drawer animation, ::details-content slide
 // transitions all add up. 49 KB headroom for follow-up polish.
 //
+// Bumped 1200 → 1300 KB for v2.14.1 — 仅音频模式（audio-only.ts + load-script.ts
+// + audio-only-button.tsx，cherry-pick from laplace-live/chatterbox@ecc1b22 family，
+// 解锁 multi-room 挂机）+ AI 候选（ai-candidate.ts + store-ai-candidate.ts +
+// ai-candidate-section.tsx，Review-only 改造版 cherry-pick from upstream@90afd8e）
+// 一起加 ~75 KB raw 进 bundle。两个功能默认 OFF；可考虑后续把 audio-only.ts +
+// ai-candidate.ts 改成动态 import 让默认不开的用户不付这部分字节（~50 KB 可省），
+// 排进 v2.15 优化。这次直接 bump 25 KB headroom。
+//
 // 安全:之前用 `process.env.BUNDLE_BUDGET_KB ?? '1024'` 允许用环境变量覆盖,
 // 等于 CI 里随便 export 一下就能让"超预算"的构建静默通过——预算就失去意义了。
 // 现在写死;调整预算 = 改这一行 = 走 PR review。
-const BUDGET_KB = 1200
+const BUDGET_KB = 1300
 const bundle = readFileSync(bundlePath)
 
 const rawKb = bundle.byteLength / 1024

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 
 import { activeTab, dialogOpen, sendMsg } from '../lib/store'
+import { AudioOnlyButton } from './audio-only-button'
 
 export function ToggleButton() {
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -38,29 +39,83 @@ export function ToggleButton() {
     return () => document.removeEventListener('keydown', onKey, true)
   }, [])
 
+  // 浮窗外点击关闭(Jobs 式 #19):键盘用户走 Esc,鼠标用户走"点空白处"。
+  // 与 Esc 行为对称——两条路都通,触感符合直觉。
+  //
+  // 实现细节:capture-phase mousedown,因为 B 站直播页本身有大量内置 click
+  // handler(打开礼物面板、关注、举报等),capture 可以在它们看到事件之前
+  // 决定"是否要关浮窗"——我们不 stopPropagation,只是 close 浮窗,让 B 站
+  // 自己的 click 照常发生(用户在浮窗外按了别处,本来就预期那里有点击行为)。
+  //
+  // 关闭判定:点击落在浮窗 dialog 或 toggle button 任一子树内 → 不关。
+  // 否则关。用 closest() 而不是手动 walk parent chain,既简洁又能正确处理
+  // 被 portal 渲染出去的子节点(emote picker 之类)——portal 节点不在
+  // dialog DOM 子树里,会被识别为"外面",这是已知 trade-off:它们也算
+  // 外部,确实可能导致 emote picker 打开的同时关掉浮窗。所以 portal 类组件
+  // 自己负责在挂载时把 self 的 click 加到 cb-no-outside-close 白名单。
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (!dialogOpen.value) return
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      // 已经在 dialog 或 toggle 按钮内 → 不关。
+      if (
+        target.closest('#laplace-chatterbox-dialog') ||
+        target.closest('#laplace-chatterbox-toggle') ||
+        target.closest('.cb-no-outside-close')
+      ) {
+        return
+      }
+      // 在主页 + 外部点击:关闭面板。子页(settings/about)外部点击:回主页,
+      // 与 Esc 的两阶段对称——鼠标用户也能"逐层退"。
+      if (activeTab.value === 'settings' || activeTab.value === 'about') {
+        activeTab.value = 'fasong'
+        return
+      }
+      dialogOpen.value = false
+    }
+    document.addEventListener('mousedown', onMouseDown, true)
+    return () => document.removeEventListener('mousedown', onMouseDown, true)
+  }, [])
+
   const sending = sendMsg.value
   const open = dialogOpen.value
 
+  // 右下角按钮簇：`弹幕助手`（打开面板）+ 任何想跟它共享 z-index 与边距
+  // 的兄弟按钮（目前只有「仅音频」）。包一层 fixed div 比给每个按钮独立
+  // 算位置好维护 —— flex 自动排齐。
+  //
+  // `cb-no-outside-close` 让按钮簇内部的点击不触发外部点击关闭面板的
+  // capture-phase 监听（见上面的 mousedown effect）。注意 dialog 的关闭
+  // 检测用的是 `closest('#laplace-chatterbox-toggle')`，单按 ID 不够覆盖
+  // 兄弟按钮，必须靠这个 class。
   return (
-    <button
-      ref={btnRef}
-      type='button'
-      id='laplace-chatterbox-toggle'
-      data-open={open}
-      data-sending={sending}
-      aria-label={open ? '关闭弹幕助手面板（按 Esc 关闭）' : '打开弹幕助手面板'}
-      aria-expanded={open}
-      aria-controls='laplace-chatterbox-dialog'
-      title={open ? 'Esc 关闭面板' : '点击打开弹幕助手'}
-      onClick={toggle}
+    <div
+      class='cb-no-outside-close'
       style={{
         position: 'fixed',
         right: '8px',
         bottom: '8px',
         zIndex: 2147483647,
+        display: 'flex',
+        alignItems: 'center',
       }}
     >
-      弹幕助手
-    </button>
+      <AudioOnlyButton />
+      <button
+        ref={btnRef}
+        type='button'
+        id='laplace-chatterbox-toggle'
+        data-open={open}
+        data-sending={sending}
+        aria-label={open ? '关闭弹幕助手面板（按 Esc 关闭）' : '打开弹幕助手面板'}
+        aria-expanded={open}
+        aria-controls='laplace-chatterbox-dialog'
+        title={open ? 'Esc 关闭面板' : '点击打开弹幕助手'}
+        onClick={toggle}
+      >
+        弹幕助手
+      </button>
+    </div>
   )
 }

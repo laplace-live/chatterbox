@@ -48,8 +48,15 @@ function setApiMock(uid: string | undefined) {
 function loadFreshSection() {
   // Bun's `mock.module` swaps the module record but does not clear cached
   // importers. To re-trigger the IIFE we drop and re-import the section.
-  const cacheKey = require.resolve('../src/components/settings/medal-check-section')
-  delete require.cache[cacheKey]
+  //
+  // 2026-05 (Jobs 式 #8): the migration IIFE moved out of medal-check-section
+  // into `lib/medal-check-state.ts` when粉丝牌巡检 was promoted to the main
+  // panel ("我的状态"). The settings section imports the state module, so
+  // dropping both cache entries is necessary to re-trigger the IIFE.
+  for (const path of ['../src/lib/medal-check-state', '../src/components/settings/medal-check-section']) {
+    const cacheKey = require.resolve(path)
+    delete require.cache[cacheKey]
+  }
   return import('../src/components/settings/medal-check-section').then(m => m.MedalCheckSection)
 }
 

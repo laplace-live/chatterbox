@@ -227,15 +227,16 @@ export async function loop(): Promise<void> {
           const isEmote = isEmoticonUnique(message)
           const originalMessage = message
 
-          // YOLO（独轮车的 LLM 润色）：每条非表情消息送 LLM 润色一遍。
+          // AI 润色（原代号 YOLO；独轮车的 LLM 改写）：每条非表情消息送 LLM 改写一遍。
           // - 配置不全（key/model/提示词）→ 直接停车,避免循环里反复打"未配置"日志
-          // - 单次润色异常（网络抖动/上游 5xx）→ 跳过本条,sleep 后继续下一条
-          // - 表情类（emoticon_unique）一律跳过：那是不透明 ID,润色无意义
+          // - 单次改写异常（网络抖动/上游 5xx）→ 跳过本条,sleep 后继续下一条
+          // - 表情类（emoticon_unique）一律跳过：那是不透明 ID,改写无意义
+          // - signal 名仍叫 `autoSendYolo`（GM 持久化键），保留以避免用户配置迁移。
           let polishedMessage = originalMessage
           if (autoSendYolo.value && !isEmote) {
             const gap = describeLlmGap('autoSend')
             if (gap) {
-              appendLog(`🤖 独轮车 YOLO 已开启但配置不完整,已停车：${gap}`)
+              appendLog(`🤖 独轮车 AI 润色 已开启但配置不完整,已停车：${gap}`)
               sendMsg.value = false
               currentAbort = null
               completed = false
@@ -244,7 +245,7 @@ export async function loop(): Promise<void> {
             try {
               const out = (await polishWithLlm('autoSend', originalMessage)).trim()
               if (!out) {
-                appendLog(`🤖 独轮车 YOLO 跳过本条：LLM 返回为空 (${originalMessage})`)
+                appendLog(`🤖 独轮车 AI 润色 跳过本条：LLM 返回为空 (${originalMessage})`)
                 const okSleep = await abortableSleep(computeJitteredSleepMs(interval, enableRandomInterval), signal)
                 if (!okSleep) {
                   completed = false
@@ -253,10 +254,10 @@ export async function loop(): Promise<void> {
                 continue
               }
               polishedMessage = out
-              appendLog(`🤖 独轮车 YOLO：${originalMessage} → ${polishedMessage}`)
+              appendLog(`🤖 独轮车 AI 润色：${originalMessage} → ${polishedMessage}`)
             } catch (err) {
               const errMsg = err instanceof Error ? err.message : String(err)
-              appendLog(`🤖 独轮车 YOLO 跳过本条：${errMsg} (${originalMessage})`)
+              appendLog(`🤖 独轮车 AI 润色 跳过本条：${errMsg} (${originalMessage})`)
               const okSleep = await abortableSleep(computeJitteredSleepMs(interval, enableRandomInterval), signal)
               if (!okSleep) {
                 completed = false

@@ -43,6 +43,10 @@ reports/mutation
 
 references/
 
+# session-scoped QA scratchpad: preview HTML, generated screenshots, ad-hoc
+# inspector pages. Useful while iterating but no business in git history.
+tmp/
+
 # local Claude Code settings (permissions + launch configs are machine-specific)
 .claude/settings.local.json
 .claude/launch.json

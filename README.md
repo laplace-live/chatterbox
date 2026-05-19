@@ -1,4 +1,4 @@
-# B站独轮车 + 自动跟车
+# 弹幕助手 · 替你说,替你看
 
 [![CI](https://github.com/aijc123/bilibili-live-wheel-auto-follow/actions/workflows/ci.yml/badge.svg)](https://github.com/aijc123/bilibili-live-wheel-auto-follow/actions/workflows/ci.yml)
 [![Quality](https://github.com/aijc123/bilibili-live-wheel-auto-follow/actions/workflows/quality.yml/badge.svg)](https://github.com/aijc123/bilibili-live-wheel-auto-follow/actions/workflows/quality.yml)
@@ -14,7 +14,12 @@
 [![Vite](https://img.shields.io/badge/Vite-646cff?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Bun](https://img.shields.io/badge/Bun-fbf0df?logo=bun&logoColor=black)](https://bun.sh/)
 
-一个给 B 站/哔哩哔哩直播间使用的弹幕助手 userscript。它从 [LAPLACE Chatterbox](https://github.com/laplace-live/chatterbox) fork 而来，保留并扩展了独轮车、同传、烂梗库、弹幕替换、AI 规避等能力，同时加入自动跟车、粉丝牌禁言巡检和可接管右侧评论区的 Chatterbox Chat。
+> 在 B 站直播间替你说话，也替你看清弹幕。
+> **独轮车 · 自动跟车 · 手动发送 · 看清楚**。
+
+**做给谁的**：每天泡 B 站直播间、在弹幕里活跃的重度观众。你发得多，所以经常被屏蔽 / 被禁言 / 被影子屏蔽 / 被主播拉黑——这个脚本帮你**加速发言**，也帮你**看清自己在哪被禁了**。不是公会管理工具，不是直播间运营工具。
+
+**血脉**：本脚本最初从 [LAPLACE Chatterbox](https://github.com/laplace-live/chatterbox) fork 而来，产品方向已经走得比较远。原 Chatterbox 的同传、烂梗库、弹幕替换、AI 规避、Chatterbox Chat 全部保留并继续演进，新增自动跟车、粉丝牌巡检、多源烂梗库和针对国内直播文化的影子屏蔽自动学习。如果 LAPLACE 有好的修复 / 功能，按需 cherry-pick。
 
 项目链接：
 
@@ -27,18 +32,22 @@
 
 ## 项目做什么
 
-安装后，B 站直播间页面右下角会出现 `弹幕助手` 按钮。它主要解决直播间里的高频弹幕操作：
+安装后，B 站直播间页面右下角会出现 `弹幕助手` 按钮。它做两件事：
 
-- 提前准备多句弹幕，让脚本按节奏循环发送。
-- 观察直播间里被多人重复发送的弹幕，在满足阈值和冷却后自动跟一句，发出后还会等 WebSocket / DOM 回显确认是否真的广播出去。
-- 启用「智能辅助驾驶」按节奏从烂梗库自动挑梗发送，可选 LLM 选梗或纯启发式，支持 dryRun、活跃度门槛、暂停关键词、每分钟限速、每日统计。
-- 用 Chatterbox Chat 接管右侧评论区，显示更清爽的弹幕、礼物、醒目留言和进场事件，深色系统下自动切深色配色，WS 断线时自动退回 DOM 抓取并提示。
-- 一键巡检当前账号粉丝牌关联直播间的禁言、屏蔽、风控、主播注销等状态，可选同步到「直播间保安室」。
-- 维护云端、本地全局和当前房间替换规则，减少重复手改弹幕。
-- 检测疑似影子屏蔽后展示候选改写气泡，默认只给候选不自动重发；可选自动学习成房间规则、可选 LLM 改写。
-- 接入 LAPLACE、SBHZM、chatterbox-cloud 自建后端的多源烂梗库，以及同传/翻译辅助。
+### 替你说（发送类，主要）
 
-这是民间自用/自制插件，不是 B 站官方功能。使用自动发送、自动跟车、智能辅助驾驶、+1、自动重发等功能时，建议控制频率，避免打扰主播和其他观众。
+- **独轮车循环发送**：多行模板循环发送，支持固定/随机间隔、随机颜色、随机字符，长弹幕自动拆分。
+- **自动跟车**：识别短时间内被多人重复发送的弹幕，按阈值和冷却自动跟一句，发送后等 WS/DOM 回显确认；三档预设 + 自定义。试运行模式默认开启，主动切到真发。
+- **手动发送**：手动一句弹幕；可选 AI 润色（用你自己的 prompt 改写）；影子屏蔽时自动给改写候选。
+
+### 替你看（阅读类，辅助）
+
+- **Chatterbox Chat**：接管右侧评论区，WS 主路 + DOM 兜底，深色模式自动适配，断线自动重连，状态圆点指示，自定义 CSS 走 sanitizer。
+- **粉丝牌禁言巡检**：一键看自己在哪些关联直播间被禁言、被屏蔽、被风控、主播注销——重度观众的"健康检查"。
+
+其余特性（智能辅助驾驶、多源烂梗库、同传翻译、LLM 多 provider、影子屏蔽自动学习、Guard Room 同步、+1 等）→ 详见 [使用指南](docs/user-guide.md)。
+
+这是民间自用/自制插件，不是 B 站官方功能。自动化功能（独轮车、自动跟车、智驾、自动重发）默认走试运行（只看不发），由你主动切到真发；请控制频率，避免打扰主播和其他观众。
 
 ## 安装步骤
 
@@ -68,40 +77,58 @@ bun run build
 
 然后用脚本管理器安装 `dist/bilibili-live-wheel-auto-follow.user.js`。
 
-## 主要功能
-
-简短列表，详细说明（参数、UI 行为、排障）见 [使用指南](docs/user-guide.md)。
-
-- **独轮车循环发送**：多行模板循环发送，支持固定/随机间隔、随机颜色、随机字符，长弹幕自动拆分。
-- **自动跟车**：识别短时间内被多人重复发送的弹幕，按阈值和冷却自动跟一句，发送后等 WS/DOM 回显确认；三档预设 + 自定义。
-- **智能辅助驾驶**：按节奏从烂梗库自动挑梗发送，启发式或 LLM 选梗，活跃度门槛 + 暂停关键词 + 每分钟限速 + dryRun。
-- **Chatterbox Chat 评论区**：接管右侧评论区，WS 主路 + DOM 兜底，深色模式自动适配，断线自动重连，状态圆点指示，自定义 CSS 走 sanitizer。
-- **粉丝牌禁言巡检**：分类显示限制/未知/注销/正常状态，可选同步到「直播间保安室」并订阅控制 profile。
-- **替换规则 + AI 规避 + 影子屏蔽处理**：云端 / 本地全局 / 当前房间三层规则；默认只给候选改写气泡，可选自动重发、自动学习房间规则。
-- **多源烂梗库**：聚合 LAPLACE + SBHZM + chatterbox-cloud 自建后端 + 房间专属社区库；候选梗自动挖掘和提交。
-- **LLM 多 provider**：Anthropic、OpenAI、OpenAI 兼容自填 base URL（DeepSeek/Moonshot/OpenRouter/Ollama/小米 mimo 等），用于 AI 规避和智能辅助驾驶；不填 key 时自动回退到本地启发式。
-- **同传与翻译**：Soniox 语音识别，识别或翻译结果可自动发送。
-- **面板 UI**：四个 tab，状态角标，关键词搜索设置项，深色模式自动适配，备份导出/导入，首次进入有轻量引导。
-
 ## 权限说明
 
 当前脚本元信息里会请求这些权限：
 
 - `@match *://live.bilibili.com/*`：只在 B 站直播间页面运行。
 - `@require https://unpkg.com/@soniox/speech-to-text-web...`：加载 Soniox 浏览器端语音识别客户端，用于同传/语音识别功能。
-- `@connect`：脚本会请求脚本管理器允许它访问以下域，每一项都对应一个具体功能；脚本管理器在首次访问每个新域时仍会单独弹窗确认：
-  - `bilibili-guard-room.vercel.app`：可选的“直播间保安室”同步接口。
-  - `localhost`：本地开发和自托管后端测试。
-  - `sbhzm.cn`：烂梗库专属梗源（社区自建库）。
-  - `chatterbox-cloud.aijc-eric.workers.dev`：本仓库 `server/` 自建后端，聚合 LAPLACE+SBHZM+社区贡献的梗库；可在设置里通过 `cbBackendUrlOverride` 指向自有部署。
-  - `live-meme-radar.aijc-eric.workers.dev`：[live-meme-radar](https://live-meme-radar.pages.dev) 传感器后端，烂梗库面板打开时后台拉一次 `GET /radar/clusters/today`（10 分钟缓存）用于给跨房间热门梗加 🔥 徽章；纯被动，无用户开关，详见下面的"传感器（live-meme-radar）"小节。
-  - `api.anthropic.com`、`api.openai.com`：智能辅助驾驶（LLM 改写/AI 规避）默认 provider，仅在你填入 API key 并启用相关功能时调用。
-  - `*`：兜底项，让你能填入 OpenAI 兼容的自定义 base URL（DeepSeek、Moonshot、OpenRouter、Ollama、小米 mimo 等）。脚本管理器仍会在首次访问每个新域时单独弹窗确认，这是这些自定义 LLM 调用的最后一道闸门。
+- `@run-at document-start`：尽早启动，方便准备样式隔离、UI 挂载和聊天适配。
 - `GM_addStyle`：向页面注入弹幕助手和 Chatterbox Chat 的隔离样式。
-- `GM_getValue`、`GM_setValue`、`GM_deleteValue`：在脚本管理器本地存储设置、模板、替换规则、观察记录和上次巡检结果。
+- `GM_getValue` / `GM_setValue` / `GM_deleteValue`：在脚本管理器本地存储设置、模板、替换规则、观察记录和上次巡检结果。
 - `GM_info`：读取脚本版本等元信息。
 - `unsafeWindow`：在必要时与 B 站页面上下文交互，读取页面状态或桥接页面行为。
-- `@run-at document-start`：尽早启动，方便准备样式隔离、UI 挂载和聊天适配。
+
+### `@connect` 外部域分类
+
+脚本管理器会在**首次访问每个新域**时单独弹窗确认。下表按用途分组——如果你不开对应功能，那一域就不会被访问。
+
+**必要（默认开，基础功能依赖）**
+
+| 域 | 用途 |
+|---|---|
+| `chatterbox-cloud.aijc-eric.workers.dev` | 烂梗库默认聚合后端（本仓库 `server/` 自建，聚合 LAPLACE+SBHZM+社区贡献）；可在设置里通过 `cbBackendUrlOverride` 指向自有部署 |
+| `workers.vrp.moe` | LAPLACE 的替换规则源 + 烂梗库源 |
+| `edge-workers.laplace.cn` | LAPLACE AI 规避检查（影子屏蔽后台机制） |
+
+**可选烂梗库 / 雷达源**
+
+| 域 | 用途 |
+|---|---|
+| `sbhzm.cn` | 灰泽满直播间烂梗库（社区自建） |
+| `live-meme-radar.aijc-eric.workers.dev` | [live-meme-radar](https://live-meme-radar.pages.dev) 传感器后端；用于跨房间热门梗 🔥 徽章和可选趋势上报。详见下面的「传感器（live-meme-radar）」小节 |
+
+**LLM（填 key 才会用，主要服务 AI 润色 / AI 规避 / 智驾 LLM 选梗）**
+
+| 域 | 用途 |
+|---|---|
+| `api.anthropic.com` | Anthropic Claude |
+| `api.openai.com` | OpenAI GPT |
+| `*`（兜底） | OpenAI 兼容的自填 base URL（DeepSeek / Moonshot / OpenRouter / Ollama / 小米 mimo 等）。脚本管理器首次访问每个新域仍会单独弹窗确认，这是这些自定义 LLM 调用的最后一道闸门 |
+
+**同传 / 语音识别（启用同传才会用）**
+
+| 域 | 用途 |
+|---|---|
+| `api.soniox.com` | Soniox 语音识别 API |
+| `unpkg.com` | 加载 Soniox 浏览器客户端（`@require`） |
+
+**本地开发 / 多房间挂机（可选）**
+
+| 域 | 用途 |
+|---|---|
+| `localhost` | 本地自托管后端测试（`bun run dev` of `server/`） |
+| `bilibili-guard-room.vercel.app` | 多房间观察台云同步（可选）；同时挂多个直播间 / 多设备的用户用来跨实例同步预设、状态、心跳。普通单房间用户不需要开启 |
 
 ## 隐私和数据流说明
 
@@ -118,7 +145,7 @@ bun run build
 
 - B 站接口和 WebSocket：用于读取直播间事件、发送弹幕、获取当前账号相关粉丝牌房间信息、判断房间状态。这些请求使用你浏览器当前的 B 站登录会话。
 - Soniox：仅在启用并使用同传/语音识别时涉及音频识别能力。
-- 直播间保安室：完全可选。开启后只同步巡检摘要或选定规则，不应上传 cookie、csrf、localStorage 或完整 B 站接口响应。
+- 多房间观察台云同步（直播间保安室）：完全可选，只为同时挂多个直播间 / 多设备的用户准备。开启后只同步巡检摘要或选定规则，不应上传 cookie、csrf、localStorage 或完整 B 站接口响应。
 - 烂梗库梗源（`sbhzm.cn` 社区库 / `chatterbox-cloud.aijc-eric.workers.dev` 自建聚合后端）：仅在打开烂梗库或社区贡献时拉取梗列表；可在设置里改成自部署地址或关闭该功能。
 - live-meme-radar 传感器（`live-meme-radar.aijc-eric.workers.dev`）：烂梗库面板打开时后台只读拉一次 trending 列表给 🔥 徽章用，每 10 分钟最多一次，不上传任何本地数据。详见下面的"传感器（live-meme-radar）"小节。
 - LLM 智能辅助驾驶（`api.anthropic.com`、`api.openai.com`，以及任何你自填的 OpenAI 兼容 base URL）：仅在你填入 API key 并主动开启 AI 规避/改写时才会调用，prompt 内容只包含当前要改写的弹幕和必要上下文。

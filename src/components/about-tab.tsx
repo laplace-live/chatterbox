@@ -194,7 +194,7 @@ const GLOSSARY_ITEMS: ReadonlyArray<readonly [string, string]> = [
   ['保安室', '自部署的同步后端，可选；同步巡检摘要、影子规则、心跳'],
   ['雷达', '跨直播间热梗探测（默认关；开启后向 chatterbox-cloud 上报）'],
   ['试运行 / dryRun', '只演练不真发——所有自动功能首次启用建议先试运行'],
-  ['YOLO', '发送前用 LLM 临时润色一遍再发（会消耗 token）'],
+  ['AI 润色（原 YOLO）', '发送前用 LLM 临时改写一遍再发——用你在「设置 → LLM 提示词」里写的 prompt（会消耗 token）'],
 ]
 
 const LOCAL_DATA_ITEMS: string[] = [

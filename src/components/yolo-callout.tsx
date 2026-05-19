@@ -4,9 +4,12 @@ import { describeLlmGap } from '../lib/llm-polish'
 import { activeTab } from '../lib/store'
 
 /**
- * 把"YOLO 已开但 LLM 还没配齐"这句话集中渲染。
+ * 把"AI 润色（原 YOLO）已开但 LLM 还没配齐"这句话集中渲染。
  *
- * 每个 send 路径（auto-blend / auto-send / normal-send）都需要紧接 YOLO 复选框
+ * 文件名仍叫 `yolo-callout.tsx`、组件仍叫 `YoloCallout`——内部代号保持，
+ * 用户面文案统一改成「AI 润色」。
+ *
+ * 每个 send 路径（auto-blend / auto-send / normal-send）都需要紧接 AI 润色复选框
  * 渲染同样的状态文字，原本是各自一段 inline JSX。问题：
  *  1. 三处文字略有差异（"已就绪：触发后…" vs "已就绪：每条…" vs "已就绪：手动发送…"）
  *  2. 配置缺失时只有一段 plain text，没有跳转手段——P0-4 中提到这点：用户看到

@@ -68,3 +68,86 @@ describe('floating jump-to-bottom pill', () => {
     expect(CUSTOM_CHAT_STYLE).toContain('.lc-chat-jump-bottom[data-unread="true"]')
   })
 })
+
+describe('Jobs-style baseline polish (2026-05-18 visual QA)', () => {
+  // These lock in the round of changes that landed after the Claude Preview
+  // audit showed the baseline themes were violating their own design-direction
+  // doc (docs/chatterbox-chat-design-direction.md): bubble font-weight 400
+  // unreadable on dark BG, no inset highlight, SC indistinguishable from
+  // other cards, off-grid padding 13/9/11/14.
+
+  test('normal bubble font-weight is 500 — no more featherweight 400 in dark themes', () => {
+    // Anchor to the main bubble rule: starts with `#${ROOT_ID} .lc-chat-bubble {`
+    // and stops before the next `}`. Greedy `[^}]*` is safe here because the
+    // bubble rule has no nested braces.
+    const m = CUSTOM_CHAT_STYLE.match(/#laplace-custom-chat \.lc-chat-bubble \{([^}]*)\}/)
+    expect(m).not.toBeNull()
+    expect(m![1]).toContain('font-weight: 500')
+    // The 400 ban is global: NO rule in the stylesheet should set 400.
+    // (Cards explicitly set 800, lite sets 500, bubble sets 500.)
+    expect(CUSTOM_CHAT_STYLE).not.toMatch(/font-weight:\s*400\b/)
+  })
+
+  test('normal bubble padding + radius snap to 4px grid (no more 13/9/7)', () => {
+    const m = CUSTOM_CHAT_STYLE.match(/#laplace-custom-chat \.lc-chat-bubble \{([^}]*)\}/)
+    expect(m).not.toBeNull()
+    expect(m![1]).toContain('padding: 8px 12px')
+    expect(m![1]).toContain('border-bottom-left-radius: 8px')
+    expect(m![1]).not.toContain('padding: 8px 13px 9px')
+    expect(m![1]).not.toContain('border-bottom-left-radius: 7px')
+  })
+
+  test('bubble shadow includes an inset top-edge highlight (iOS 18 raised-card trick)', () => {
+    // Both light + dark variants set --lc-chat-bubble-shadow with `inset`.
+    // The inset is what makes bubbles read as raised cards instead of flat
+    // colored rectangles.
+    expect(CUSTOM_CHAT_STYLE).toMatch(/--lc-chat-bubble-shadow:.*inset/)
+    // Dark variant explicitly named — the laplace/compact override:
+    expect(CUSTOM_CHAT_STYLE).toMatch(/\[data-theme="laplace"\][\s\S]*?--lc-chat-bubble-shadow:[^;]*\binset\b/)
+  })
+
+  test('SC bubble has the "hero card" outer glow (NOT just --lc-chat-bubble-shadow)', () => {
+    // SC is the only event that gets its own box-shadow rule — every other
+    // card type rides on --lc-chat-bubble-shadow. If SC ever loses this
+    // dedicated rule, it visually drops to the same weight as gift / guard,
+    // which defeats "user paid for this, make sure it's seen".
+    const m = CUSTOM_CHAT_STYLE.match(/\.lc-chat-card-event\[data-card="superchat"\] \.lc-chat-bubble \{([^}]*)\}/)
+    expect(m).not.toBeNull()
+    // The rule must read the dedicated `--lc-superchat-glow` variable, not
+    // fall back to --lc-chat-bubble-shadow (which would make SC visually
+    // identical to gift / guard cards) and not inline the rgba triple
+    // (which would block presets from re-tinting the glow to match their
+    // own SC gradient — see custom-chat-presets.ts MILK_GREEN / MIDNIGHT_INDIGO).
+    expect(m![1]).toMatch(/box-shadow:\s*var\(--lc-superchat-glow\)/)
+  })
+
+  test('--lc-superchat-glow baseline value is the iOS orange→red hero halo', () => {
+    // The default glow value lives on the root selector so presets only
+    // need to redeclare the var (not the whole rule). Locking it in here
+    // because the rgba triple IS the visual identity — change it and SC
+    // stops looking like SC.
+    expect(CUSTOM_CHAT_STYLE).toMatch(/--lc-superchat-glow:\s*[\s\S]*?0 12px 32px rgba\(255, 69, 58, \.35\)/)
+  })
+
+  test('entrance animation is registered AND scoped to .lc-chat-peek (not every message)', () => {
+    expect(CUSTOM_CHAT_STYLE).toContain('@keyframes lc-msg-in')
+    // The selector matters: .lc-chat-peek is only set by the renderer for
+    // genuinely new messages (custom-chat-dom.ts ~line 1282). If a future
+    // edit drops `.lc-chat-peek` from the selector, virtualized scroll will
+    // re-animate every visible message on every render — disaster.
+    expect(CUSTOM_CHAT_STYLE).toMatch(/\.lc-chat-message\.lc-chat-peek\s*\{[^}]*animation:\s*lc-msg-in/)
+  })
+
+  test('entrance animation respects prefers-reduced-motion', () => {
+    expect(CUSTOM_CHAT_STYLE).toMatch(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.lc-chat-message\.lc-chat-peek[\s\S]*?animation:\s*none/
+    )
+  })
+
+  test('lite event padding is on 4px grid (was 4px 9px)', () => {
+    const m = CUSTOM_CHAT_STYLE.match(/\.lc-chat-message\[data-priority="lite"\] \.lc-chat-bubble \{([^}]*)\}/)
+    expect(m).not.toBeNull()
+    expect(m![1]).toContain('padding: 4px 12px')
+    expect(m![1]).not.toContain('padding: 4px 9px')
+  })
+})

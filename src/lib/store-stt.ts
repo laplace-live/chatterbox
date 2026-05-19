@@ -58,3 +58,25 @@ export const sonioxTranslationTarget = gmSignal('sonioxTranslationTarget', 'en')
 export const sonioxAudioDeviceId = gmSignal('sonioxAudioDeviceId', '')
 
 export const sttRunning = signal(false)
+
+/**
+ * AI 候选引擎用的 STT 桥接 signal。
+ *
+ * Soniox onPartialResult 在 stt-tab.tsx 里把 final tokens 累到本地 useRef
+ * 用于显示，但 AI 候选引擎是一个 lib 层模块，没法订阅组件 ref。这两个
+ * signal 是引擎与 STT 管道之间的极薄合约：
+ *
+ * - `sttTranscriptBuffer`：自上次 AI 生成以来累积的 final 转录文本。引擎
+ *   在每次生成开始时 atomic 地 snapshot+清空，下一段累积进新一轮 buffer。
+ * - `sttEndpointReached`：Soniox 检测到句子端点的瞬时标志。引擎用它做
+ *   "buffer 已经成句、值得现在生成而不是等更长"的依据。
+ *
+ * 不持久化（GM signal 用 `signal()` 而非 `gmSignal()`）—— 转录是会话内的
+ * 短暂 state，重载页面后从空开始。AI 候选未启用时这两个 signal 静默闲置；
+ * stt-tab.tsx 始终发布，开销只是两次 `.value =`。
+ *
+ * Cherry-pick adaption from laplace-live/chatterbox@90afd8e（upstream 把
+ * 它们放在 root store.ts；这里随 STT 相关其它 signal 同居）。
+ */
+export const sttTranscriptBuffer = signal('')
+export const sttEndpointReached = signal(false)

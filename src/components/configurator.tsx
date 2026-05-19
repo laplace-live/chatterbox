@@ -7,11 +7,13 @@ import { AutoBlendControls } from './auto-blend-controls'
 import { AutoSendControls } from './auto-send-controls'
 import { HzmDrivePanelMount } from './hzm-drive-panel'
 import { LogPanel } from './log-panel'
+import { MedalStatusPanel } from './medal-status-panel'
 import { MemesList } from './memes-list'
 import { NormalSendTab } from './normal-send-tab'
 import { PanelHeader } from './panel-header'
 import { SettingsTab } from './settings-tab'
 import { SttTab } from './stt-tab'
+import { Icon } from './ui/icon'
 
 /**
  * 面板容器。
@@ -21,12 +23,12 @@ import { SttTab } from './stt-tab'
  * 这个产品本质上只做一件事——"在 B 站直播间替我说话"。三个核心原语对应三张主卡：
  *   1. 独轮车（循环发送）
  *   2. 自动跟车（跟热门）
- *   3. 普通发送（手动一句）
+ *   3. 手动发送（手动一句，原"普通发送/常规发送"）
  *
  * 其它功能都是"为某个核心原语服务的配件"，应该视觉上**归属**于它们各自服务的核心：
  *   - 烂梗库 = 独轮车的"模板素材库"      → 折在独轮车卡下方
  *   - 智驾   = 自动跟车的"LLM 加强版"     → 折在自动跟车卡下方
- *   - 同传   = 普通发送的"语音输入法"     → 折在普通发送卡下方
+ *   - 同传   = 手动发送的"语音输入法"     → 折在手动发送卡下方
  *
  * 历史：原本是 4 Tab（发送/同传/设置/关于）顶部切换；用户审计后认定 Tab 是错误隐喻
  *（产品只有一个主上下文，把配件做成同等地位的 Tab 是把心智成本转嫁给用户）。改成
@@ -41,7 +43,7 @@ import { SttTab } from './stt-tab'
  * 视图"，'about' 即"打开关于视图"。
  *
  * 旧值 'tongchuan' 的持久化 activeTab 在这里强制迁移到 'fasong'——同传不再是独立
- * 视图，归到普通发送下方。
+ * 视图，归到手动发送下方。
  */
 
 const VALID_TABS = new Set<string>(['fasong', 'settings', 'about'])
@@ -103,7 +105,7 @@ export function Configurator() {
               >
                 <summary>
                   <span className='cb-supporting-feature-icon' aria-hidden='true'>
-                    📚
+                    <Icon name='book' />
                   </span>
                   从烂梗库挑模板
                 </summary>
@@ -129,7 +131,7 @@ export function Configurator() {
               >
                 <summary>
                   <span className='cb-supporting-feature-icon' aria-hidden='true'>
-                    🤖
+                    <Icon name='robot' />
                   </span>
                   用 LLM 选梗（智驾，仅特定房间）
                 </summary>
@@ -137,19 +139,26 @@ export function Configurator() {
               </details>
             </section>
 
-            {/* 核心 3：普通发送（主动一句）+ 同传（语音输入法变体） */}
-            <section className='cb-core-group' aria-label='普通发送与同传'>
+            {/* 核心 3：手动发送（主动一句）+ 同传（语音输入法变体） */}
+            <section className='cb-core-group' aria-label='手动发送与同传'>
               <NormalSendTab />
               <details className='cb-supporting-feature'>
                 <summary>
                   <span className='cb-supporting-feature-icon' aria-hidden='true'>
-                    🎤
+                    <Icon name='mic' />
                   </span>
                   语音输入弹幕（同传，Soniox）
                 </summary>
                 <SttTab />
               </details>
             </section>
+
+            {/*
+             * 「我的状态」section — Jobs 式 #8:重度直播观众会被主播拉黑/禁言,
+             * 需要每天瞄一眼自己在哪些房间被禁了。原本是设置项,升级为主面板
+             * 自带 section。Self-defense visibility,跟"替你说"三件套并列。
+             */}
+            <MedalStatusPanel />
 
             {/*
              * 历史：早期把 Chatfilter 观察日志（开发者调试面板）直接挂在首页。

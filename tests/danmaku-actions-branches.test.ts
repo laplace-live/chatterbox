@@ -456,7 +456,7 @@ describe('sendManualDanmaku — normalSendYolo (LLM polish)', () => {
     polishOutcome = { kind: 'gap' }
     const ok = await sendManualDanmaku('原文')
     expect(ok).toBe(true)
-    expect(JSON.stringify(logged)).toMatch(/常规发送 YOLO 跳过：配置缺失/)
+    expect(JSON.stringify(logged)).toMatch(/手动发送 AI 润色 跳过：配置缺失/)
   })
 
   test('YOLO success: polished text is sent, gets a "原文 → 润色" line', async () => {
@@ -466,7 +466,7 @@ describe('sendManualDanmaku — normalSendYolo (LLM polish)', () => {
     polishOutcome = { kind: 'ok', out: '哥哥厉害' }
     const ok = await sendManualDanmaku('666')
     expect(ok).toBe(true)
-    expect(JSON.stringify(logged)).toMatch(/🤖 常规发送 YOLO：666 → 哥哥厉害/)
+    expect(JSON.stringify(logged)).toMatch(/🤖 手动发送 AI 润色：666 → 哥哥厉害/)
     expect(verifyCalls[0]?.text).toBe('哥哥厉害')
   })
 
@@ -475,7 +475,7 @@ describe('sendManualDanmaku — normalSendYolo (LLM polish)', () => {
     polishOutcome = { kind: 'ok', out: '   ' }
     const ok = await sendManualDanmaku('原文')
     expect(ok).toBe(true)
-    expect(JSON.stringify(logged)).toMatch(/常规发送 YOLO 跳过：LLM 返回为空/)
+    expect(JSON.stringify(logged)).toMatch(/手动发送 AI 润色 跳过：LLM 返回为空/)
   })
 
   test('YOLO throw: logs the err.message skip and sends original', async () => {
@@ -483,7 +483,7 @@ describe('sendManualDanmaku — normalSendYolo (LLM polish)', () => {
     polishOutcome = { kind: 'err', err: new Error('llm-down') }
     const ok = await sendManualDanmaku('原文')
     expect(ok).toBe(true)
-    expect(JSON.stringify(logged)).toMatch(/常规发送 YOLO 跳过：llm-down/)
+    expect(JSON.stringify(logged)).toMatch(/手动发送 AI 润色 跳过：llm-down/)
   })
 
   test('YOLO disabled: polishWithLlm is never invoked, no YOLO log appears', async () => {

@@ -863,9 +863,9 @@ export function AutoBlendControls() {
             />
             <label
               htmlFor='autoBlendYolo'
-              title='YOLO：触发后用 LLM 把要发的文本润色一遍再发。LLM 凭证在「设置 → LLM」里集中配置。'
+              title='AI 润色（原 YOLO）：触发后用 LLM 把要发的文本改写一遍再发。LLM 凭证在「设置 → LLM」里集中配置。'
             >
-              🤖 YOLO（LLM 润色后再发）
+              🤖 AI 润色（LLM 改写后再发）
             </label>
             <PromptPicker
               prompts={llmPromptsAutoBlend.value}

@@ -23,7 +23,11 @@ export const CUSTOM_CHAT_STYLE = `
   --lc-chat-chip-text: #1d1d1f;
   --lc-chat-accent: #34c759;
   --lc-chat-shadow: rgba(0, 0, 0, .10);
-  --lc-chat-bubble-shadow: 0 1px 1px rgba(0, 0, 0, .035), 0 8px 22px rgba(0, 0, 0, .075);
+  /* Bubble shadow: inset top-edge highlight (white in light themes) + faint
+     drop + soft outer. The inset is what makes bubbles read as "raised
+     cards" rather than colored rectangles — same iOS 18 trick that makes
+     Messages, Wallet, and Notes feel three-dimensional even at 12-13px text. */
+  --lc-chat-bubble-shadow: 0 1px 0 rgba(255, 255, 255, .9) inset, 0 1px 2px rgba(0, 0, 0, .04), 0 8px 20px rgba(0, 0, 0, .08);
   --lc-chat-lite: rgba(118, 118, 128, .12);
   --lc-chat-lite-text: #5f6368;
   --lc-chat-medal-bg: #fff0b8;
@@ -40,6 +44,15 @@ export const CUSTOM_CHAT_STYLE = `
   --lc-chat-honor-text: #19643a;
   --lc-chat-price-bg: #ffe2cf;
   --lc-chat-price-text: #7f3516;
+  /* SC outer glow — exposed as a variable so presets can re-tint the "hero
+     card" halo to match their SC bubble color (e.g. milk-green's mint glow,
+     midnight-indigo's electric blue) without re-stating the whole rule.
+     The baseline value is the iOS-orange→hot-red used by the default SC
+     gradient. */
+  --lc-superchat-glow:
+    0 1px 0 rgba(255, 255, 255, .25) inset,
+    0 0 0 1px rgba(255, 122, 89, .3),
+    0 12px 32px rgba(255, 69, 58, .35);
   height: 100%;
   width: 100%;
   min-width: 0;
@@ -59,6 +72,12 @@ export const CUSTOM_CHAT_STYLE = `
 }
 html.lc-custom-chat-mounted #${ROOT_ID} {
   display: grid !important;
+  /* 6 rows: toolbar / pin strip (collapses to 0 when empty) / menu /
+     debug / list / composer. The pin strip is inserted between toolbar
+     and menu by custom-chat-dom.ts; when there are no active SCs it
+     carries .lc-chat-sc-pinstrip-empty which sets display:none, removing
+     it from the grid entirely so empty chats pay no layout cost. */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
 }
 html.lc-custom-chat-root-outside-history #${ROOT_ID} {
   flex: 1 1 auto;
@@ -80,7 +99,11 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
   --lc-chat-chip-text: #e6edf7;
   --lc-chat-accent: #30d158;
   --lc-chat-shadow: rgba(0, 0, 0, .34);
-  --lc-chat-bubble-shadow: 0 1px 1px rgba(255, 255, 255, .025), 0 10px 28px rgba(0, 0, 0, .28);
+  /* Dark variant: inset highlight is much weaker (.06 alpha white) — just
+     enough to suggest the bubble's top edge catches light, without it looking
+     like a fake glow. Outer drop is deeper to compensate for the near-black
+     background that swallows soft shadows. */
+  --lc-chat-bubble-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 1px 2px rgba(0, 0, 0, .35), 0 8px 20px rgba(0, 0, 0, .4);
   --lc-chat-lite: rgba(255, 255, 255, .08);
   --lc-chat-lite-text: #b8bac4;
   --lc-chat-medal-bg: rgba(255, 214, 10, .18);
@@ -115,6 +138,242 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
 #${ROOT_ID}[data-theme="compact"] .lc-chat-bubble {
   font-size: 12px;
 }
+/* ─────────────── SC pin strip ───────────────
+   Horizontal carousel of active Superchats. See custom-chat-sc-pinstrip.ts
+   for behavior; this block is style-only. The strip uses the panel's own
+   --lc-chat-panel translucent background + the SC accent glow var, so it
+   automatically retints when the user switches preset (奶绿 / 午夜深蓝). */
+#${ROOT_ID} .lc-chat-sc-pinstrip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-height: 64px;
+  /* 下方 12px padding + border 给下一条消息一个明确的"分界" ——之前 4px 太挤,
+     pin strip 的 ¥500 金额 chip 会跟下一条消息用户名重叠(Jobs P0-1)。 */
+  padding: 8px 12px 12px;
+  margin-bottom: 8px;
+  background: color-mix(in srgb, var(--lc-chat-panel) 88%, transparent);
+  border-bottom: 1px solid var(--lc-chat-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+  /* Slide in from the top when an SC first arrives — same iOS Smooth-Spring
+     curve as the message entrance animation, so the chat feels coherent. */
+  animation: lc-sc-pinstrip-in .35s cubic-bezier(.34, 1.56, .64, 1);
+}
+#${ROOT_ID} .lc-chat-sc-pinstrip.lc-chat-sc-pinstrip-empty {
+  /* Zero layout cost when no SC is active. */
+  display: none;
+}
+@keyframes lc-sc-pinstrip-in {
+  0%   { opacity: 0; transform: translateY(-12px); max-height: 0; }
+  100% { opacity: 1; transform: translateY(0);     max-height: 80px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #${ROOT_ID} .lc-chat-sc-pinstrip { animation: none; }
+}
+
+#${ROOT_ID} .lc-chat-sc-card {
+  display: grid;
+  grid-template-columns: auto 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+#${ROOT_ID} .lc-chat-sc-card-stuck::before {
+  /* Subtle 📌 indicator on the left edge when user has long-pressed to stick. */
+  content: '📌';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 10px;
+  opacity: .8;
+}
+
+#${ROOT_ID} .lc-chat-sc-amount {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--lc-superchat-bg, linear-gradient(135deg, #ff9f0a, #ff453a));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* Drop a small piece of the SC's hero glow on the badge so the badge
+     itself reads as "this is a paid event", not just "a price label". */
+  box-shadow: var(--lc-superchat-glow);
+}
+
+#${ROOT_ID} .lc-chat-sc-avatar {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--lc-chat-chip);
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .4);
+}
+#${ROOT_ID} .lc-chat-sc-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#${ROOT_ID} .lc-chat-sc-body {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+#${ROOT_ID} .lc-chat-sc-name {
+  flex: 0 0 auto;
+  max-width: 8em;
+  color: var(--lc-chat-name);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#${ROOT_ID} .lc-chat-sc-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--lc-chat-text);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#${ROOT_ID} .lc-chat-sc-time {
+  flex: 0 0 auto;
+  color: var(--lc-chat-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-left: 4px;
+}
+
+/* Navigation arrows — desktop-only affordance for prev/next. Touch users
+   swipe; keyboard users use arrow keys. Buttons appear on strip hover so
+   they don't compete with SC content when the user isn't seeking. */
+#${ROOT_ID} .lc-chat-sc-nav {
+  position: absolute;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lc-chat-panel) 70%, transparent);
+  color: var(--lc-chat-text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity .14s ease;
+}
+#${ROOT_ID} .lc-chat-sc-nav-prev { left: 4px; }
+#${ROOT_ID} .lc-chat-sc-nav-next { right: 4px; }
+#${ROOT_ID} .lc-chat-sc-pinstrip:hover .lc-chat-sc-nav,
+#${ROOT_ID} .lc-chat-sc-pinstrip:focus-within .lc-chat-sc-nav {
+  opacity: .85;
+}
+#${ROOT_ID} .lc-chat-sc-nav:hover {
+  opacity: 1;
+  background: var(--lc-chat-chip);
+}
+
+/* Dots indicator — one tab per active SC, centered under the card.
+   Overflow counter shows when > 5 SCs are queued. */
+#${ROOT_ID} .lc-chat-sc-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  min-height: 8px;
+}
+#${ROOT_ID} .lc-chat-sc-dot {
+  width: 5px;
+  height: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--lc-chat-muted) 50%, transparent);
+  cursor: pointer;
+  transition: background .14s ease, transform .14s ease;
+}
+#${ROOT_ID} .lc-chat-sc-dot:hover {
+  transform: scale(1.4);
+}
+#${ROOT_ID} .lc-chat-sc-dot-active {
+  background: var(--lc-chat-name);
+  transform: scale(1.6);
+}
+#${ROOT_ID} .lc-chat-sc-dot-overflow {
+  margin-left: 4px;
+  color: var(--lc-chat-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Progress bar — 1px hairline at the very bottom of the strip, scales
+   from 1.0 → 0 as the current SC's lifetime runs down. iOS Battery /
+   Now-Playing style. */
+#${ROOT_ID} .lc-chat-sc-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--lc-chat-name);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform .25s linear;
+  opacity: .85;
+  pointer-events: none;
+}
+
+/* Copy-feedback flash. Triggered by dblclick handler; clears after 600ms. */
+#${ROOT_ID} .lc-chat-sc-pinstrip-copied .lc-chat-sc-card {
+  animation: lc-sc-copied-flash .6s ease;
+}
+@keyframes lc-sc-copied-flash {
+  0%   { background: transparent; }
+  20%  { background: color-mix(in srgb, var(--lc-chat-accent) 30%, transparent); }
+  100% { background: transparent; }
+}
+
+/* Compact theme: shrink the strip to a single 36px row, drop the avatar,
+   tighten the body. Compact users explicitly opted into density. */
+#${ROOT_ID}[data-theme="compact"] .lc-chat-sc-pinstrip {
+  min-height: 36px;
+  padding: 4px 8px;
+}
+#${ROOT_ID}[data-theme="compact"] .lc-chat-sc-card {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+#${ROOT_ID}[data-theme="compact"] .lc-chat-sc-avatar {
+  display: none;
+}
+#${ROOT_ID}[data-theme="compact"] .lc-chat-sc-dots {
+  display: none;
+}
+#${ROOT_ID}[data-theme="compact"] .lc-chat-sc-name {
+  max-width: 6em;
+  font-size: 11px;
+}
+#${ROOT_ID}[data-theme="compact"] .lc-chat-sc-text {
+  font-size: 12px;
+}
+
 #${ROOT_ID} .lc-chat-toolbar {
   position: relative;
   min-height: 42px;
@@ -234,22 +493,34 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
   color: var(--lc-chat-own-text);
   border-color: var(--lc-chat-own);
 }
+/* search input 现在常驻 toolbar(2026-05-18 Jobs 重构) ——它是 toolbar 的主要
+   控件,占据原 "直播聊天" 居中标题的位置。带左侧 🔍 SVG icon 当 leading
+   affordance,告诉用户"这是搜索",不需要单独的按钮。type=search 在 modern
+   browser 自带 × 清除按钮。 */
 #${ROOT_ID} .lc-chat-search {
   flex: 1 1 auto;
   min-width: 0;
   width: 0;
   max-width: 100%;
-  height: 24px;
+  height: 28px;
   border: 1px solid var(--lc-chat-border);
   border-radius: 999px;
   background: var(--lc-chat-chip);
   color: var(--lc-chat-text);
-  padding: 0 7px;
-  font-size: 11px;
+  padding: 0 10px 0 28px;
+  font-size: 12px;
   outline: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 8px center;
+  background-size: 14px 14px;
 }
 #${ROOT_ID} .lc-chat-search:focus {
   border-color: var(--lc-chat-own);
+  background-color: var(--lc-chat-bubble);
+}
+#${ROOT_ID} .lc-chat-search::placeholder {
+  color: var(--lc-chat-muted);
 }
 #${ROOT_ID} .lc-chat-list {
   position: relative;
@@ -291,15 +562,41 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
   position: relative;
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
-  gap: 3px 9px;
+  /* Row gap (between meta and bubble) + column gap (between avatar and
+     body) both on the 4px grid; was 3px / 9px which broke the rhythm with
+     surrounding 4-grid padding. Vertical row padding also normalized to 4/4
+     instead of 4/2/6 (asymmetric without reason). */
+  gap: 4px 8px;
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding: 4px 2px 6px;
+  padding: 4px 4px;
   border-radius: 0;
   border: 1px solid transparent;
   background: transparent;
   overflow: visible;
+}
+/* Entrance animation — wired from custom-chat-dom.ts where new messages get
+   the .lc-chat-peek class IFF (a) user is following the bottom and (b)
+   batch size leq 12. Both gates prevent the animation from firing during
+   scroll-up history reads or large catch-up batches. The .35s spring
+   cubic-bezier(.34, 1.56, .64, 1) is the iOS Smooth-Spring curve — it
+   overshoots 1px then snaps back, giving messages a "popping in" feel
+   without yanking the reader's attention away from older content.
+   prefers-reduced-motion users get the position immediately. NOTE: do not
+   use backticks anywhere in this CSS — this entire string is a JS template
+   literal, and an unescaped backtick will silently terminate it. */
+@keyframes lc-msg-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(.96); }
+  100% { opacity: 1; transform: translateY(0)   scale(1);   }
+}
+#${ROOT_ID} .lc-chat-message.lc-chat-peek {
+  animation: lc-msg-in .35s cubic-bezier(.34, 1.56, .64, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  #${ROOT_ID} .lc-chat-message.lc-chat-peek {
+    animation: none;
+  }
 }
 #${ROOT_ID} .lc-chat-message:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--lc-chat-own) 64%, transparent);
@@ -332,21 +629,27 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
 #${ROOT_ID} .lc-chat-card-event .lc-chat-bubble {
   width: 100%;
   max-width: 100%;
-  min-height: 62px;
-  padding: 11px 14px;
-  border-radius: 18px;
+  /* min-height 砍掉 ——之前固定 64px,信息密度低的礼物(例如"嘉年华 × 1")会
+     在卡片中间留 100+px 真空,看着像 layout bug(Jobs P0-2)。让 content + padding
+     自己决定卡片高度,信息密度跟尺寸成正比。SC 长文本依然撑得开,小礼物自己
+     收缩。 */
+  /* Card bubbles (gift / SC / guard / redpacket / lottery) get the iOS
+     "important card" treatment: padding 12/16, border-radius 20/8 (iOS Lock
+     Screen card radius), font-weight 800 (Extra Bold everywhere). */
+  padding: 12px 16px;
+  border-radius: 20px;
   border-bottom-left-radius: 8px;
   font-size: 14px;
-  font-weight: 720;
+  font-weight: 800;
   box-shadow: var(--lc-chat-bubble-shadow);
 }
 #${ROOT_ID} .lc-chat-card-compact .lc-chat-bubble {
   min-height: 0;
-  padding: 8px 11px;
+  padding: 8px 12px;
   border-radius: 20px;
   border-bottom-left-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 700;
 }
 #${ROOT_ID} .lc-chat-card-event .lc-chat-bubble::before {
   top: auto;
@@ -427,6 +730,13 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
   background: linear-gradient(135deg, #ff9f0a, #ff453a);
   color: #fff;
   border-color: rgba(255, 69, 58, .32);
+  /* SC is the only "hero" event in the chat list — user paid for it,
+     they want it seen. Extra outer glow + bright inset highlight set it
+     apart from every other card (which all share --lc-chat-bubble-shadow).
+     The glow lives in --lc-superchat-glow so presets with a non-red SC
+     gradient (milk-green, midnight-indigo) can re-tint it without copy-
+     pasting the whole shadow stack. */
+  box-shadow: var(--lc-superchat-glow);
 }
 #${ROOT_ID} .lc-chat-card-event[data-card="guard"] .lc-chat-bubble {
   background: linear-gradient(135deg, #2f80ed, #7c5cff);
@@ -476,14 +786,15 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
 #${ROOT_ID} .lc-chat-message[data-priority="lite"] .lc-chat-bubble {
   max-width: 92%;
   min-width: 0;
-  padding: 4px 9px;
+  padding: 4px 12px;
   border-radius: 999px;
   color: var(--lc-chat-lite-text);
   background: var(--lc-chat-lite);
   border-color: transparent;
   box-shadow: none;
   font-size: 11px;
-  line-height: 1.25;
+  font-weight: 500;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -583,19 +894,46 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
 #${ROOT_ID} .lc-chat-reply {
   color: var(--lc-chat-accent);
 }
+/* ×N 折叠徽章 ——挂在气泡的右上角作为"角标"(custom-chat-dom.ts:text.append(mergeBadge))。
+   先前曾尝试 inline-block 跟在文本后面,长文本换行后 chip 单独占一行变成视觉孤儿
+   (Jobs 批评 P0-4)。改成 iOS notification-badge 模式:absolute 浮在气泡右上角,
+   带 panel-color "cutout" 边框,让它跟任何气泡背景都有明显分隔,无论文本多长都
+   贴在右上,语义"这是消息的一个属性"自然成立。
+   注意:CSS 注释里不要写反引号 —— 整个 style 字符串是 JS template literal,
+   反引号会提前终止它。 */
 #${ROOT_ID} .lc-chat-merge-count {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding: 0 6px;
-  border-radius: 8px;
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  z-index: 2;
+  min-width: 18px;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
   background: var(--lc-chat-chip);
   color: var(--lc-chat-chip-text);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.45;
+  /* panel-color border 在任何气泡颜色上都形成"切口"对比,徽章自然浮起 */
+  border: 1.5px solid var(--lc-chat-panel);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
   white-space: nowrap;
   user-select: none;
-  opacity: .85;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .14);
+}
+/* card-event 上 ×N 用更不透明的深色芯片 + 更宽的白色边框,让它在 SC 红橙、
+   礼物黄、舰长紫等饱和气泡上都明确浮起。原先试过"白底白字"想跟卡片配色家族,
+   但白底在浅黄礼物卡上几乎隐形 ——visibility 比纯度重要。这里走"高对比 chip"
+   方案:深色芯,亮白halo,任何气泡都炸出来。 */
+#${ROOT_ID} .lc-chat-card-event .lc-chat-merge-count {
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  border-color: rgba(255, 255, 255, .92);
+  border-width: 2px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .22);
 }
 #${ROOT_ID} .lc-chat-badge {
   flex: 0 1 auto;
@@ -678,15 +1016,23 @@ html.lc-custom-chat-root-outside-history #${ROOT_ID} {
   display: block;
   width: fit-content;
   min-width: 2.6em;
-  max-width: calc(100% - 14px);
+  max-width: calc(100% - 12px);
   color: var(--lc-chat-bubble-text);
   background: var(--lc-chat-bubble);
   border: 1px solid color-mix(in srgb, var(--lc-chat-border) 74%, transparent);
   border-radius: 20px;
-  border-bottom-left-radius: 7px;
-  padding: 8px 13px 9px;
-  font-size: 13.5px;
-  line-height: 1.38;
+  border-bottom-left-radius: 8px;
+  /* Padding + font-weight + font-size all snap to the 4px / iOS Text grid:
+     padding 8/12 (was 8/13/9 with asymmetric bottom — drops 13 and 9 which
+     broke the rhythm), font-size 13px (was 13.5 — half-pixel anti-aliasing
+     is noisy at this size), font-weight 500 (was unset → 400, which the
+     design-direction doc flags as too light to read on dark backgrounds at
+     small sizes). The cumulative effect is bubbles that look "tighter"
+     without changing apparent size. */
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
   word-break: break-word;
   overflow-wrap: anywhere;
   white-space: pre-wrap;

@@ -174,21 +174,25 @@ describe('describeLlmGap', () => {
     expect(describeLlmGap('autoBlend')).toContain('base URL')
 
     hzmLlmProvider.value = 'openai'
-    // openai doesn't require base URL — moves on to "feature prompt missing"
-    expect(describeLlmGap('autoBlend')).toContain('提示词')
+    // Pre-#21 this returned "请配置提示词"; after #21 the default per-feature
+    // prompt kicks in so the gap closes cleanly when API config is complete.
+    expect(describeLlmGap('autoBlend')).toBeNull()
 
     hzmLlmProvider.value = 'anthropic'
-    expect(describeLlmGap('autoBlend')).toContain('提示词')
+    expect(describeLlmGap('autoBlend')).toBeNull()
   })
 
-  test('finally missing feature prompt — labels the right tab', () => {
+  test('Jobs #21: empty user feature prompt no longer flagged — default kicks in', () => {
+    // Pre-#21 this returned a "请配置提示词 - 手动发送" hint per feature.
+    // After #21 DEFAULT_FEATURE_PROMPTS provides safe fallbacks, so users
+    // with API configured but no custom prompt can still use AI 润色.
     hzmLlmApiKey.value = 'k'
     hzmLlmModel.value = 'm'
     hzmLlmProvider.value = 'openai'
 
-    expect(describeLlmGap('normalSend')).toContain('常规发送')
-    expect(describeLlmGap('autoBlend')).toContain('自动跟车')
-    expect(describeLlmGap('autoSend')).toContain('独轮车')
+    expect(describeLlmGap('normalSend')).toBeNull()
+    expect(describeLlmGap('autoBlend')).toBeNull()
+    expect(describeLlmGap('autoSend')).toBeNull()
   })
 
   test('returns null when everything is in place (api + matching feature prompt)', () => {
@@ -196,46 +200,57 @@ describe('describeLlmGap', () => {
     expect(describeLlmGap('autoBlend')).toBeNull()
   })
 
-  test('whitespace-only feature prompt counts as missing', () => {
+  test('Jobs #21: whitespace-only user prompt also falls back to default', () => {
     fillReadyConfig()
     llmPromptsAutoBlend.value = ['   \n  ']
-    expect(describeLlmGap('autoBlend')).toContain('提示词')
+    expect(describeLlmGap('autoBlend')).toBeNull()
   })
 
-  test('global prompt presence DOES NOT make a feature prompt-less call ready', () => {
+  test('Jobs #21: empty user feature + only global → default kicks in, gap closed', () => {
     fillReadyConfig()
     llmPromptsAutoSend.value = []
     llmPromptsGlobal.value = ['G']
-    expect(describeLlmGap('autoSend')).toContain('独轮车')
+    expect(describeLlmGap('autoSend')).toBeNull()
   })
 })
 
 describe('isLlmReady', () => {
   test('agrees with describeLlmGap (boolean === gap===null)', () => {
+    // Pre-#21 only autoBlend was "ready" after fillReadyConfig (because only
+    // its feature prompt was seeded). After #21 the per-feature defaults
+    // close the gap for siblings too — once API config is in place, all
+    // three features are ready unless the user explicitly disabled them via
+    // some other mechanism. Test rewritten to assert the post-#21 contract.
     expect(isLlmReady('autoBlend')).toBe(false)
     fillReadyConfig()
     expect(isLlmReady('autoBlend')).toBe(true)
-    // sibling features are independent
-    expect(isLlmReady('autoSend')).toBe(false)
+    expect(isLlmReady('autoSend')).toBe(true)
+    expect(isLlmReady('normalSend')).toBe(true)
   })
 })
 
 // --- polishWithLlm (end-to-end via gm-fetch DI hook) ---------------------
 
 describe('polishWithLlm', () => {
-  test('throws when feature prompt missing (no LLM call)', async () => {
+  test('Jobs #21: empty user feature prompt uses default — LLM is called, not skipped', async () => {
     fillReadyConfig()
     llmPromptsAutoBlend.value = []
-    // Even with a working xhr fake installed, the throw should happen before
-    // the network call — assert it doesn't reach the fake.
+    // Pre-#21 this test asserted polishWithLlm threw '当前功能未配置 LLM
+    // 提示词'. After #21 the default per-feature prompt closes that gap —
+    // we should see the fake xhr invoked (LLM actually called) and a result
+    // returned. The default's specific wording is asserted in prompts.test.ts.
+    const fakeRes = JSON.stringify({ choices: [{ message: { content: '666 (改) ' } }] })
     let xhrInvoked = 0
-    _setGmXhrForTests(((options: { onload: (r: unknown) => void }) => {
+    _setGmXhrForTests(((options: {
+      onload: (r: { status: number; statusText: string; responseText: string; finalUrl: string }) => void
+    }) => {
       xhrInvoked++
-      options.onload({ status: 200, responseText: '{}', finalUrl: '', statusText: '' })
+      options.onload({ status: 200, responseText: fakeRes, finalUrl: '', statusText: 'OK' })
     }) as unknown as Parameters<typeof _setGmXhrForTests>[0])
 
-    await expect(polishWithLlm('autoBlend', '666')).rejects.toThrow(/未配置 LLM 提示词/)
-    expect(xhrInvoked).toBe(0)
+    const out = await polishWithLlm('autoBlend', '666')
+    expect(xhrInvoked).toBe(1)
+    expect(out.length).toBeGreaterThan(0)
   })
 
   test('throws when user text is empty / whitespace (no LLM call)', async () => {

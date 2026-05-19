@@ -1,3 +1,13 @@
+/**
+ * URL-param handoff: lets the multi-room dashboard send the user to a live
+ * page with `?guard_room_source=guard-room&guard_room_mode=...&...` and have
+ * chatterbox auto-arm itself accordingly (e.g. start auto-blend in
+ * dry-run). Used when the user clicks a room link from the dashboard.
+ *
+ * (Briefly slated for spinoff under the wrong premise; staying. See
+ * guard-room-sync.ts header for the retrospective.)
+ */
+
 import { guardRoomLiveDeskSessionId } from './guard-room-live-desk-state'
 import { appendLog, notifyUser } from './log'
 import { autoBlendDryRun, autoBlendEnabled, guardRoomHandoffActive, guardRoomSyncKey } from './store'

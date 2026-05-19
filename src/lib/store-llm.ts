@@ -1,20 +1,24 @@
 /**
- * LLM 相关持久状态——既给「智能辅助驾驶」选梗用，也给 YOLO 文本润色用。
+ * LLM 相关持久状态——既给「智能辅助驾驶」选梗用，也给 AI 润色（原代号 YOLO）
+ * 文本改写用。
  *
  * 设计要点：
  * - **API 凭证（provider / key / model / baseURL）放在这里**，而不是绑死在
  *   `store-hzm.ts` 里的「智能辅助驾驶」面板。原因：HZM 面板只对注册了梗源的房间
  *   渲染（目前仅灰泽满 1713546334），意味着别的房间用户根本看不到 API 配置入口
- *   ——而 YOLO 三档（自动跟车 / 独轮车 / 常规发送）在所有房间都可见、可启用。
+ *   ——而 AI 润色三档（自动跟车 / 独轮车 / 手动发送）在所有房间都可见、可启用。
  *   把凭证抽到通用 LLM 域，让 Settings → LLM 永远可见，HZM 面板只是其中一个
  *   消费方。
  * - **GM 存储 key 仍用 `hzmLlm*` 老前缀**——老用户已经粘贴过 API key 的，升级后
  *   要直接读到原值，不能让他们重新配。`gmSignal('hzmLlmApiKey', ...)` 跑出来
  *   的对外名字是 `llmApiKey`，但落盘的 key 名不变。
- * - YOLO 三档开关 + 提示词依旧在这里维护：每个使用 LLM 的功能各有独立的提示词
- *   列表 + 当前选中索引，配合一个共享的"全局基线"。
+ * - **三档 AI 润色开关 + 提示词** 依旧在这里维护：每个使用 LLM 的功能各有独立的
+ *   提示词列表 + 当前选中索引，配合一个共享的"全局基线"。signal 名仍带 `Yolo`
+ *   后缀（GM 持久化键），用户面板上呈现为「AI 润色」——keep internal names to
+ *   avoid migration risk.
  *
- * 设计参考自 upstream chatterbox 0c8706f / 090bd1e / 3914ec6（提示词模型 + YOLO 三档开关）。
+ * 设计参考自 upstream chatterbox 0c8706f / 090bd1e / 3914ec6（提示词模型 + 三档
+ * AI 润色开关）。
  */
 
 import { effect, signal } from '@preact/signals'
@@ -27,9 +31,10 @@ import { gmSignal } from './gm-signal'
 // ---------------------------------------------------------------------------
 //
 // 历史包袱说明：这些 signal 之前住在 `store-hzm.ts`，名字带 `hzm` 前缀，是
-// 因为最早只有"智能辅助驾驶"用 LLM。YOLO 上线后这套配置被两方复用，再叫 hzm
-// 已经名不副实，且把唯一可见的"配置入口"绑在 HZM 面板上让非灰泽满房间的
-// YOLO 用户陷入死局（看得到开关、配不了 key）。这次把它们搬到 LLM 域。
+// 因为最早只有"智能辅助驾驶"用 LLM。AI 润色（原 YOLO）上线后这套配置被两方
+// 复用，再叫 hzm 已经名不副实，且把唯一可见的"配置入口"绑在 HZM 面板上让
+// 非灰泽满房间的 AI 润色用户陷入死局（看得到开关、配不了 key）。这次把它们
+// 搬到 LLM 域。
 //
 // GM 存储 key 保留 `hzmLlm*` 前缀以兼容老用户的持久数据——只改变量名/导出名。
 
@@ -97,14 +102,17 @@ export const llmModel = gmSignal<string>('hzmLlmModel', 'claude-haiku-4-5-202510
 export const llmBaseURL = gmSignal<string>('hzmLlmBaseURL', '')
 
 // ---------------------------------------------------------------------------
-// YOLO 模式开关（每个功能一个）
+// AI 润色（原代号 YOLO）模式开关（每个功能一个）
+//
+// signal 名 + GM 持久化键保留 `*Yolo` 历史命名，避免用户配置迁移；
+// 用户可见的 UI 文案统一改成「AI 润色」。
 // ---------------------------------------------------------------------------
 
-/** 自动跟车 YOLO：触发后用 LLM 润色再发。默认关。 */
+/** 自动跟车 AI 润色：触发后用 LLM 改写再发。默认关。 */
 export const autoBlendYolo = gmSignal<boolean>('autoBlendYolo', false)
-/** 独轮车 YOLO：循环里每条非表情消息用 LLM 润色再发。默认关。 */
+/** 独轮车 AI 润色：循环里每条非表情消息用 LLM 改写再发。默认关。 */
 export const autoSendYolo = gmSignal<boolean>('autoSendYolo', false)
-/** 常规发送 YOLO：手动 / +1 / 偷 路径上把文本先送给 LLM 润色。默认关。 */
+/** 手动发送 AI 润色：手动 / +1 / 偷 路径上把文本先送给 LLM 改写。默认关。 */
 export const normalSendYolo = gmSignal<boolean>('normalSendYolo', false)
 
 // ---------------------------------------------------------------------------
@@ -156,7 +164,7 @@ export const llmPromptsGlobal = gmSignal<string[]>('llmPromptsGlobal', [DEFAULT_
 })
 export const llmActivePromptGlobal = gmSignal<number>('llmActivePromptGlobal', 0, { validate: isNonNegativeInt })
 
-/** 常规发送（含 +1 / 偷）的提示词列表 + 索引。默认空数组——用户没配 = YOLO 不可用。 */
+/** 手动发送（含 +1 / 偷）的提示词列表 + 索引。默认空数组——用户没配 = AI 润色不可用。 */
 export const llmPromptsNormalSend = gmSignal<string[]>('llmPromptsNormalSend', [], { validate: isStringArray })
 export const llmActivePromptNormalSend = gmSignal<number>('llmActivePromptNormalSend', 0, {
   validate: isNonNegativeInt,

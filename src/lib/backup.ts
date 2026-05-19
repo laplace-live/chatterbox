@@ -45,8 +45,9 @@ const EXPORT_KEYS = [
   'autoBlendUserBlacklist',
   'autoBlendSendAllTrending',
   'autoBlendMessageBlacklist',
-  // YOLO（LLM 文本润色）开关 + 提示词。LLM 凭证(provider/key/model/baseURL)
+  // AI 润色（原 YOLO；LLM 文本改写）开关 + 提示词。LLM 凭证(provider/key/model/baseURL)
   // 复用 hzm-* 那一份,backup-section 已有覆盖,这里不重复。
+  // GM key 名仍带 `Yolo` 以保持向后兼容,无需迁移。
   'autoBlendYolo',
   'autoSendYolo',
   'normalSendYolo',

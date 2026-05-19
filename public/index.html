@@ -420,12 +420,12 @@
       <section class="hero">
         <div class="wrap hero-grid">
           <div>
-            <p class="eyebrow">Bilibili Live userscript / Greasy Fork 发布</p>
+            <p class="eyebrow">Bilibili Live userscript · 弹幕助手</p>
             <h1>B站独轮车直播间插件 + 自动跟车</h1>
             <p class="lead">
-              给 B 站/哔哩哔哩直播间使用的独轮车弹幕助手：独轮车循环发送、自动跟车、
-              弹幕自动发送、Chatterbox Chat、粉丝牌禁言巡检、替换规则、影子屏蔽候选、
-              同传和烂梗库都收在一个面板里。
+              <strong>替你说，替你看</strong>——给重度 B 站直播观众的弹幕助手 userscript：
+              独轮车循环发送、自动跟车、手动发送，再加 Chatterbox Chat 评论区接管和
+              粉丝牌禁言巡检。基于 LAPLACE Chatterbox 重写，<strong>2026 起独立演进</strong>。
             </p>
             <div class="actions" aria-label="项目链接">
               <a class="button primary" href="https://greasyfork.org/zh-CN/scripts/574939-b%E7%AB%99%E7%8B%AC%E8%BD%AE%E8%BD%A6-%E8%87%AA%E5%8A%A8%E8%B7%9F%E8%BD%A6">Greasy Fork 安装发布页</a>
@@ -435,14 +435,16 @@
           </div>
 
           <aside class="summary" aria-label="项目摘要">
-            <h2>适合这些场景</h2>
+            <h2>做给谁的</h2>
+            <p>每天泡 B 站直播间、在弹幕里活跃的<strong>重度观众</strong>。你发得多，
+              所以经常被屏蔽 / 被禁言 / 被影子屏蔽 / 被主播拉黑——这个脚本帮你
+              <strong>加速发言</strong>，也帮你<strong>看清自己在哪被禁了</strong>。
+              不是公会管理工具，不是直播间运营工具。
+            </p>
             <ul>
-              <li>提前准备多句弹幕，按节奏循环发送。</li>
-              <li>搜索“独轮车直播间”“B站直播间独轮车”时，这里就是插件官网和安装入口。</li>
-              <li>直播间刷屏气氛起来时，带冷却自动跟一句。</li>
-              <li>把右侧评论区换成更清爽的 Chatterbox Chat。</li>
-              <li>巡检粉丝牌房间是否存在禁言、屏蔽、风控或主播注销。</li>
-              <li>维护替换规则和影子屏蔽候选，减少手动改字。</li>
+              <li>独轮车 / 自动跟车 / 手动发送：替你说。</li>
+              <li>Chatterbox Chat / 粉丝牌巡检：替你看。</li>
+              <li>影子屏蔽自动学习 + AI 润色：替你绕过国内屏蔽词。</li>
             </ul>
           </aside>
         </div>
@@ -452,12 +454,13 @@
         <div class="wrap">
           <h2>独轮车直播间插件做什么</h2>
           <p class="section-intro">
-            安装后，B 站直播间右下角会出现 <code>弹幕助手</code> 按钮。它面向直播间弹幕互动，
-            提供独轮车循环发送、自动跟车、评论区增强、巡检、替换和同传等能力。你可以把它理解成一个
-            B站独轮车插件、哔哩哔哩直播间弹幕助手和 Tampermonkey userscript。
+            安装后，B 站直播间右下角会出现 <code>弹幕助手</code> 按钮。它做<strong>两件事</strong>：
+            <strong>替你说</strong>（独轮车循环、自动跟车、手动发送 + AI 润色 + 影子屏蔽改写）和
+            <strong>替你看</strong>（Chatterbox Chat 接管右侧评论区、粉丝牌禁言巡检看自己在哪被禁）。
+            其它（智驾、烂梗库、同传、LLM、Guard Room 同步）都是为这两件事服务的辅助。
           </p>
           <div class="note">
-            这是民间自用/自制插件，不是 B 站官方功能。使用自动发送、自动跟车、+1、自动重发等功能时，请控制频率。
+            这是民间自用/自制插件，不是 B 站官方功能。自动化功能（独轮车 / 自动跟车 / 智驾 / 自动重发）默认走<strong>试运行</strong>（只看不发），由你主动切到真发；请控制频率，避免打扰主播和其他观众。
           </div>
         </div>
       </section>
@@ -512,6 +515,11 @@
       <section class="section" id="features">
         <div class="wrap">
           <h2>直播间独轮车主要功能</h2>
+          <p class="section-intro">
+            <strong>替你说</strong>是发送类工具（主线）；<strong>替你看</strong>是阅读类工具（辅助）。
+            其余 LLM / 烂梗库 / 同传 / 影子屏蔽自动学习等都在后台为这两件事服务。
+          </p>
+          <h3 style="margin-top: 1.5em;">替你说（发送类，主要）</h3>
           <div class="grid">
             <article class="card">
               <h3>独轮车循环发送</h3>
@@ -519,25 +527,27 @@
             </article>
             <article class="card">
               <h3>自动跟车</h3>
-              <p>识别短时间内被多人重复发送的弹幕，达到阈值后带冷却跟一句，适合直播间自动跟车，可忽略黑名单用户。</p>
+              <p>识别短时间内被多人重复发送的弹幕，达到阈值后带冷却跟一句；三档预设 + 自定义；首次开启默认走<strong>试运行</strong>，由你主动切真发。</p>
             </article>
             <article class="card">
-              <h3>Chatterbox Chat</h3>
-              <p>接管右侧评论区，展示弹幕、礼物、醒目留言、舰队、进场等事件，支持偷弹幕、+1 和复制。</p>
+              <h3>手动发送 + AI 润色</h3>
+              <p>面板里手动一句弹幕。可选 <strong>AI 润色</strong>（用你自己的 prompt 让 LLM 改写后再发）；影子屏蔽时自动给改写候选。</p>
+            </article>
+          </div>
+          <h3 style="margin-top: 1.5em;">替你看（阅读类，辅助）</h3>
+          <div class="grid">
+            <article class="card">
+              <h3>Chatterbox Chat 评论区</h3>
+              <p>接管右侧评论区，展示弹幕、礼物、醒目留言、舰队、进场等事件，支持偷弹幕、+1 和复制；深色模式自适应。</p>
             </article>
             <article class="card">
               <h3>粉丝牌禁言巡检</h3>
-              <p>读取粉丝牌关联房间，分类展示限制、未知、主播注销和正常状态，并支持复制报告。</p>
-            </article>
-            <article class="card">
-              <h3>替换和影子屏蔽候选</h3>
-              <p>支持云端、本地全局和房间规则。疑似影子屏蔽时默认只展示候选改写，不自动发送。</p>
-            </article>
-            <article class="card">
-              <h3>同传、翻译和烂梗库</h3>
-              <p>接入 Soniox 语音识别，可发送识别或翻译结果，也能搜索、复制和发送常用梗。</p>
+              <p>一键看自己在哪些粉丝牌房间被禁言、屏蔽、风控或主播注销——重度观众的"健康检查"。</p>
             </article>
           </div>
+          <p class="section-intro" style="margin-top: 1.5em;">
+            其余特性：智能辅助驾驶（智驾，LLM 选梗）、多源烂梗库（LAPLACE / SBHZM / chatterbox-cloud / 房间专属社区库）、同传翻译（Soniox）、LLM 多 provider（Anthropic / OpenAI / OpenAI 兼容自填 base URL）、影子屏蔽<strong>自动学习</strong>（后台默认开，不在设置里露面）、Guard Room 同步（公会管理工具，后续将剥成独立姊妹脚本）。
+          </p>
         </div>
       </section>
 
@@ -546,16 +556,16 @@
           <h2>权限说明</h2>
           <div class="two-col">
             <article class="card">
-              <h3>页面和网络范围</h3>
+              <h3>页面和网络范围（按用途分组）</h3>
+              <p style="font-size:.92em;color:var(--muted);margin-bottom:.5em;">
+                脚本管理器在<strong>首次访问每个新域</strong>时仍会单独弹窗确认。不开对应功能，那一域就不会被访问。
+              </p>
               <ul class="plain-list">
-                <li><code>@match *://live.bilibili.com/*</code>：只在 B 站直播间运行。</li>
-                <li><code>@require</code>：加载 Soniox 浏览器端语音识别客户端。</li>
-                <li><code>@connect bilibili-guard-room.vercel.app</code>：可选的直播间保安室同步。</li>
-                <li><code>@connect localhost</code>：本地开发和自托管后端测试。</li>
-                <li><code>@connect sbhzm.cn</code>：烂梗库专属梗源（社区自建库）。</li>
-                <li><code>@connect chatterbox-cloud.aijc-eric.workers.dev</code>：本仓库 <code>server/</code> 自建后端，聚合 LAPLACE+SBHZM+社区贡献的梗库；可在设置里改成自部署地址。</li>
-                <li><code>@connect api.anthropic.com</code>、<code>@connect api.openai.com</code>：智能辅助驾驶 LLM 默认 provider，仅在你填入 API key 并启用 AI 规避/改写时调用。</li>
-                <li><code>@connect *</code>：兜底项，让你能填入 OpenAI 兼容的自定义 base URL（DeepSeek/Moonshot/OpenRouter/Ollama 等）。脚本管理器在首次访问每个新域时仍会单独弹窗确认。</li>
+                <li><strong>必要</strong>：<code>@match *://live.bilibili.com/*</code>（只在 B 站直播间运行）；<code>chatterbox-cloud.aijc-eric.workers.dev</code>（烂梗库默认聚合后端）；<code>workers.vrp.moe</code>（LAPLACE 替换规则 + 烂梗库源）；<code>edge-workers.laplace.cn</code>（LAPLACE AI 规避检查）。</li>
+                <li><strong>可选烂梗库 / 雷达源</strong>：<code>sbhzm.cn</code>（灰泽满直播间社区库）；<code>live-meme-radar.aijc-eric.workers.dev</code>（跨房间热门梗 🔥 徽章 + 可选趋势上报）。</li>
+                <li><strong>LLM（填 key 才用）</strong>：<code>api.anthropic.com</code> / <code>api.openai.com</code>；<code>@connect *</code> 兜底让你能填 OpenAI 兼容自定义 base URL（DeepSeek / Moonshot / OpenRouter / Ollama / 小米 mimo 等）。</li>
+                <li><strong>同传</strong>：<code>@require unpkg.com</code>（Soniox 客户端）；<code>api.soniox.com</code>（识别 API）。</li>
+                <li><strong>本地开发 / 公会同步（普通用户用不到）</strong>：<code>@connect localhost</code>（本地后端测试）；<code>bilibili-guard-room.vercel.app</code>（保安室同步，后续将剥成姊妹脚本）。</li>
               </ul>
             </article>
             <article class="card">

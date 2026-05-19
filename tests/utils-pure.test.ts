@@ -467,6 +467,53 @@ describe('addRandomCharacter', () => {
     // Output length is exactly one soft hyphen longer than the input.
     expect(out.length).toBe(family.length + 1)
   })
+
+  test('never inserts inside a balanced [...] emote bracket (cherry-pick 674400c)', () => {
+    // Brute-force every Math.random() value the picker can produce: with 2
+    // allowed positions for "[doge]" (before `[` and after `]`), the floor
+    // step buckets [0, 0.5) → 0 and [0.5, 1) → 1. Sample both buckets and
+    // assert the soft hyphen never lands between `[` and `]`.
+    const cases: number[] = [0, 0.25, 0.4999, 0.5, 0.75, 0.999]
+    for (const r of cases) {
+      Math.random = () => r
+      const out = addRandomCharacter('[doge]')
+      // The emote `[doge]` must remain intact (no soft hyphen between
+      // `[` and `]`).
+      expect(out).toContain('[doge]')
+      // And exactly one soft hyphen was added somewhere outside.
+      expect(getGraphemes(out).length).toBe(getGraphemes('[doge]').length + 1)
+      expect(out).toContain(SOFT_HYPHEN)
+    }
+  })
+
+  test('with random=0, inserts before the emote bracket', () => {
+    Math.random = () => 0
+    // For "[doge]" allowed positions are [0, 6] (before `[`, after `]`);
+    // floor(0 * 2) = 0 → pick 0 → '­[doge]'.
+    expect(addRandomCharacter('[doge]')).toBe(`${SOFT_HYPHEN}[doge]`)
+  })
+
+  test('with random=0.999, inserts after the emote bracket', () => {
+    Math.random = () => 0.999
+    // floor(0.999 * 2) = 1 → pick 6 → '[doge]­'.
+    expect(addRandomCharacter('[doge]')).toBe(`[doge]${SOFT_HYPHEN}`)
+  })
+
+  test('unbalanced bracket (no closing `]`) does not forbid any position', () => {
+    // "[第3章" has an unmatched `[`. No balanced pair → no forbidden set →
+    // behavior matches plain text: random=0 inserts at the start.
+    Math.random = () => 0
+    expect(addRandomCharacter('[第3章')).toBe(`${SOFT_HYPHEN}[第3章`)
+  })
+
+  test('two emotes leave the seam position allowed', () => {
+    // "[doge][cry]" graphemes: 0=`[` 1=d 2=o 3=g 4=e 5=`]` 6=`[` 7=c 8=r
+    // 9=y 10=`]`. Forbidden: {1..5, 7..10}. Allowed: {0, 6, 11}. With
+    // random=0.5 → floor(0.5 * 3) = 1 → pick allowed[1] = 6 → soft hyphen
+    // lands at the seam between the two emotes.
+    Math.random = () => 0.5
+    expect(addRandomCharacter('[doge][cry]')).toBe(`[doge]${SOFT_HYPHEN}[cry]`)
+  })
 })
 
 describe('formatDanmakuError', () => {

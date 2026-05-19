@@ -1,3 +1,12 @@
+/**
+ * Live-desk runtime signals: session id, heartbeat cadence, current
+ * risk level, watchlist of rooms being observed. Drives the multi-room
+ * observation agent's heartbeat loop.
+ *
+ * (Briefly slated for spinoff under the wrong premise; staying. See
+ * guard-room-sync.ts header for the retrospective.)
+ */
+
 import { signal } from '@preact/signals'
 
 import { gmSignal } from './gm-signal'

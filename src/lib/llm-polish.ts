@@ -50,15 +50,16 @@ function dequote(text: string): string {
 }
 
 /**
- * 给三个 YOLO 功能各自的人类可读标签。出现在 describeLlmGap 的提示文案里
- * （"请先在「设置 → LLM 提示词 → 自动跟车」中配置提示词"），与 settings-tab
- * 渲染的小标题对齐。drift 的代价就是一个 settings-tab 的拼写错误而已，所以
- * 没有抽出共用 const。
+ * 给三个 AI 润色（原代号 YOLO）功能各自的人类可读标签。出现在 describeLlmGap
+ * 的提示文案里（"请先在「设置 → LLM 提示词 → 自动跟车」中配置提示词"），与
+ * settings-tab 渲染的小标题对齐。drift 的代价就是一个 settings-tab 的拼写错误
+ * 而已，所以没有抽出共用 const。
  */
 const FEATURE_LABELS: Record<LlmPromptFeature, string> = {
-  normalSend: '常规发送',
+  normalSend: '手动发送',
   autoBlend: '自动跟车',
   autoSend: '独轮车',
+  aiCandidate: 'AI 陪聊（候选）',
 }
 
 /**
@@ -78,7 +79,7 @@ export function isLlmApiConfigured(): boolean {
 
 /**
  * 看 LLM 配置 + 提示词，给一段 *具体* 的中文提示告诉用户应该去哪里补设置。
- * 全部齐全则返回 null，调用方据此决定是否把 YOLO 真的执行起来。
+ * 全部齐全则返回 null，调用方据此决定是否把 AI 润色（原代号 YOLO）真的执行起来。
  *
  * 顺序贴合 settings 视觉顺序：API key → 模型 → openai-compat baseURL → 功能
  * 提示词。读的全是 signal，所以在 UI 渲染体里调用会自动订阅；用户在另一个
@@ -107,8 +108,8 @@ export function isLlmReady(feature: LlmPromptFeature): boolean {
  * 走具体错误而不是 boolean —— 三种典型失败（"还没配 API"、"还没配提示词"、
  * "网络/HTTP 错"）调用方都需要分别处理（提示用户、跳过本次、纳入失败计数）。
  *
- * 注意输入会被 trim 过滤，纯空白调用直接抛错——这是 YOLO 路径而不是普通发送，
- * 我们把"空文本调用"视为调用方传错而非默认放过。
+ * 注意输入会被 trim 过滤，纯空白调用直接抛错——这是 AI 润色（YOLO）路径而不是
+ * 裸发送路径，我们把"空文本调用"视为调用方传错而非默认放过。
  */
 export async function polishWithLlm(
   feature: LlmPromptFeature,

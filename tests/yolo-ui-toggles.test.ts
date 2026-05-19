@@ -1,6 +1,6 @@
 /**
- * Lightweight UI-presence tests for the YOLO toggle wiring across the three
- * send-path tabs (自动跟车 / 独轮车 / 常规发送).
+ * Lightweight UI-presence tests for the AI 润色 (internal name still YOLO)
+ * toggle wiring across the three send-path tabs (自动跟车 / 独轮车 / 手动发送).
  *
  * Goal: catch regressions where the toggle gets wired to the wrong signal,
  * or the per-feature PromptPicker is missing / mis-wired (e.g. autoBlend

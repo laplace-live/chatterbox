@@ -54,7 +54,14 @@ export function LogPanel() {
       }}
       style={{ marginTop: '.25em' }}
     >
-      <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>日志</summary>
+      <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>
+        日志
+        {logLines.value.length > 0 && (
+          <span className='cb-soft' style={{ fontWeight: 400, marginLeft: '.4em', fontSize: '0.9em' }}>
+            · {logLines.value.length} 条
+          </span>
+        )}
+      </summary>
       <div className='cb-body'>
         <div
           className='cb-row'

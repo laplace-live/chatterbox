@@ -433,7 +433,7 @@ describe('triggerSend YOLO branches', () => {
       ab._recordDanmakuForTests('gap-trigger', 'c', false)
       await wait(300)
       expect(enqueueCalls.length).toBe(0)
-      expect(store.autoBlendLastActionText.value).toMatch(/自动跟车 YOLO 跳过/)
+      expect(store.autoBlendLastActionText.value).toMatch(/自动跟车 AI 润色 跳过/)
     } finally {
       ab.stopAutoBlend()
     }

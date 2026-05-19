@@ -1,3 +1,25 @@
+/**
+ * Low-level sync client for the multi-room observation dashboard
+ * (`bilibili-guard-room.vercel.app`). Posts inspection summaries, shadow
+ * rule shares, and live-desk heartbeats. HTTPS-only except loopback.
+ *
+ * **HISTORICAL NOTE (2026-05-18, reversed)**: a previous Jobs-style audit
+ * (#9) and the corresponding `docs/guard-room-spinoff-plan.md` mis-framed
+ * this module as a "guild administrator tool" and queued it for spin-off
+ * to a separate userscript. That was wrong: the actual target user is a
+ * heavy-active viewer who watches multiple live rooms simultaneously and
+ * hops between them — the SAME core user chatterbox is built for. The
+ * spin-off has been reverted; see the DECISION REVERSED banner at the top
+ * of the spinoff-plan doc for details. **This module stays.**
+ *
+ * The user-facing terminology ("保安室" / "监控室代理") is **deliberately**
+ * a concrete metaphor (an old guy sitting in a security guard's room
+ * watching multiple monitors and switching attention between them — which
+ * is exactly what a multi-room viewer does). Don't flatten these to a
+ * generic "multi-room dashboard" — vivid wins over functional, see the
+ * Apple-style precedent (Finder vs File Manager etc.) noted in CLAUDE.md.
+ */
+
 import { VERSION } from './const'
 import { guardRoomCurrentRiskLevel } from './guard-room-live-desk-state'
 import { notifyUser } from './log'
