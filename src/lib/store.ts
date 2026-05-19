@@ -47,6 +47,16 @@ export const unlockSpaceBlock = gmSignal('unlockSpaceBlock', true)
 // the headphones button injected next to 小窗模式 (or the floating
 // overlay button while audio-only is engaged). See `lib/audio-only.ts`.
 export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
+// Auto-seek (自动追帧): nudges `video.playbackRate` to minimize live-stream
+// latency. Event-driven (listens to <video> `progress`/`timeupdate`/etc.,
+// no setInterval polling) so it costs ~0 while idle. Inert while
+// `audioOnlyEnabled` is true. Threshold is in seconds — the seeker
+// targets buffered-ahead == this value, speeding up above it and slowing
+// down well below it. 1.5s matches the greasyfork 439875 default that's
+// been battle-tested across thousands of bilibili rooms. See
+// `lib/auto-seek.ts`.
+export const autoSeekEnabled = gmSignal('autoSeekEnabled', false)
+export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.5)
 export const activeTab = gmSignal('activeTab', 'fasong')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
 export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)
@@ -271,6 +281,19 @@ export const sendMsg = signal(false)
 export const sttRunning = signal(false)
 export const cachedRoomId = signal<number | null>(null)
 export const autoBlendEnabled = signal(false)
+
+// Live metrics published by `lib/auto-seek.ts`. Kept out of GM so a
+// stale page-reload value doesn't paint a fake "你当前的延迟" before
+// the first real tick lands. Consumers (SettingsTab) read these as
+// regular signal values — Preact re-renders on change automatically.
+//
+// `autoSeekCurrentBufferLen`: seconds buffered ahead of the playhead.
+//   1:1 proxy for live-stream latency (buffered seconds ≈ how far
+//   behind real-time the viewer is).
+// `autoSeekCurrentRate`: the most recent `video.playbackRate` we
+//   observed (whether we set it or another script did).
+export const autoSeekCurrentBufferLen = signal(0)
+export const autoSeekCurrentRate = signal(1)
 
 // Ephemeral STT → AI Chat bridge. `SttTab.onPartialResult` appends each
 // finalised chunk to `sttTranscriptBuffer` (and flips `sttEndpointReached`

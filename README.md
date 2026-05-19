@@ -8,15 +8,14 @@ Requires a userscript manager such as [Tampermonkey](https://www.tampermonkey.ne
 
 Install from [Greasy Fork](https://greasyfork.org/scripts/552241).
 
-## Development
+## Credits
 
-```bash
-bun install
-bun run dev    # watch mode
-bun run build  # production build
-```
-
-Output is written to `dist/`.
+- The auto-seek (自动追帧) algorithm — buffer thresholds, speed ladder,
+  slowdown semantics, and default values — is adapted from c-basalt's
+  [`Bilibili 直播自动追帧`](https://github.com/c-basalt/bilibili-live-seeker-script)
+  userscript (GPL-3.0). Our reimplementation is event-driven rather than
+  interval-polled and shares no code with the upstream, but the algorithm
+  belongs to them.
 
 ## License
 

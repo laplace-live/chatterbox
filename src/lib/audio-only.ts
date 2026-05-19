@@ -83,7 +83,11 @@ import { audioOnlyEnabled } from './store'
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
-const AUDIO_EL_ID = 'lc-audio-only-stream'
+// Exported so `lib/auto-seek.ts` can target the same hidden audio
+// element by id without taking a live reference to it (the element gets
+// recreated across stream refresh / disengage cycles; id-lookup stays
+// correct across every recreation).
+export const AUDIO_EL_ID = 'lc-audio-only-stream'
 
 // Stream URLs from getRoomPlayInfo are signed with ~1 hour expiry. We
 // refresh well before that window closes; 50 minutes matches the

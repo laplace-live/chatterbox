@@ -11,6 +11,10 @@ import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/set
 import {
   autoBlendMessageBlacklist,
   autoBlendUserBlacklist,
+  autoSeekBufferThreshold,
+  autoSeekCurrentBufferLen,
+  autoSeekCurrentRate,
+  autoSeekEnabled,
   cachedRoomId,
   danmakuDirectAlwaysShow,
   danmakuDirectConfirm,
@@ -77,6 +81,47 @@ async function fetchRemoteKeywords(): Promise<RemoteKeywords> {
   return await response.json()
 }
 
+interface AutoSeekMetricsProps {
+  bufferLen: number
+  rate: number
+  threshold: number
+}
+
+/**
+ * Live readout for the auto-seek section. Re-renders whenever any of
+ * its props (all signal-backed) changes — no `useEffect`/setInterval
+ * needed, because the seeker module publishes the metrics through
+ * signals already and Preact tracks the dependency.
+ *
+ * Colour code mirrors the seeker's ladder semantics:
+ *   - red   = below slowdown threshold (about to stall)
+ *   - amber = significantly above target (we're catching up)
+ *   - green = within ~0.5s of target (the "comfortable" zone)
+ */
+function AutoSeekMetrics(props: AutoSeekMetricsProps) {
+  const { bufferLen, rate, threshold } = props
+  const delta = bufferLen - threshold
+  const bufferColor = bufferLen < 0.2 ? '#f44' : delta > 1 ? '#e8a200' : '#36a185'
+  const rateColor = Math.abs(rate - 1) < 0.005 ? '#666' : rate > 1 ? '#e8a200' : '#f44'
+  return (
+    <div class='mt-2 rounded border border-ga2 border-solid bg-ga1 p-2'>
+      <div class='flex flex-wrap gap-x-4 gap-y-1'>
+        <div>
+          缓当前延迟 <span style={{ color: bufferColor, fontWeight: 600 }}>{bufferLen.toFixed(2)} 秒</span>
+          <span class='text-ga6'>
+            {' '}
+            (目标 {threshold.toFixed(2)}，差 {delta >= 0 ? '+' : ''}
+            {delta.toFixed(2)})
+          </span>
+        </div>
+        <div>
+          当前播放速度 <span style={{ color: rateColor, fontWeight: 600 }}>{rate.toFixed(2)}×</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function SettingsTab() {
   const syncStatus = useSignal('未同步')
   const syncStatusColor = useSignal('#666')
@@ -93,6 +138,14 @@ export function SettingsTab() {
   const newRoomId = useSignal('')
 
   const messageBlacklistInput = useSignal('')
+
+  // Local string mirror of `autoSeekBufferThreshold` so the user can type
+  // intermediate values like "1." (which `parseFloat` collapses to `1`)
+  // without the controlled input rewriting the field mid-keystroke and
+  // eating the dot. We write back to the signal only when the buffer
+  // parses to a complete in-range number; `onBlur` normalises whatever
+  // is left in the field and re-syncs from the canonical value.
+  const autoSeekThresholdDraft = useSignal(autoSeekBufferThreshold.value.toString())
 
   // LLM section: visibility toggle on the password field, plus a tiny
   // status state machine for the "fetch models" call (idle / loading /
@@ -1083,6 +1136,70 @@ export function SettingsTab() {
             }}
             placeholder='例如：你是一位幽默的成年观众，喜欢用简短中文吐槽…'
           />
+        </div>
+      </div>
+
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>播放器追帧</div>
+        <div class={HINT_CLASS}>
+          自动微调播放速度以追上直播实时位置，减少观看延迟。事件驱动（无定时轮询），同时支持视频和仅音频模式。
+        </div>
+        <div class='flex flex-col gap-2'>
+          <Checkbox
+            id='autoSeekEnabled'
+            checked={autoSeekEnabled.value}
+            onInput={e => {
+              autoSeekEnabled.value = e.currentTarget.checked
+            }}
+            label='启用自动追帧'
+          />
+          <div class='flex items-center gap-1'>
+            <Label htmlFor='autoSeekBufferThreshold'>目标缓冲长度</Label>
+            <Input
+              id='autoSeekBufferThreshold'
+              type='number'
+              min='0.3'
+              max='10'
+              step='0.1'
+              className='w-20'
+              // Bind to the local string draft, not the float signal.
+              // Typing "1." would otherwise round-trip as `value={1}`
+              // and erase the dot before the user can type the "5".
+              value={autoSeekThresholdDraft.value}
+              disabled={!autoSeekEnabled.value}
+              onInput={e => {
+                const raw = e.currentTarget.value
+                autoSeekThresholdDraft.value = raw
+                // Only commit to the persisted signal when the field
+                // parses to a complete, in-range number. Mid-typing
+                // states (empty, "1.", ".5") are kept in the draft
+                // but don't overwrite the threshold yet.
+                const v = parseFloat(raw)
+                if (Number.isFinite(v) && v >= 0.3 && v <= 10) {
+                  autoSeekBufferThreshold.value = v
+                }
+              }}
+              onBlur={() => {
+                // Normalise on commit: clamp out-of-range / unparsable
+                // input, then re-render the draft from the canonical
+                // value so the field always reads back exactly what's
+                // persisted.
+                let v = parseFloat(autoSeekThresholdDraft.value)
+                if (!Number.isFinite(v) || v < 0.3) v = 0.3
+                else if (v > 10) v = 10
+                autoSeekBufferThreshold.value = v
+                autoSeekThresholdDraft.value = v.toString()
+              }}
+            />
+            <Label htmlFor='autoSeekBufferThreshold'>秒（延迟过低容易卡顿）</Label>
+          </div>
+          {autoSeekEnabled.value && (
+            <AutoSeekMetrics
+              bufferLen={autoSeekCurrentBufferLen.value}
+              rate={autoSeekCurrentRate.value}
+              threshold={autoSeekBufferThreshold.value}
+            />
+          )}
         </div>
       </div>
 

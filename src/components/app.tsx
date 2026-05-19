@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { startAiChatEngine, stopAiChatEngine } from '../lib/ai-chat'
 import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
 import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
+import { startAutoSeek, stopAutoSeek } from '../lib/auto-seek'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
 import { aiChatEnabled, autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
@@ -64,6 +65,16 @@ export function App() {
   useEffect(() => {
     startAudioOnly()
     return () => stopAudioOnly()
+  }, [])
+
+  // Always-on mount: the auto-seek module is signal-driven (reads
+  // `autoSeekEnabled` internally) and a no-op while the feature is off,
+  // so mounting unconditionally lets the user flip the setting in the
+  // configurator without a reload. Listeners are only attached when
+  // enabled, so the always-on cost is one signal effect — basically free.
+  useEffect(() => {
+    startAutoSeek()
+    return () => stopAutoSeek()
   }, [])
 
   // B站's SPA renders `.app-body` after our userscript has mounted and
