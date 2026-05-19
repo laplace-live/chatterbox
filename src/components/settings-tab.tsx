@@ -1152,7 +1152,7 @@ export function SettingsTab() {
             label='启用自动追帧'
           />
           <div class='flex items-center gap-1'>
-            <Label htmlFor='autoSeekBufferThreshold'>目标缓冲长度</Label>
+            <Label htmlFor='autoSeekBufferThreshold'>目标延迟</Label>
             <Input
               id='autoSeekBufferThreshold'
               type='number'

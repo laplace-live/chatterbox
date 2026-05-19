@@ -56,7 +56,7 @@ export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
 // been battle-tested across thousands of bilibili rooms. See
 // `lib/auto-seek.ts`.
 export const autoSeekEnabled = gmSignal('autoSeekEnabled', false)
-export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.5)
+export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
 export const activeTab = gmSignal('activeTab', 'fasong')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
 export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)
