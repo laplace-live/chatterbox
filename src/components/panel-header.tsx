@@ -14,6 +14,7 @@ import {
   sttRunning,
 } from '../lib/store'
 import { extractRoomNumber } from '../lib/utils'
+import { AudioOnlyButton } from './audio-only-button'
 import { Icon } from './ui/icon'
 
 /**
@@ -168,6 +169,7 @@ export function PanelHeader() {
           )}
         </div>
         <div className='cb-panel-header-actions'>
+          <AudioOnlyButton />
           <button
             type='button'
             className='cb-btn cb-panel-header-icon'

@@ -24,7 +24,16 @@
  * 后会被解释为像素。
  */
 
-export type IconName = 'settings' | 'info' | 'arrow-left' | 'book' | 'robot' | 'mic' | 'warning' | 'status-ok'
+export type IconName =
+  | 'settings'
+  | 'info'
+  | 'arrow-left'
+  | 'book'
+  | 'robot'
+  | 'mic'
+  | 'warning'
+  | 'status-ok'
+  | 'volume'
 
 interface IconProps {
   name: IconName
@@ -160,6 +169,36 @@ function renderIconPaths(name: IconName) {
       // but the registry includes it so future "online" affordances are
       // visually consistent.
       return <circle cx='8' cy='8' r='5.6' fill='currentColor' />
+    case 'volume':
+      // 🔊 — speaker with two arcs of "sound waves". Used by the仅音频
+      // header chip; color flip (gray → pink) carries the on/off state,
+      // the icon itself stays the same so the affordance reads as "audio
+      // is the thing being toggled" rather than "speaker on vs muted".
+      return (
+        <>
+          <path
+            d='M2.6 6h2.4l3.4-2.8v9.6L5 10H2.6V6z'
+            fill='currentColor'
+            stroke='currentColor'
+            strokeWidth='1'
+            strokeLinejoin='round'
+          />
+          <path
+            d='M10.4 5.6c.9 1 1.4 1.9 1.4 2.4s-.5 1.4-1.4 2.4'
+            fill='none'
+            stroke='currentColor'
+            strokeWidth='1.3'
+            strokeLinecap='round'
+          />
+          <path
+            d='M12.4 3.6c1.6 1.4 2.4 2.9 2.4 4.4s-.8 3-2.4 4.4'
+            fill='none'
+            stroke='currentColor'
+            strokeWidth='1.3'
+            strokeLinecap='round'
+          />
+        </>
+      )
   }
 }
 

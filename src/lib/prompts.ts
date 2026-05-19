@@ -14,6 +14,9 @@
 
 import { llmActivePromptAiCandidate, llmPromptsAiCandidate } from './store-ai-candidate'
 import {
+  DEFAULT_FEATURE_PROMPT_AUTO_BLEND,
+  DEFAULT_FEATURE_PROMPT_AUTO_SEND,
+  DEFAULT_FEATURE_PROMPT_NORMAL_SEND,
   llmActivePromptAutoBlend,
   llmActivePromptAutoSend,
   llmActivePromptGlobal,
@@ -36,29 +39,27 @@ import { getGraphemes, trimText } from './utils'
 export type LlmPromptFeature = 'normalSend' | 'autoBlend' | 'autoSend' | 'aiCandidate'
 
 /**
- * 系统默认提示词(Jobs 式 #21)——用户开了 AI 润色但没填功能提示词时,以
- * 这套兜底默认值跑,而不是因"无 prompt"报错回退原文。每个场景一句话,
- * 保守安全,不重写原意。
+ * 系统默认提示词的 runtime fallback。
  *
- * 设计意图:
- *  - normalSend: 用户手动打的字。AI 只做语言润色 + 屏蔽词避让,不重写。
- *  - autoBlend: 自动跟热门弹幕。AI 换个说法,避免显式复读。
- *  - autoSend: 独轮车循环。AI 每条换种表述,让连续刷屏不像 bot。
+ * normalSend / autoBlend / autoSend 三档：从 v2.14.2 起，这些默认值会在首次
+ * 安装时**seed 进 GM 存储的 prompt 列表**（见 store-llm.ts 的 seedPromptIfMissing），
+ * 所以用户打开「设置 → LLM 提示词」编辑器就能看到、编辑、删除。这套 fallback
+ * 留下来只为兜住一个边缘情况：用户**主动清空**了某档的整个 array，又开启了
+ * AI 润色——此时 runtime 不再因"无 prompt"报错回退原文，而是悄悄用这套
+ * 默认跑（不写回 GM 存储；sentinel 已 set，不会被还原）。
  *
- * 用户可以在「设置 → LLM 提示词」里写自己的,只要功能提示词非空,默认就不
- * 触发。导出供 PromptManager 显示 "未配置 → 用默认: ..." 提示行(后续 UI
- * 工作)。
+ * aiCandidate：跟其它三档不同，它的真正默认 prompt 是 4-persona 列表
+ * （`DEFAULT_AI_CANDIDATE_PROMPTS` in `store-ai-candidate.ts`），从 v2.14.1
+ * 起就 seed 进 array。这里给的 fallback 只是用户把 4 个 persona 全删空 +
+ * 没选任何索引时的最后兜底。
+ *
+ * 三档功能 prompt 文本本体在 `store-llm.ts` 集中维护——既是 seed 源，也是
+ * 这里的 fallback 源，避免文案两处同步。
  */
 export const DEFAULT_FEATURE_PROMPTS: Record<LlmPromptFeature, string> = {
-  normalSend:
-    '把用户输入的弹幕在保持原意的前提下稍作润色：修正错字、让语气更自然；如果包含可能被屏蔽的敏感词，尝试用谐音字 / 拆字 / 同义说法绕过。如果原弹幕已经流畅自然，直接原样返回。',
-  autoBlend:
-    '用户在 B 站直播间想跟一句热门弹幕。请把命中的弹幕换个说法但保留意思，更像真实观众随口说出来的，避免连续重复；长度不超过原文，不加任何引号或前缀。',
-  autoSend:
-    '用户在循环发送同一句弹幕（独轮车）。请把它换种说法重新写一遍，保留核心意思，让连续发送时看起来不像复读机；尽量短，不重复用相同字句。',
-  // aiCandidate 默认走 4-persona array 里的 Index 0（杠精）。这里给的
-  // fallback 只是用户把整个 array 删空 + 没选任何 persona 时的兜底，
-  // 真正质量的 prompt 来自 `DEFAULT_AI_CANDIDATE_PROMPTS`。
+  normalSend: DEFAULT_FEATURE_PROMPT_NORMAL_SEND,
+  autoBlend: DEFAULT_FEATURE_PROMPT_AUTO_BLEND,
+  autoSend: DEFAULT_FEATURE_PROMPT_AUTO_SEND,
   aiCandidate:
     '你是哔哩哔哩直播间里的一位观众，正在观看主播直播。请根据上下文生成一条自然、真诚、像真实观众的弹幕。不要复读、不要敏感话题、不要恶意攻击。当前内容不适合发弹幕时，请明示放弃。',
 }

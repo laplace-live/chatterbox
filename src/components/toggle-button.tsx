@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 
 import { activeTab, dialogOpen, sendMsg } from '../lib/store'
-import { AudioOnlyButton } from './audio-only-button'
 
 export function ToggleButton() {
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -81,41 +80,29 @@ export function ToggleButton() {
   const sending = sendMsg.value
   const open = dialogOpen.value
 
-  // 右下角按钮簇：`弹幕助手`（打开面板）+ 任何想跟它共享 z-index 与边距
-  // 的兄弟按钮（目前只有「仅音频」）。包一层 fixed div 比给每个按钮独立
-  // 算位置好维护 —— flex 自动排齐。
-  //
-  // `cb-no-outside-close` 让按钮簇内部的点击不触发外部点击关闭面板的
-  // capture-phase 监听（见上面的 mousedown effect）。注意 dialog 的关闭
-  // 检测用的是 `closest('#laplace-chatterbox-toggle')`，单按 ID 不够覆盖
-  // 兄弟按钮，必须靠这个 class。
+  // 右下角浮动 dock：单按钮，只有「弹幕助手」。早期版本曾把「仅音频」chip 挂在
+  // 这里做左兄弟，Jobs 审计后认定心智模型错位（播放器 mode 不该跟弹幕工具入口
+  // 平排），搬到了面板 header 的 actions row 里。详见 audio-only-button.tsx。
   return (
-    <div
-      class='cb-no-outside-close'
+    <button
+      ref={btnRef}
+      type='button'
+      id='laplace-chatterbox-toggle'
+      data-open={open}
+      data-sending={sending}
+      aria-label={open ? '关闭弹幕助手面板（按 Esc 关闭）' : '打开弹幕助手面板'}
+      aria-expanded={open}
+      aria-controls='laplace-chatterbox-dialog'
+      title={open ? 'Esc 关闭面板' : '点击打开弹幕助手'}
+      onClick={toggle}
       style={{
         position: 'fixed',
         right: '8px',
         bottom: '8px',
         zIndex: 2147483647,
-        display: 'flex',
-        alignItems: 'center',
       }}
     >
-      <AudioOnlyButton />
-      <button
-        ref={btnRef}
-        type='button'
-        id='laplace-chatterbox-toggle'
-        data-open={open}
-        data-sending={sending}
-        aria-label={open ? '关闭弹幕助手面板（按 Esc 关闭）' : '打开弹幕助手面板'}
-        aria-expanded={open}
-        aria-controls='laplace-chatterbox-dialog'
-        title={open ? 'Esc 关闭面板' : '点击打开弹幕助手'}
-        onClick={toggle}
-      >
-        弹幕助手
-      </button>
-    </div>
+      弹幕助手
+    </button>
   )
 }

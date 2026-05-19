@@ -27,7 +27,12 @@ import {
 import { Button } from './ui/button'
 
 /**
- * AI 陪聊（Review-only）UI section，挂在同传 tab 底部。
+ * AI 陪聊（Review-only）UI section。
+ *
+ * **位置**（Jobs 审计后）：跟「同传」并列做为「手动发送」cb-core-group 的
+ * supporting feature，外面由 `configurator.tsx` 包一个 `<details>` 折叠器
+ * （summary 显示标题，body 是这里的 section 内容）。原本埋在 SttTab 底部
+ * 3 层深的位置错误已经修正。
  *
  * Review-only 设计约束（强制的产品边界）：
  * - 没有 "auto-send" 开关 —— 引擎只生成候选，**用户点确认才发**
@@ -39,8 +44,6 @@ import { Button } from './ui/button'
  * - 候选列表始终可见（upstream 在 auto-send=true 时隐藏）
  * - 文案重新框出"候选"工具属性，避开"全自动陪你聊"暗示
  */
-
-const SECTION_HEADING = '🤖 AI 陪聊（候选）'
 
 function relativeTime(ts: number | null, now: number): string {
   if (ts === null) return '尚未生成'
@@ -112,9 +115,10 @@ export function AiCandidateSection() {
   const gap = describeLlmGap('aiCandidate')
 
   return (
-    <div class='cb-supporting-feature' style={{ marginTop: '8px', padding: '6px 8px', borderTop: '1px dashed #ccc' }}>
+    <div style={{ padding: '6px 8px' }}>
+      {/* 状态行：状态药丸 + 启用开关。标题"🤖 AI 陪聊（候选）" 由外层
+       * <details> 的 summary 提供，不在这里重复。 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-        <strong style={{ fontSize: '0.95em' }}>{SECTION_HEADING}</strong>
         <span
           role='status'
           aria-live='polite'

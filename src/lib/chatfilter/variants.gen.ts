@@ -4,7 +4,7 @@
  * Regenerate with: bun scripts/build-variants.mjs
  */
 
-export const VARIANTS_VERSION = "2026-05-14"
+export const VARIANTS_VERSION = "2026-05-19"
 
 export const VARIANTS: Readonly<Record<string, readonly string[]>> = {
   "牛逼": [

@@ -137,20 +137,59 @@ export const DEFAULT_GLOBAL_PROMPT = [
   '- 直接输出最终弹幕文本，不要包含解释、前缀或多余空白，结尾不带句号',
 ].join('\n')
 
+/**
+ * 三档 AI 润色的功能特定默认提示词。
+ *
+ * 跟 `DEFAULT_GLOBAL_PROMPT` 一样：首次启动写一次进 GM 存储（每个 feature 一
+ * 个独立 sentinel key，删了不会被还原），之后用户可自由编辑/删除/新增。
+ *
+ * 这套默认值之前只活在 `prompts.ts` 的 runtime fallback 里——意思是 LLM 调用
+ * 时如果用户没填 prompt，就悄悄用这套兜底。但用户打开「设置 → LLM 提示词」
+ * 看到的是空编辑器，**不知道默认值存在**，往往自己从零写一个糟糕版本。Jobs
+ * 审计后判定：defaults should be visible，搬到这里以 seed 形式落盘，跟 AI
+ * 候选的 4 persona 模板一致开箱即用。
+ *
+ * 设计意图：
+ *  - normalSend: 用户手动打的字。AI 只做语言润色 + 屏蔽词避让，不重写。
+ *  - autoBlend: 自动跟热门弹幕。AI 换个说法，避免显式复读。
+ *  - autoSend: 独轮车循环。AI 每条换种表述，让连续刷屏不像 bot。
+ *
+ * Exported 给 `prompts.ts` 的 runtime fallback 复用，避免重复定义。
+ */
+export const DEFAULT_FEATURE_PROMPT_NORMAL_SEND =
+  '把用户输入的弹幕在保持原意的前提下稍作润色：修正错字、让语气更自然；如果包含可能被屏蔽的敏感词，尝试用谐音字 / 拆字 / 同义说法绕过。如果原弹幕已经流畅自然，直接原样返回。'
+
+export const DEFAULT_FEATURE_PROMPT_AUTO_BLEND =
+  '用户在 B 站直播间想跟一句热门弹幕。请把命中的弹幕换个说法但保留意思，更像真实观众随口说出来的，避免连续重复；长度不超过原文，不加任何引号或前缀。'
+
+export const DEFAULT_FEATURE_PROMPT_AUTO_SEND =
+  '用户在循环发送同一句弹幕（独轮车）。请把它换种说法重新写一遍，保留核心意思，让连续发送时看起来不像复读机；尽量短，不重复用相同字句。'
+
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(s => typeof s === 'string')
 const isNonNegativeInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
 
-// 一次性 seeding：在用户首次安装 / 升级到带 LLM 的版本时把默认全局提示词
-// 写进 GM 存储。用一个独立的 sentinel key 标记已 seed，这样用户主动清空
-// 提示词列表后不会被这里"还原"。设计参考 upstream 0c8706f 的同位策略。
-const SEED_KEY = 'llmPromptsGlobalSeeded'
-if (!GM_getValue<boolean>(SEED_KEY, false)) {
-  const existing = GM_getValue<unknown>('llmPromptsGlobal')
+// 一次性 seeding：在用户首次安装 / 升级到带 LLM 的版本时把默认提示词写进
+// GM 存储。每个 scope 用一个独立的 sentinel key 标记已 seed，这样用户主动
+// 清空某个 scope 的列表后不会被这里"还原"。设计参考 upstream 0c8706f 的
+// 同位策略。
+//
+// 为啥每个 scope 一个 sentinel：旧版只 seed 了 global，等 v2.14.x 才开始
+// seed 三档功能 prompt。新增的 sentinel key 让升级路径上的老用户 -
+// 已经有过 `llmPromptsGlobalSeeded` 的 - 也能补到三档功能默认值（不依赖
+// 单个 boolean 兜全部 scope）。
+const seedPromptIfMissing = (sentinelKey: string, storageKey: string, defaultText: string): void => {
+  if (GM_getValue<boolean>(sentinelKey, false)) return
+  const existing = GM_getValue<unknown>(storageKey)
   if (existing === undefined || (Array.isArray(existing) && existing.length === 0)) {
-    GM_setValue('llmPromptsGlobal', [DEFAULT_GLOBAL_PROMPT])
+    GM_setValue(storageKey, [defaultText])
   }
-  GM_setValue(SEED_KEY, true)
+  GM_setValue(sentinelKey, true)
 }
+
+seedPromptIfMissing('llmPromptsGlobalSeeded', 'llmPromptsGlobal', DEFAULT_GLOBAL_PROMPT)
+seedPromptIfMissing('llmPromptsNormalSendSeeded', 'llmPromptsNormalSend', DEFAULT_FEATURE_PROMPT_NORMAL_SEND)
+seedPromptIfMissing('llmPromptsAutoBlendSeeded', 'llmPromptsAutoBlend', DEFAULT_FEATURE_PROMPT_AUTO_BLEND)
+seedPromptIfMissing('llmPromptsAutoSendSeeded', 'llmPromptsAutoSend', DEFAULT_FEATURE_PROMPT_AUTO_SEND)
 
 /**
  * 全局提示词列表 + 当前激活索引。getActiveLlmPrompt 会把"激活的全局提示词"

@@ -128,7 +128,10 @@ export function MedalStatusPanel() {
           fontWeight: 'bold',
           padding: '6px 10px',
           display: 'flex',
-          alignItems: 'baseline',
+          // `center` 而非 `baseline`：右侧浏览器默认的 `▸` chevron 是图形元素，
+          // 按几何中线放，跟 baseline 对齐的文本会差一截。把文本块也居中，
+          // 整行就在一条横线上了。
+          alignItems: 'center',
           gap: '.4em',
           flexWrap: 'wrap',
         }}

@@ -3,6 +3,7 @@ import { useRef } from 'preact/hooks'
 import { cn } from '../lib/cn'
 import { activeTab, dialogOpen, hzmPanelOpen, memesPanelOpen } from '../lib/store'
 import { AboutTab } from './about-tab'
+import { AiCandidateSection } from './ai-candidate-section'
 import { AutoBlendControls } from './auto-blend-controls'
 import { AutoSendControls } from './auto-send-controls'
 import { HzmDrivePanelMount } from './hzm-drive-panel'
@@ -139,8 +140,16 @@ export function Configurator() {
               </details>
             </section>
 
-            {/* 核心 3：手动发送（主动一句）+ 同传（语音输入法变体） */}
-            <section className='cb-core-group' aria-label='手动发送与同传'>
+            {/* 核心 3：手动发送（主动一句）+ 两个 supporting features：
+             * - 同传：语音输入法变体（替你看：听主播）
+             * - AI 候选：AI 生成候选弹幕（替你说：review-only，用户点确认才发）
+             *
+             * AI 候选原本埋在 SttTab 底部（3 层深），Jobs 审计后升到「同传」
+             * 兄弟位 —— 它本质是「替你说」功能，不该挂在 STT 子位置。两者
+             * 都是「手动发送」的 supporting，正好平级。详见
+             * ai-candidate-section.tsx 注释。
+             */}
+            <section className='cb-core-group' aria-label='手动发送'>
               <NormalSendTab />
               <details className='cb-supporting-feature'>
                 <summary>
@@ -150,6 +159,15 @@ export function Configurator() {
                   语音输入弹幕（同传，Soniox）
                 </summary>
                 <SttTab />
+              </details>
+              <details className='cb-supporting-feature'>
+                <summary>
+                  <span className='cb-supporting-feature-icon' aria-hidden='true'>
+                    <Icon name='robot' />
+                  </span>
+                  AI 陪聊（候选 · 你确认才发）
+                </summary>
+                <AiCandidateSection />
               </details>
             </section>
 
