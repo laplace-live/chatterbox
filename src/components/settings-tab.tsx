@@ -11,6 +11,7 @@ import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/set
 import {
   autoBlendMessageBlacklist,
   autoBlendUserBlacklist,
+  autoQualityEnabled,
   autoSeekBufferThreshold,
   autoSeekCurrentBufferLen,
   autoSeekCurrentRate,
@@ -1143,6 +1144,14 @@ export function SettingsTab() {
           自动微调播放速度以追上直播实时位置，减少观看延迟。事件驱动（无定时轮询），同时支持视频和仅音频模式。
         </div>
         <div class='flex flex-col gap-2'>
+          <Checkbox
+            id='autoQualityEnabled'
+            checked={autoQualityEnabled.value}
+            onInput={e => {
+              autoQualityEnabled.value = e.currentTarget.checked
+            }}
+            label='进入直播间时自动切换到最高画质'
+          />
           <Checkbox
             id='autoSeekEnabled'
             checked={autoSeekEnabled.value}

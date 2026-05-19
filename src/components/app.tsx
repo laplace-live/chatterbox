@@ -3,6 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { startAiChatEngine, stopAiChatEngine } from '../lib/ai-chat'
 import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
 import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
+import { startAutoQuality, stopAutoQuality } from '../lib/auto-quality'
 import { startAutoSeek, stopAutoSeek } from '../lib/auto-seek'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
@@ -75,6 +76,16 @@ export function App() {
   useEffect(() => {
     startAutoSeek()
     return () => stopAutoSeek()
+  }, [])
+
+  // Auto-quality is a one-shot — it polls for `livePlayer`, switches to
+  // 原画, and stops. Toggling the setting at runtime intentionally does
+  // NOT re-fire (the change applies on next reload), matching the
+  // "initial quality preference" mental model. The internal `started`
+  // guard makes a strict-mode double-effect or HMR remount safe.
+  useEffect(() => {
+    startAutoQuality()
+    return () => stopAutoQuality()
   }, [])
 
   // B站's SPA renders `.app-body` after our userscript has mounted and

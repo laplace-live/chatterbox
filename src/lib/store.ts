@@ -57,6 +57,15 @@ export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
 // `lib/auto-seek.ts`.
 export const autoSeekEnabled = gmSignal('autoSeekEnabled', false)
 export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
+// Auto-quality (自动原画): on page load, switch the native player to
+// 原画 (qn=10000) if it landed on a lower default. One-shot — does not
+// keep enforcing across the session, so a user's later manual quality
+// pick stays respected. Inert when `audioOnlyEnabled` is true at the
+// moment the player becomes available (avoids ping-pong with audio-
+// only's stopPlayback watchdog). Default off because upgrading quality
+// silently increases bandwidth usage on metered connections. See
+// `lib/auto-quality.ts`.
+export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 export const activeTab = gmSignal('activeTab', 'fasong')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
 export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)
