@@ -129,7 +129,8 @@ let stateEffectDispose: (() => void) | null = null
  */
 function getMediaTarget(): HTMLMediaElement | null {
   if (audioOnlyEnabled.value) {
-    return document.getElementById(AUDIO_EL_ID) as HTMLAudioElement | null
+    const el = document.getElementById(AUDIO_EL_ID)
+    return el instanceof HTMLAudioElement ? el : null
   }
   return document.querySelector<HTMLVideoElement>('#live-player video')
 }
@@ -401,8 +402,8 @@ export function startAutoSeek(): void {
       if (v && Math.abs(v.playbackRate - 1) > RATE_EPSILON) {
         v.playbackRate = 1
       }
-      const a = document.getElementById(AUDIO_EL_ID) as HTMLAudioElement | null
-      if (a && Math.abs(a.playbackRate - 1) > RATE_EPSILON) {
+      const a = document.getElementById(AUDIO_EL_ID)
+      if (a instanceof HTMLAudioElement && Math.abs(a.playbackRate - 1) > RATE_EPSILON) {
         a.playbackRate = 1
       }
     }
