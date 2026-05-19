@@ -195,7 +195,7 @@ export function AutoBlendControls() {
               previewGraphemes={16}
             />
           )}
-          {!llmReady && <span class='ml-1 text-[.85em] text-ga6'>AI 功能需配置 LLM 后启用</span>}
+          {!llmReady && <span class='ml-1 text-ga6'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
         <div

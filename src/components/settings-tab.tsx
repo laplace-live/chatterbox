@@ -104,7 +104,7 @@ function AutoSeekMetrics(props: AutoSeekMetricsProps) {
   const bufferColor = bufferLen < 0.2 ? '#f44' : delta > 1 ? '#e8a200' : '#36a185'
   const rateColor = Math.abs(rate - 1) < 0.005 ? '#666' : rate > 1 ? '#e8a200' : '#f44'
   return (
-    <div class='mt-2 rounded border border-ga2 border-solid bg-ga1 p-2'>
+    <div class='rounded border border-ga2 border-solid bg-ga1 p-2'>
       <div class='flex flex-wrap gap-x-4 gap-y-1'>
         <div>
           缓当前延迟 <span style={{ color: bufferColor, fontWeight: 600 }}>{bufferLen.toFixed(2)} 秒</span>
@@ -999,7 +999,7 @@ export function SettingsTab() {
             renderItem={opt => (
               <div class='flex flex-col gap-0.5'>
                 <span class={cn('break-all', opt.value === llmModel.value && 'font-bold')}>{opt.value}</span>
-                {opt.priceStr && <span class='text-[.85em] text-ga6'>{opt.priceStr}</span>}
+                {opt.priceStr && <span class='text-ga6'>{opt.priceStr}</span>}
               </div>
             )}
           />
@@ -1016,9 +1016,7 @@ export function SettingsTab() {
           // Status colour cycles through neutral / success / error driven
           // by the fetch state machine; inline color matches the remote
           // keyword sync line above so the same visual language repeats.
-          <div class='text-[.9em]' style={{ color: llmFetchStatusColor.value }}>
-            {llmFetchStatus.value}
-          </div>
+          <div style={{ color: llmFetchStatusColor.value }}>{llmFetchStatus.value}</div>
         )}
       </div>
 
@@ -1039,7 +1037,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptGlobal' className='mb-1 block font-bold'>
             全局提示词
           </Label>
-          <div class='mb-1 text-[.9em] text-ga6'>
+          <div class='mb-1 text-ga6'>
             会拼接到下方每个功能提示词的前面。常用于设置统一的角色、语气、安全规则等。留空则只发送对应功能的提示词
           </div>
           <PromptManager
@@ -1064,7 +1062,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptNormalSend' className='mb-1 block font-bold'>
             常规发送
           </Label>
-          <div class='mb-1 text-[.9em] text-ga6'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写</div>
+          <div class='mb-1 text-ga6'>用于常规发送 / +1 / 偷弹幕等手动发送动作的 LLM 改写</div>
           <PromptManager
             selectId='llmPromptNormalSend'
             prompts={llmPromptsNormalSend.value}
@@ -1083,7 +1081,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptAutoBlend' className='mb-1 block font-bold'>
             自动融入
           </Label>
-          <div class='mb-1 text-[.9em] text-ga6'>用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词</div>
+          <div class='mb-1 text-ga6'>用于「自动融入」检测到趋势后调用 LLM 生成跟随弹幕的提示词</div>
           <PromptManager
             selectId='llmPromptAutoBlend'
             prompts={llmPromptsAutoBlend.value}
@@ -1102,7 +1100,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptAutoSend' className='mb-1 block font-bold'>
             独轮车
           </Label>
-          <div class='mb-1 text-[.9em] text-ga6'>用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写</div>
+          <div class='mb-1 text-ga6'>用于独轮车自动发送时，让 LLM 在每轮发送前对模板进行改写</div>
           <PromptManager
             selectId='llmPromptAutoSend'
             prompts={llmPromptsAutoSend.value}
@@ -1121,7 +1119,7 @@ export function SettingsTab() {
           <Label htmlFor='llmPromptAiChat' className='mb-1 block font-bold'>
             AI 陪聊
           </Label>
-          <div class='mb-1 text-[.9em] text-ga6'>
+          <div class='mb-1 text-ga6'>
             用于「同传 → AI 陪聊」根据语音转录和观众弹幕生成模拟观众弹幕的角色设定与生成规则
           </div>
           <PromptManager
@@ -1289,7 +1287,7 @@ export function SettingsTab() {
               maxLogLines.value = v
             }}
           />
-          <span class='text-[.9em] text-ga6'>(1-1000)</span>
+          <span class='text-ga6'>(1-1000)</span>
         </div>
       </div>
 

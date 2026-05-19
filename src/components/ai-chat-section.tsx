@@ -80,7 +80,7 @@ function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
   const icon = isSkip ? '⏭' : entry.sent ? '✅' : '❌'
   const color = isSkip ? '#888' : entry.sent ? '#36a185' : '#f44'
   return (
-    <div class='border-b border-b-ga2 border-b-solid py-0.5 text-[.9em]'>
+    <div class='border-b border-b-ga2 border-b-solid py-0.5'>
       <div class='flex flex-wrap items-baseline gap-1'>
         <span style={{ color }}>{icon}</span>
         {entry.message ? (
@@ -89,9 +89,7 @@ function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
           <span class='flex-1 break-all text-ga6'>{entry.reason || '（无理由）'}</span>
         )}
       </div>
-      {entry.transcript && (
-        <div class='break-all text-[.85em] text-ga6'>主播: {truncateForRow(entry.transcript, 80)}</div>
-      )}
+      {entry.transcript && <div class='break-all text-ga6'>主播: {truncateForRow(entry.transcript, 80)}</div>}
     </div>
   )
 }
@@ -145,7 +143,7 @@ export function AiChatSection() {
     <div class={SECTION_CLASS} data-section='ai-chat'>
       <div class={`${HEADING_CLASS} flex flex-wrap items-center gap-2`}>
         <span>AI 陪聊</span>
-        <span class='font-normal text-[.85em]' style={{ color: pill.color }}>
+        <span class='font-normal' style={{ color: pill.color }}>
           · {pill.label}
         </span>
       </div>
@@ -187,9 +185,9 @@ export function AiChatSection() {
         </Button>
       </div>
 
-      {!llmReady && enabled && <div class='mb-2 text-[#f44] text-[.9em]'>{gap ?? 'LLM 未就绪'}</div>}
+      {!llmReady && enabled && <div class='mb-2 text-[#f44]'>{gap ?? 'LLM 未就绪'}</div>}
 
-      <div class={`${ROW_CLASS} text-[.9em] text-ga6`}>
+      <div class={`${ROW_CLASS} text-ga6`}>
         <span>同传：{sttRunning.value ? '已启动' : '未启动'}</span>
         <span>·</span>
         <span>本次观众消息：{aiChatViewerCount.value}</span>
@@ -202,12 +200,12 @@ export function AiChatSection() {
           streamer to speak or viewers to chat. */}
       {!autoSend && (
         <div class='mb-2'>
-          <div class='mb-1 font-bold text-[.9em]'>
+          <div class='mb-1 font-bold'>
             候选弹幕
             {candidates.length > 0 && <span class='font-normal text-ga6'> ({candidates.length})</span>}
           </div>
           {candidates.length === 0 ? (
-            <div class='text-[.9em] text-ga4'>暂无候选 — 等待主播说话或观众消息触发生成</div>
+            <div class='text-ga4'>暂无候选 — 等待主播说话或观众消息触发生成</div>
           ) : (
             <div class='max-h-45 overflow-y-auto'>
               {/* Newest-first ordering: engine appends to the end (so the
@@ -257,11 +255,9 @@ export function AiChatSection() {
                         </Button>
                       </div>
                       {cand.transcript && (
-                        <div class='break-all text-[.85em] text-ga6'>主播: {truncateForRow(cand.transcript, 80)}</div>
+                        <div class='break-all text-ga6'>主播: {truncateForRow(cand.transcript, 80)}</div>
                       )}
-                      {cand.decision.reason && (
-                        <div class='break-all text-[.85em] text-ga6'>理由: {cand.decision.reason}</div>
-                      )}
+                      {cand.decision.reason && <div class='break-all text-ga6'>理由: {cand.decision.reason}</div>}
                     </div>
                   )}
                 </div>
@@ -284,7 +280,7 @@ export function AiChatSection() {
         <AccordionContent>
           <div class='max-h-40 overflow-y-auto'>
             {history.length === 0 ? (
-              <div class='text-[.9em] text-ga4'>暂无决策记录</div>
+              <div class='text-ga4'>暂无决策记录</div>
             ) : (
               [...history].reverse().map(entry => <HistoryRow key={entry.id} entry={entry} />)
             )}
@@ -405,7 +401,7 @@ export function AiChatSection() {
               />
             </div>
           </div>
-          <div class='mt-2 text-[.85em] text-ga6'>
+          <div class='text-ga6'>
             观众触发：累积一定数量的新观众弹幕后自动调用 LLM。观众窗口：每次提示词中携带的最近 N
             条观众消息。上下文上限：发送到 LLM 的上下文（历史 + 观众）字符总数预算。
           </div>

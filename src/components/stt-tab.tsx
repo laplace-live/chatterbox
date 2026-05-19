@@ -451,7 +451,7 @@ export function SttTab() {
             {apiKeyVisible.value ? '隐藏' : '显示'}
           </Button>
         </div>
-        <div class='my-2 text-[.9em] text-ga6'>
+        <div class='my-2 text-ga6'>
           前往{' '}
           <a href='https://soniox.com/' target='_blank' class='text-link' rel='noopener'>
             Soniox
@@ -568,7 +568,7 @@ export function SttTab() {
             <option value='ja'>日本語</option>
           </NativeSelect>
         </div>
-        <div class='mt-2 text-[.9em] text-ga6'>启用后将发送翻译结果而非原始识别文字</div>
+        <div class='text-ga6'>启用后将发送翻译结果而非原始识别文字</div>
       </div>
 
       <div class='my-2'>
