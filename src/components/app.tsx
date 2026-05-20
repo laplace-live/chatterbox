@@ -9,6 +9,7 @@ import {
 } from '../lib/app-lifecycle'
 import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
 import { startAutoBlend, stopAutoBlend } from '../lib/auto-blend'
+import { startAutoSeek, stopAutoSeek } from '../lib/auto-seek'
 import { installRemoteClusterLifecycle } from '../lib/chatfilter/remote-controller'
 import { startReplacementFeed, stopReplacementFeed } from '../lib/chatfilter-replacement-feed'
 import { startCloudReplacementSync } from '../lib/cloud-replacement-sync'
@@ -127,6 +128,16 @@ export function App() {
   useEffect(() => {
     startAudioOnly()
     return () => stopAudioOnly()
+  }, [])
+
+  // 自动追帧：默认 ON，没有 UI 开关。模块内部订阅 `autoSeekEnabled`，
+  // 关闭时是 no-op（仅一个 signal effect 的常驻成本），开启时挂
+  // MutationObserver + 媒体元素事件 listener。同传 / 智驾 / 烂梗库这些
+  // Tier 1/2 功能都受益于把直播延迟从 5-8s 压到 ~1.5s —— streamer 说
+  // 什么、弹幕在玩什么，这些下游决策点都更接近实时。
+  useEffect(() => {
+    startAutoSeek()
+    return () => stopAutoSeek()
   }, [])
 
   // AI 陪聊（候选）引擎：用户在同传 tab 里打开开关时启动。Review-only —

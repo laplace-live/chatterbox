@@ -75,7 +75,10 @@ import { audioOnlyEnabled } from './store'
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
-const AUDIO_EL_ID = 'lc-audio-only-stream'
+// Exported so `auto-seek.ts` can resolve the hidden `<audio>` element by id
+// when the user has audio-only mode engaged — same element, different
+// pipeline than the page's `<video>`.
+export const AUDIO_EL_ID = 'lc-audio-only-stream'
 
 // Pinned mpegts.js version. Locked rather than `latest` so a breaking
 // upstream change doesn't silently land in user browsers on next CDN

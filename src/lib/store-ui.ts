@@ -60,3 +60,37 @@ export const settingsAdvancedVisible = gmSignal('settingsAdvancedVisible', false
  * `src/lib/audio-only.ts`。
  */
 export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
+
+/**
+ * 自动追帧 (auto-seek)：监听播放器 buffered-ahead，微调 `playbackRate`
+ * 把直播延迟压到 ~1.5s。事件驱动 (`progress` / `waiting` / `timeupdate` /
+ * `playing` / `ratechange` + MutationObserver)，无定时轮询；后台标签零唤醒。
+ * 视频和"仅音频"模式同一套机制 —— 两种模式都通过 `HTMLMediaElement` 的
+ * buffered/rate API。算法 (速度梯度 + slowdown 优先) 沿用 c-basalt
+ * `Bilibili直播自动追帧` (greasyfork 439875, GPL-3.0) 的实战默认值。
+ *
+ * 默认 ON。同传 / 智驾 / 烂梗库等 Tier 1/2 功能都依赖"接近实时"的直播
+ * 状态：streamer 说什么、弹幕在玩什么——延迟 5-8s 等于这些功能的输出
+ * 都晚一个话题。把它默认开就是给这些核心功能续命。
+ *
+ * 没有 UI 开关 (Jobs 风：开关藏起来，用户感觉到"突然跟得上 streamer 了"
+ * 但不知道为什么)。逻辑实现见 `src/lib/auto-seek.ts`。
+ */
+export const autoSeekEnabled = gmSignal('autoSeekEnabled', true)
+
+/**
+ * 目标 buffered-ahead 长度 (秒)。1.5s 是 c-basalt greasyfork 439875 的
+ * 默认，跨数千 B 站房间实测稳定 —— 比这低容易在网络抖动时卡顿，比这高
+ * 失去追帧意义。不暴露 UI，硬走默认值；进阶用户可以通过 Tampermonkey
+ * 编辑 GM 存储自调 (validation 接受 0.3-10 秒)。
+ */
+export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.5)
+
+/**
+ * 自动追帧实时指标 —— 当前 buffered-ahead 长度 (秒) 和当前 playbackRate。
+ * 不持久化 (普通 `signal()` 而非 `gmSignal()`)：刷新页面后从 0/1 开始，
+ * 首次 tick 落地后才有真实值。当前没有 UI 消费者；保留发布是为了之后想
+ * 在日志面板或 debug 后门里观测时不需要回头改 `auto-seek.ts`。
+ */
+export const autoSeekCurrentBufferLen = signal(0)
+export const autoSeekCurrentRate = signal(1)
