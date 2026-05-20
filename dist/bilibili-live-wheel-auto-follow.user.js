@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站独轮车 + 自动跟车 / Bilibili Live Auto Follow
 // @namespace    https://github.com/aijc123/bilibili-live-wheel-auto-follow
-// @version      2.14.0
+// @version      2.14.1
 // @author       aijc123
 // @description  替你说，替你看 —— 给每天泡 B 站直播、在弹幕里特别活跃的观众。独轮车循环 / 自动跟车 / 手动发送 + AI 润色 / 影子屏蔽自动改写 / Chatterbox Chat 接管评论区 / 粉丝牌禁言巡检 / 同传 + 烂梗库。
 // @license      AGPL-3.0
