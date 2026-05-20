@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals'
-import { SonioxClient } from '@soniox/speech-to-text-web'
+import type { RealtimeResult } from '@soniox/client'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
@@ -13,6 +13,7 @@ import {
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
+import { loadSoniox } from '../lib/soniox'
 import {
   clearSonioxApiKey,
   sonioxApiKey,
@@ -28,6 +29,7 @@ import {
   sttRunning,
   sttTranscriptBuffer,
 } from '../lib/store'
+import { useSonioxRecording } from '../lib/use-soniox-recording'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { AiCandidateSection } from './ai-candidate-section'
 
@@ -35,6 +37,10 @@ const SONIOX_FLUSH_DELAY_MS = 5000
 
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
+  // 本地 lifecycle state（驱动按钮文案 / 状态条）。SDK 自己有 `RecordingState`，
+  // 但它的状态机字段更多（'idle' / 'starting' / 'connecting' / 'recording' /
+  // 'paused' / 'stopping' / 'stopped' / 'canceled' / 'error'），UI 只需要四态。
+  // 由 toggle() / handleConnected / handleFinished / handleError 维护。
   const state = useSignal<'stopped' | 'starting' | 'running' | 'stopping'>('stopped')
   const statusText = useSignal('未启动')
   const statusColor = useSignal('#666')
@@ -42,19 +48,21 @@ export function SttTab() {
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
 
-  const clientRef = useRef<SonioxClient | null>(null)
   const accFinal = useRef('')
   const accTranslated = useRef('')
   const sendBuffer = useRef('')
   const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFlushing = useRef(false)
+  // 翻译开关在 start() 时 snapshot 进 ref —— 同一 session 内 token 上的
+  // `translation_status` 是按 session 开始时的配置打的标，用户中途切换开关
+  // 不应该影响已发出但还没解析的 token 归类。
+  const translationModeRef = useRef(false)
 
   const resetState = (nextStatusText = '未启动', nextStatusColor = '#666') => {
     state.value = 'stopped'
     sttRunning.value = false
     statusText.value = nextStatusText
     statusColor.value = nextStatusColor
-    clientRef.current = null
     sendBuffer.current = ''
     isFlushing.current = false
     accFinal.current = ''
@@ -175,7 +183,170 @@ export function SttTab() {
     }
   }
 
-  const toggle = () => {
+  // === SDK event handlers =================================================
+  // 提取成命名函数（不再是 SDK config 上的 inline closure），这样 hook 内
+  // 通过 ref 路由的 callback 永远拿到这一份。逻辑与 v1 SDK 的 onPartialResult
+  // 等价 —— 唯一行为变化：endpoint 检测不再走 `<end>` token 解析（v1
+  // server 行为），改吃 SDK 原生的 `endpoint` 事件（v2 已经把这层语义
+  // 内化），见 handleEndpoint。
+
+  const handleResult = (result: RealtimeResult) => {
+    const translationEnabled = translationModeRef.current
+    let newFinal = ''
+    let nonFinal = ''
+    let newTransFinal = ''
+    let transNonFinal = ''
+    for (const token of result.tokens ?? []) {
+      if (translationEnabled) {
+        if (token.translation_status === 'translation') {
+          if (token.is_final) newTransFinal += token.text
+          else transNonFinal += token.text
+        }
+      } else {
+        if (token.is_final) newFinal += token.text
+        else nonFinal += token.text
+      }
+    }
+    if (translationEnabled) {
+      if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal)
+      accTranslated.current += newTransFinal
+      let display = accTranslated.current
+      if (display.length > 500) display = `…${display.slice(-500)}`
+      finalText.value = display
+      nonFinalText.value = transNonFinal
+      // AI 候选桥接：翻译模式下发布翻译后的文本（与发出去的弹幕一致）。
+      // 见 store-stt.ts 的 sttTranscriptBuffer 注释。
+      if (newTransFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newTransFinal
+    } else {
+      if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
+      accFinal.current += newFinal
+      let display = accFinal.current
+      if (display.length > 500) display = `…${display.slice(-500)}`
+      finalText.value = display
+      nonFinalText.value = nonFinal
+      // AI 候选桥接：发布原文 final tokens。AI 候选引擎在生成时
+      // atomic snapshot+清空这个 buffer。
+      if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
+    }
+  }
+
+  const handleEndpoint = () => {
+    if (sonioxAutoSend.value) {
+      // 翻译管线比原文转录滞后几百 ms：发送翻译时延迟 flush，避免在
+      // 当前句的翻译落地之前就截掉句尾。
+      setTimeout(() => void flushBuffer(), translationModeRef.current ? 300 : 0)
+    }
+    // AI 候选桥接：句子端点信号。引擎用它来把已排队的 debounce 时间
+    // 提前（READY_MS 而非 FALLBACK_MS）。独立于 autoSend gating —— 用户
+    // 不让自动发不等于不让 AI 候选引擎用。
+    sttEndpointReached.value = true
+  }
+
+  const handleFinished = async () => {
+    // 等已经在飞的 flush 把当前 in-flight 的句子送完再 declare stopped。
+    // 100 × 100 ms = 10 s 上限；超过这个就是网络卡死的征兆，宁愿放弃也
+    // 不要把 UI 挂死。
+    let waitCount = 0
+    while (isFlushing.current && waitCount < 100) {
+      await new Promise(r => setTimeout(r, 100))
+      waitCount++
+    }
+    await flushBuffer()
+    appendLog('🎤 同传已停止')
+    resetState()
+  }
+
+  const handleError = (err: Error) => {
+    console.error('Soniox error:', err)
+    const message = err.message || String(err)
+    // 通过 `err.name` 字符串比较 sniff platform 错误：v2 SDK 暴露
+    // `AudioPermissionError` / `AudioDeviceError` / `AudioUnavailableError`
+    // 子类。不用 `instanceof` 是因为 SDK 跨 userscript 沙箱 / page-context
+    // 边界加载，`instanceof` 的原型链拿不到。
+    if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
+      if (state.value !== 'stopping' && state.value !== 'stopped') {
+        resetState('麦克风权限被拒绝，请允许浏览器使用麦克风', 'var(--cb-danger-text)')
+      }
+    } else if (err.name === 'AudioDeviceError' || err.name === 'NotFoundError') {
+      appendLog('❌ 未找到麦克风设备')
+      if (state.value !== 'stopping' && state.value !== 'stopped') {
+        resetState('未找到麦克风设备', 'var(--cb-danger-text)')
+      }
+    } else {
+      appendLog(`🔴 Soniox 错误：${message}`)
+      if (state.value !== 'stopping' && state.value !== 'stopped') {
+        resetState(`错误: ${message}`, 'var(--cb-danger-text)')
+      }
+    }
+  }
+
+  const handleConnected = () => {
+    state.value = 'running'
+    sttRunning.value = true
+    const translationEnabled = translationModeRef.current
+    if (translationEnabled) {
+      const target = sonioxTranslationTarget.value
+      const langNames: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' }
+      statusText.value = `正在识别并翻译为${langNames[target] ?? target}…`
+      appendLog(`🎤 同传已启动（翻译模式：${target}）`)
+    } else {
+      statusText.value = '正在识别…'
+      appendLog('🎤 同传已启动')
+    }
+    statusColor.value = 'var(--cb-success-text)'
+  }
+
+  // === Reactive config for the recording hook =============================
+  // 在 render 路径上读取所有相关 signal，每次渲染重算 config 对象，hook
+  // 内部 ref 路由的回调因此永远拿到最新版本。
+  const apiKeyForHook = sonioxApiKey.value.trim()
+  const langHintsForHook = sonioxLanguageHints.value
+  const translationEnabledForHook = sonioxTranslationEnabled.value
+  const translationTargetForHook = sonioxTranslationTarget.value
+  const savedDeviceIdForHook = sonioxAudioDeviceId.value
+
+  // 保存的 mic deviceId 在用户拔线后会失效。validation 放 render 期纯计算；
+  // 真正的 store 写入（清空 sonioxAudioDeviceId）推到 toggle()，避免在
+  // render 里写 signal 触发额外重渲染循环。
+  const deviceStillAvailable =
+    !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
+  const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
+
+  // 镜像 SDK MicrophoneSource 的默认 raw mono 配置 —— 给 deviceId pin 一个
+  // 具体设备的同时，不能让浏览器把 echo cancel / noise suppression / AGC
+  // 自动打开。Soniox 推荐 raw 音频以获取最佳识别质量；16kHz 是 v2 SDK
+  // 内部约定的目标采样率。
+  const micConstraints: MediaTrackConstraints | undefined = effectiveDeviceId
+    ? {
+        deviceId: { exact: effectiveDeviceId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+        sampleRate: 16000,
+      }
+    : undefined
+
+  const recording = useSonioxRecording({
+    apiKey: apiKeyForHook,
+    // stt-rt-v4 是 v2 SDK 当前的实时模型；老的 stt-rt-v3 在 2026-02 已经
+    // 被 Soniox 退役，server 端自动 route 到 v4，写新名只是显式化。
+    model: 'stt-rt-v4',
+    language_hints: langHintsForHook,
+    enable_endpoint_detection: true,
+    ...(translationEnabledForHook
+      ? { translation: { type: 'one_way' as const, target_language: translationTargetForHook } }
+      : {}),
+    ...(micConstraints ? { microphoneConstraints: micConstraints } : {}),
+    onResult: handleResult,
+    onEndpoint: handleEndpoint,
+    onError: handleError,
+    onFinished: handleFinished,
+    onConnected: handleConnected,
+  })
+
+  const toggle = async () => {
     if (state.value === 'stopped') {
       const apiKey = sonioxApiKey.value.trim()
       if (!apiKey) {
@@ -184,6 +355,13 @@ export function SttTab() {
         statusColor.value = 'var(--cb-danger-text)'
         return
       }
+      // 设备失效的 store 重置在这里执行（不能放 render，否则会在渲染期
+      // 写 signal）。
+      if (savedDeviceIdForHook && !deviceStillAvailable) {
+        appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
+        sonioxAudioDeviceId.value = ''
+      }
+      // 重置显示和累加器，为新 session 让出空间。
       finalText.value = ''
       nonFinalText.value = ''
       accFinal.current = ''
@@ -191,144 +369,24 @@ export function SttTab() {
       state.value = 'starting'
       statusText.value = '正在连接…'
       statusColor.value = '#666'
-
+      // Snapshot 翻译模式给本 session 用 —— 用户中途切换不应影响已发出
+      // 但还没解析的 token 归类。
+      translationModeRef.current = translationEnabledForHook
+      // 预热 loader。不预热的话，用户首次"开始同传"会和 CDN fetch 静默
+      // race；在这里失败可以走我们正常的错误路径，给用户具体反馈。
       try {
-        const client = new SonioxClient({ apiKey })
-        clientRef.current = client
-
-        const hints = sonioxLanguageHints.value
-        const translationEnabled = sonioxTranslationEnabled.value
-        const translationTarget = sonioxTranslationTarget.value
-
-        // Validate the saved device is still present; auto-fall back to
-        // system default (and persist the reset) if the user unplugged it
-        // since they last picked it.
-        const savedDeviceId = sonioxAudioDeviceId.value
-        const deviceStillAvailable = !savedDeviceId || audioDevices.value.some(d => d.deviceId === savedDeviceId)
-        if (savedDeviceId && !deviceStillAvailable) {
-          appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
-          sonioxAudioDeviceId.value = ''
-        }
-        const effectiveDeviceId = deviceStillAvailable ? savedDeviceId : ''
-
-        const startConfig: Parameters<SonioxClient['start']>[0] = {
-          model: 'stt-rt-v3',
-          languageHints: hints,
-          enableEndpointDetection: true,
-          onStarted: () => {
-            state.value = 'running'
-            sttRunning.value = true
-            if (translationEnabled) {
-              const langNames: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' }
-              statusText.value = `正在识别并翻译为${langNames[translationTarget] ?? translationTarget}…`
-            } else {
-              statusText.value = '正在识别…'
-            }
-            statusColor.value = 'var(--cb-success-text)'
-            appendLog(translationEnabled ? `🎤 同传已启动（翻译模式：${translationTarget}）` : '🎤 同传已启动')
-          },
-          onPartialResult: result => {
-            let newFinal = ''
-            let nonFinal = ''
-            let newTransFinal = ''
-            let transNonFinal = ''
-            let endpointDetected = false
-            for (const token of result.tokens ?? []) {
-              if (token.text === '<end>' && token.is_final) {
-                endpointDetected = true
-                continue
-              }
-              if (translationEnabled) {
-                if (token.translation_status === 'translation') {
-                  if (token.is_final) newTransFinal += token.text
-                  else transNonFinal += token.text
-                }
-              } else {
-                if (token.is_final) newFinal += token.text
-                else nonFinal += token.text
-              }
-            }
-            if (translationEnabled) {
-              if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal)
-              accTranslated.current += newTransFinal
-              let display = accTranslated.current
-              if (display.length > 500) display = `…${display.slice(-500)}`
-              finalText.value = display
-              nonFinalText.value = transNonFinal
-              // AI 候选桥接：发布翻译后的文本（中文 prompt 期望中文输入）。
-              // 见 store-stt.ts 的 sttTranscriptBuffer 注释。
-              if (newTransFinal) sttTranscriptBuffer.value += newTransFinal
-            } else {
-              if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
-              accFinal.current += newFinal
-              let display = accFinal.current
-              if (display.length > 500) display = `…${display.slice(-500)}`
-              finalText.value = display
-              nonFinalText.value = nonFinal
-              // AI 候选桥接：发布原文 final tokens。AI 候选引擎在生成时
-              // atomic snapshot+清空这个 buffer。
-              if (newFinal) sttTranscriptBuffer.value += newFinal
-            }
-            if (endpointDetected) {
-              // AI 候选桥接：句子端点信号。引擎用它来把已排队的 debounce
-              // 时间提前（READY_MS 而非 FALLBACK_MS）。
-              sttEndpointReached.value = true
-              if (sonioxAutoSend.value) {
-                setTimeout(() => void flushBuffer(), translationEnabled ? 300 : 0)
-              }
-            }
-          },
-          onFinished: async () => {
-            let waitCount = 0
-            while (isFlushing.current && waitCount < 100) {
-              await new Promise(r => setTimeout(r, 100))
-              waitCount++
-            }
-            await flushBuffer()
-            appendLog('🎤 同传已停止')
-            resetState()
-          },
-          onError: (_status, message) => {
-            appendLog(`🔴 Soniox 错误：${message}`)
-            if (state.value !== 'stopping' && state.value !== 'stopped')
-              resetState(`错误: ${message}`, 'var(--cb-danger-text)')
-          },
-        }
-        if (translationEnabled) {
-          startConfig.translation = { type: 'one_way', target_language: translationTarget }
-        }
-        if (effectiveDeviceId) {
-          // Mirror the SDK's internal defaults (raw mono, no DSP) so adding
-          // a deviceId doesn't silently flip echo cancellation / noise
-          // suppression / AGC back to the browser's "true" defaults —
-          // Soniox recommends raw audio for best transcription quality.
-          startConfig.audioConstraints = {
-            deviceId: { exact: effectiveDeviceId },
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 1,
-            sampleRate: 44100,
-          }
-        }
-        client.start(startConfig)
+        await loadSoniox()
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        if (err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
-          appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
-          resetState('麦克风权限被拒绝，请允许浏览器使用麦克风', 'var(--cb-danger-text)')
-        } else if (err instanceof Error && err.name === 'NotFoundError') {
-          appendLog('❌ 未找到麦克风设备')
-          resetState('未找到麦克风设备', 'var(--cb-danger-text)')
-        } else {
-          appendLog(`🔴 启动同传失败：${message}`)
-          resetState(`启动失败: ${message}`, 'var(--cb-danger-text)')
-        }
+        appendLog(`🔴 加载 Soniox SDK 失败：${message}`)
+        resetState(`加载失败: ${message}`, 'var(--cb-danger-text)')
+        return
       }
+      recording.start()
     } else if (state.value === 'running') {
       state.value = 'stopping'
       statusText.value = '正在停止…'
-      if (clientRef.current) clientRef.current.stop()
+      void recording.stop()
     }
   }
 

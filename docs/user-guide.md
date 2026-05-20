@@ -126,7 +126,6 @@ bun run build
 ## 权限说明
 
 - `@match *://live.bilibili.com/*`：只在 B 站直播间运行。
-- `@require https://unpkg.com/@soniox/speech-to-text-web...`：加载同传/语音识别所需的 Soniox 浏览器端客户端。
 - `@connect`：脚本会请求脚本管理器允许它访问以下域，每一项都对应一个具体功能；脚本管理器在首次访问每个新域时仍会单独弹窗确认：
   - `bilibili-guard-room.vercel.app`：可选的直播间保安室同步。
   - `localhost`：本地开发和自托管后端测试。

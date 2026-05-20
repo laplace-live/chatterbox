@@ -12,8 +12,6 @@
 // @source       https://github.com/aijc123/bilibili-live-wheel-auto-follow
 // @supportURL   https://github.com/aijc123/bilibili-live-wheel-auto-follow/issues
 // @match        *://live.bilibili.com/*
-// @require      https://unpkg.com/@soniox/speech-to-text-web@1.4.0/dist/speech-to-text-web.umd.cjs
-// @require      data:application/javascript,%3Bwindow.SonioxSpeechToTextWeb%3Dwindow%5B%22speech-to-text-web%22%5D%3B
 // @require      https://cdn.jsdelivr.net/npm/systemjs@6.15.1/dist/system.min.js
 // @require      https://cdn.jsdelivr.net/npm/systemjs@6.15.1/dist/extras/named-register.min.js
 // @require      data:application/javascript,%3B(typeof%20System!%3D'undefined')%26%26(System%3Dnew%20System.constructor())%3B
@@ -36,9 +34,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-System.addImportMap({ imports: {"@soniox/speech-to-text-web":"user:@soniox/speech-to-text-web"} });
-System.set("user:@soniox/speech-to-text-web", (()=>{const _=SonioxSpeechToTextWeb;('default' in _)||(_.default=_);return _})());
-System.register("./___monkey.entry.js", ['@soniox/speech-to-text-web'],(function(){'use strict';var SonioxClient;return{setters:[function(module){SonioxClient=module.SonioxClient;}],execute:(function(){const s$3 = new Set;
+System.register("./___monkey.entry.js", [],(function(){'use strict';return{execute:(function(){const s$3 = new Set;
 const _css = async (t) => {
   if (s$3.has(t)) return;
   s$3.add(t);
@@ -1072,6 +1068,28 @@ function F$1() {
 * the matching `@grant`.
 */
 var VERSION = _GM_info.script.version;
+/**
+* Soniox real-time speech-to-text SDK (v2). ESM-only package; we point
+* at the package's own `dist/index.mjs` and load it via `<script
+* type="module">` injection at first 「开始同传」 click — see
+* `src/lib/soniox.ts`. Pinned to a specific version so a breaking
+* upstream change doesn't silently land in user browsers on next CDN
+* cache miss; bump deliberately when validating a new version, and keep
+* in sync with the `@soniox/client` version pinned in `package.json`
+* (installed purely for `import type { ... } from '@soniox/client'` so
+* the locally-checked types stay accurate against the runtime ESM we
+* fetch).
+*/
+var SONIOX_CDN_URL = "https://unpkg.com/@soniox/client@2.1.0/dist/index.mjs";
+/**
+* mpegts.js FLV / MPEG-TS demuxer used by 仅音频模式. UMD bundle —
+* assigns its exports to `window.mpegts` at runtime; picked up via the
+* shared `loadScript()` probe in `src/lib/audio-only.ts`. Pinned for the
+* same reasons as `SONIOX_CDN_URL` above; keep in sync with
+* `package.json` (installed only for `import type Mpegts from
+* 'mpegts.js'`).
+*/
+var MPEGTS_CDN_URL = "https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js";
 /**
 * API endpoint URLs used by the script.
 */
@@ -3079,6 +3097,37 @@ var settingsAdvancedVisible = gmSignal("settingsAdvancedVisible", false);
 * `src/lib/audio-only.ts`。
 */
 var audioOnlyEnabled = gmSignal("audioOnlyEnabled", false);
+/**
+* 自动追帧 (auto-seek)：监听播放器 buffered-ahead，微调 `playbackRate`
+* 把直播延迟压到 ~1.5s。事件驱动 (`progress` / `waiting` / `timeupdate` /
+* `playing` / `ratechange` + MutationObserver)，无定时轮询；后台标签零唤醒。
+* 视频和"仅音频"模式同一套机制 —— 两种模式都通过 `HTMLMediaElement` 的
+* buffered/rate API。算法 (速度梯度 + slowdown 优先) 沿用 c-basalt
+* `Bilibili直播自动追帧` (greasyfork 439875, GPL-3.0) 的实战默认值。
+*
+* 默认 ON。同传 / 智驾 / 烂梗库等 Tier 1/2 功能都依赖"接近实时"的直播
+* 状态：streamer 说什么、弹幕在玩什么——延迟 5-8s 等于这些功能的输出
+* 都晚一个话题。把它默认开就是给这些核心功能续命。
+*
+* 没有 UI 开关 (Jobs 风：开关藏起来，用户感觉到"突然跟得上 streamer 了"
+* 但不知道为什么)。逻辑实现见 `src/lib/auto-seek.ts`。
+*/
+var autoSeekEnabled = gmSignal("autoSeekEnabled", true);
+/**
+* 目标 buffered-ahead 长度 (秒)。1.5s 是 c-basalt greasyfork 439875 的
+* 默认，跨数千 B 站房间实测稳定 —— 比这低容易在网络抖动时卡顿，比这高
+* 失去追帧意义。不暴露 UI，硬走默认值；进阶用户可以通过 Tampermonkey
+* 编辑 GM 存储自调 (validation 接受 0.3-10 秒)。
+*/
+var autoSeekBufferThreshold = gmSignal("autoSeekBufferThreshold", 1.5);
+/**
+* 自动追帧实时指标 —— 当前 buffered-ahead 长度 (秒) 和当前 playbackRate。
+* 不持久化 (普通 `signal()` 而非 `gmSignal()`)：刷新页面后从 0/1 开始，
+* 首次 tick 落地后才有真实值。当前没有 UI 消费者；保留发布是为了之后想
+* 在日志面板或 debug 后门里观测时不需要回头改 `auto-seek.ts`。
+*/
+var autoSeekCurrentBufferLen = y$1(0);
+var autoSeekCurrentRate = y$1(1);
 var cachedRoomId = y$1(null);
 var cachedStreamerUid = y$1(null);
 /**
@@ -12062,7 +12111,7 @@ function startCbBackendHealthProbe() {
 *
 * Cherry-picked from laplace-live/chatterbox@a7f74c4.
 */
-var inFlight = /* @__PURE__ */ new Map();
+var inFlight$1 = /* @__PURE__ */ new Map();
 /**
 * 注入 `url` 为 `<script>` 标签，等 `getGlobal()` 报告期待的全局上挂之后
 * resolve。可并发安全 —— 同一 URL 的并发调用共享一次 fetch。
@@ -12076,7 +12125,7 @@ var inFlight = /* @__PURE__ */ new Map();
 function loadScript(url, getGlobal) {
 	const existing = getGlobal();
 	if (existing) return Promise.resolve(existing);
-	const cached = inFlight.get(url);
+	const cached = inFlight$1.get(url);
 	if (cached) return cached;
 	const promise = new Promise((resolve, reject) => {
 		const script = document.createElement("script");
@@ -12086,17 +12135,17 @@ function loadScript(url, getGlobal) {
 			const g = getGlobal();
 			if (g) resolve(g);
 			else {
-				inFlight.delete(url);
+				inFlight$1.delete(url);
 				reject(/* @__PURE__ */ new Error(`script loaded but expected global not found: ${url}`));
 			}
 		};
 		script.onerror = () => {
-			inFlight.delete(url);
+			inFlight$1.delete(url);
 			reject(/* @__PURE__ */ new Error(`failed to load script from ${url}`));
 		};
 		document.head.appendChild(script);
 	});
-	inFlight.set(url, promise);
+	inFlight$1.set(url, promise);
 	return promise;
 }
 /**
@@ -12168,7 +12217,6 @@ function loadScript(url, getGlobal) {
 var HTML_FLAG_CLASS = "lc-audio-only";
 var STYLE_ID$3 = "lc-audio-only-style";
 var AUDIO_EL_ID = "lc-audio-only-stream";
-var MPEGTS_CDN_URL = "https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js";
 var STREAM_REFRESH_MS = 3e3 * 1e3;
 var STYLE$2 = `
 /* Hide the actual video element while audio keeps playing. The static
@@ -12557,7 +12605,7 @@ function ensureStyleEl() {
 function removeStyleEl() {
 	document.getElementById(STYLE_ID$3)?.remove();
 }
-var stateEffectDispose = null;
+var stateEffectDispose$1 = null;
 /**
 * Public entrypoint. Wired up一次从 `app.tsx` —— re-call 是 idempotent
 * （`stateEffectDispose` 早 return 保持便宜）。
@@ -12566,16 +12614,16 @@ var stateEffectDispose = null;
 * 这个 module 只管 stylesheet、signal effect、playback pipeline。
 */
 function startAudioOnly() {
-	if (stateEffectDispose) return;
+	if (stateEffectDispose$1) return;
 	ensureStyleEl();
-	stateEffectDispose = j$1(() => {
+	stateEffectDispose$1 = j$1(() => {
 		applyAudioOnlyMode(audioOnlyEnabled.value);
 	});
 }
 function stopAudioOnly() {
-	if (stateEffectDispose) {
-		stateEffectDispose();
-		stateEffectDispose = null;
+	if (stateEffectDispose$1) {
+		stateEffectDispose$1();
+		stateEffectDispose$1 = null;
 	}
 	clearPendingApply();
 	destroyAudioPipeline();
@@ -17563,6 +17611,286 @@ function stopAutoBlend() {
 	autoBlendLastActionText.value = moderationStopReason ?? "暂无";
 	moderationStopReason = null;
 	releaseAutoBlendLock();
+}
+/**
+* Auto-seek (自动追帧): minimize live-stream latency by nudging
+* `mediaElement.playbackRate` so the buffered-ahead window stays close
+* to `autoSeekBufferThreshold` seconds.
+*
+* Credits / prior art:
+*   Algorithm design (threshold ladder, slowdown-takes-priority,
+*   default values) is adapted from c-basalt's `Bilibili直播自动追帧`
+*   userscript — https://github.com/c-basalt/bilibili-live-seeker-script
+*   (greasyfork id 439875, GPL-3.0). We reimplemented it on an event
+*   loop instead of `setInterval(50ms)` polling (see below), share
+*   nothing of the original UI / GM-storage layer, and — because this
+*   project is AGPL-3.0 — are compatible downstream of GPL-3.0.
+*
+* Strategy — event-driven, not interval-polled:
+*
+* - We listen for the media element's native `progress`, `waiting`,
+*   `timeupdate`, and `playing` events. The browser already fires these
+*   whenever the buffer state changes meaningfully; piggy-backing on
+*   them means zero wakeups while paused / background / idle, and we
+*   react faster than a 50ms `setInterval` could (which is the cadence
+*   c-basalt's upstream uses for slowdown). A short throttle (~80ms)
+*   keeps us from doing redundant work when `timeupdate` and `progress`
+*   fire on the same tick.
+*
+* - Speed ladder mirrors c-basalt's field-tested values (default config
+*   in their `Bilibili直播自动追帧` userscript):
+*   speedup `[[2, 1.3], [1, 1.2], [0, 1.1]]`  — entries are
+*   `[extraSecondsOverThreshold, rate]`, evaluated in order; the first
+*   match wins. Slowdown ladder `[[0.2, 0.1], [0.3, 0.3], [0.6, 0.6]]`
+*   entries are `[bufferLenAbsolute, rate]`, used to back off as the
+*   buffer drains to avoid stalls.
+*
+* - **Audio-only mode works the same way**: when `audioOnlyEnabled` is
+*   true we target the hidden `<audio id='lc-audio-only-stream'>`
+*   element instead of `#live-player video`. `HTMLAudioElement` shares
+*   the `HTMLMediaElement` `buffered` / `currentTime` / `playbackRate`
+*   surface with `HTMLVideoElement`, so the seek logic is identical —
+*   and audio-only's mpegts.js pipeline writes into the element's
+*   MediaSource, exposing buffer info just like the native player does.
+*
+* - We **do not** touch the rate while `document.hidden` is true.
+*   Backgrounded tabs already throttle setInterval to ~1Hz, and the
+*   user can't perceive latency on a tab they aren't looking at.
+*   `visibilitychange` re-runs a tick on tab-foreground so we resync
+*   as soon as attention returns.
+*
+* - The media element gets replaced on quality switches, audio-only
+*   off→on→off cycles, and audio-only stream URL refreshes. A
+*   `MutationObserver` on `document.documentElement` re-attaches our
+*   listeners to whatever the current target is. We never hold a
+*   long-lived reference to an old element — every tick re-queries.
+*
+* Live metrics (buffer length, current rate) are exposed via signals
+* — currently not surfaced in the UI (this fork ships auto-seek as a
+* default-on, no-config-needed feature), but the signals stay published
+* so a future debug panel or log entry can read them without polling.
+*/
+var SPEEDUP_LADDER = [
+	[2, 1.3],
+	[1, 1.2],
+	[0, 1.1]
+];
+var SLOWDOWN_LADDER = [
+	[.2, .1],
+	[.3, .3],
+	[.6, .6]
+];
+var TICK_THROTTLE_MS = 80;
+var RATE_EPSILON = .005;
+/** The media element we currently have listeners attached to (either the
+*  page's `<video>` or our hidden audio-only `<audio>`). Cleared by
+*  `detachListeners()`; replaced whenever B站 swaps the `<video>` (quality
+*  switch, audio-only toggle, etc.) or the audio-only module recreates
+*  its hidden `<audio>` (refresh cycle). */
+var attachedMedia = null;
+/** DOM observer that re-attaches when the target media element mounts,
+*  swaps, or the audio-only mode toggles between video and audio. */
+var containerObserver = null;
+/** Last tick timestamp for throttling. */
+var lastTickAt = 0;
+/** Pending throttled-tick handle, if any. */
+var pendingTickTimer = null;
+/** Dispose handle for the @preact/signals effect that drives start/stop. */
+var stateEffectDispose = null;
+/**
+* Pick the right element to seek on based on the current mode. In
+* audio-only mode the `<video>` is hidden and the native player is
+* stopped, so the only stream actually flowing data is our hidden
+* `<audio>` — that's what we need to rate-adjust. Otherwise the native
+* `<video>` is the live source.
+*
+* Returns `null` during transitions (audio-only engaging but `<audio>`
+* not yet mounted, or quality-switch tearing down `<video>`); callers
+* just skip the tick and the next event will re-try.
+*/
+function getMediaTarget() {
+	if (audioOnlyEnabled.value) {
+		const el = document.getElementById(AUDIO_EL_ID);
+		return el instanceof HTMLAudioElement ? el : null;
+	}
+	return document.querySelector("#live-player video");
+}
+function getBufferLen(m) {
+	try {
+		if (m.buffered.length === 0) return null;
+		const len = m.buffered.end(m.buffered.length - 1) - m.currentTime;
+		return Number.isFinite(len) ? len : null;
+	} catch {
+		return null;
+	}
+}
+function setRate(m, rate) {
+	if (Math.abs(m.playbackRate - rate) < RATE_EPSILON) {
+		if (Math.abs(autoSeekCurrentRate.value - m.playbackRate) > RATE_EPSILON) autoSeekCurrentRate.value = m.playbackRate;
+		return;
+	}
+	m.playbackRate = rate;
+	autoSeekCurrentRate.value = rate;
+}
+function resetRate(m) {
+	setRate(m, 1);
+}
+/**
+* Inspect the current media buffer and (maybe) adjust `playbackRate`.
+* Works the same for `<video>` (normal mode) and `<audio>` (audio-only
+* mode) because both inherit the `HTMLMediaElement` buffered/rate API.
+* Cheap — safe to call on every event, but throttled by `scheduleTick`
+* so we don't do redundant work on event bursts.
+*/
+function tick$3() {
+	if (document.hidden) return;
+	const m = getMediaTarget();
+	if (!m) return;
+	if (m.paused) {
+		autoSeekCurrentRate.value = m.playbackRate;
+		const buf = getBufferLen(m);
+		if (buf !== null) autoSeekCurrentBufferLen.value = buf;
+		return;
+	}
+	const bufferLen = getBufferLen(m);
+	if (bufferLen === null) return;
+	autoSeekCurrentBufferLen.value = bufferLen;
+	const threshold = autoSeekBufferThreshold.value;
+	if (!Number.isFinite(threshold) || threshold <= 0) {
+		autoSeekCurrentRate.value = m.playbackRate;
+		return;
+	}
+	for (const [bufThres, rate] of SLOWDOWN_LADDER) if (bufferLen < bufThres) {
+		setRate(m, rate);
+		return;
+	}
+	const over = bufferLen - threshold;
+	for (const [delta, rate] of SPEEDUP_LADDER) if (over > delta) {
+		setRate(m, rate);
+		return;
+	}
+	if (Math.abs(m.playbackRate - 1) > RATE_EPSILON) resetRate(m);
+	else autoSeekCurrentRate.value = m.playbackRate;
+}
+function scheduleTick() {
+	const now = Date.now();
+	const elapsed = now - lastTickAt;
+	if (elapsed >= TICK_THROTTLE_MS) {
+		lastTickAt = now;
+		tick$3();
+		return;
+	}
+	if (pendingTickTimer !== null) return;
+	pendingTickTimer = setTimeout(() => {
+		pendingTickTimer = null;
+		lastTickAt = Date.now();
+		tick$3();
+	}, TICK_THROTTLE_MS - elapsed);
+}
+var EVENTS_OF_INTEREST = [
+	"progress",
+	"waiting",
+	"timeupdate",
+	"playing",
+	"ratechange"
+];
+function attachListeners(m) {
+	if (attachedMedia === m) return;
+	detachListeners();
+	for (const evt of EVENTS_OF_INTEREST) m.addEventListener(evt, scheduleTick, { passive: true });
+	attachedMedia = m;
+	scheduleTick();
+}
+function detachListeners() {
+	if (!attachedMedia) return;
+	for (const evt of EVENTS_OF_INTEREST) attachedMedia.removeEventListener(evt, scheduleTick);
+	attachedMedia = null;
+}
+/**
+* Watch the DOM for target media element swaps. B站 destroys and
+* recreates `<video>` on quality changes and roundplay transitions; the
+* audio-only module also creates / destroys its `<audio>` element on
+* engage / disengage and on stream URL refresh. Without this observer
+* we'd attach to a stale element on first call and never see live data
+* again. `getMediaTarget()` picks the right one based on current mode,
+* so a single observer handles both pipelines.
+*/
+function ensureContainerObserver() {
+	if (containerObserver) return;
+	const apply = () => {
+		const target = getMediaTarget();
+		if (target && target !== attachedMedia) attachListeners(target);
+		else if (!target && attachedMedia) {
+			detachListeners();
+			autoSeekCurrentBufferLen.value = 0;
+			autoSeekCurrentRate.value = 1;
+		}
+	};
+	apply();
+	containerObserver = new MutationObserver(apply);
+	containerObserver.observe(document.documentElement, {
+		childList: true,
+		subtree: true
+	});
+}
+function destroyContainerObserver() {
+	containerObserver?.disconnect();
+	containerObserver = null;
+}
+j$1(() => {
+	audioOnlyEnabled.value;
+	if (!autoSeekEnabled.value) return;
+	const target = getMediaTarget();
+	if (target) attachListeners(target);
+	else if (attachedMedia) {
+		detachListeners();
+		autoSeekCurrentBufferLen.value = 0;
+		autoSeekCurrentRate.value = 1;
+	}
+});
+function onVisibilityChange() {
+	if (!document.hidden) scheduleTick();
+}
+/**
+* Wire up the auto-seek feature. Idempotent — repeat calls are no-ops.
+* Listens to `autoSeekEnabled` so the user toggling the setting takes
+* effect immediately without needing a page reload.
+*/
+function startAutoSeek() {
+	if (stateEffectDispose) return;
+	stateEffectDispose = j$1(() => {
+		if (autoSeekEnabled.value) {
+			ensureContainerObserver();
+			document.addEventListener("visibilitychange", onVisibilityChange);
+		} else {
+			destroyContainerObserver();
+			detachListeners();
+			document.removeEventListener("visibilitychange", onVisibilityChange);
+			if (pendingTickTimer !== null) {
+				clearTimeout(pendingTickTimer);
+				pendingTickTimer = null;
+			}
+			autoSeekCurrentBufferLen.value = 0;
+			autoSeekCurrentRate.value = 1;
+			const v = document.querySelector("#live-player video");
+			if (v && Math.abs(v.playbackRate - 1) > RATE_EPSILON) v.playbackRate = 1;
+			const a = document.getElementById(AUDIO_EL_ID);
+			if (a instanceof HTMLAudioElement && Math.abs(a.playbackRate - 1) > RATE_EPSILON) a.playbackRate = 1;
+		}
+	});
+}
+function stopAutoSeek() {
+	if (stateEffectDispose) {
+		stateEffectDispose();
+		stateEffectDispose = null;
+	}
+	destroyContainerObserver();
+	detachListeners();
+	document.removeEventListener("visibilitychange", onVisibilityChange);
+	if (pendingTickTimer !== null) {
+		clearTimeout(pendingTickTimer);
+		pendingTickTimer = null;
+	}
 }
 function normalizeEndpoint(endpoint) {
 	return endpoint.replace(/\/+$/, "");
@@ -24413,7 +24741,7 @@ var EXTERNAL_SERVICES = [
 		name: "Soniox SDK",
 		host: "unpkg.com",
 		trigger: "使用同传功能时按需加载",
-		description: "从 unpkg CDN 加载 Soniox 语音识别 SDK (@soniox/speech-to-text-web)。",
+		description: "从 unpkg CDN 加载 Soniox 语音识别 SDK (@soniox/client)。",
 		status: () => sonioxApiKey.value.trim() !== "" ? "on" : "off"
 	}
 ];
@@ -34801,6 +35129,227 @@ function LlmPromptsSection({ query }) {
 		})]
 	});
 }
+/**
+* Lazy loader for the @soniox/client SDK (v2+).
+*
+* The previous SDK (@soniox/speech-to-text-web) was deprecated and
+* shipped a UMD bundle, so it could be lazy-loaded via a plain
+* `<script>` tag with a `window.*` probe. @soniox/client ships
+* ESM/CJS only — no UMD — so we inject a `<script type="module">`
+* that imports from unpkg and stashes the namespace on
+* `window.__sonioxClient` for the userscript sandbox to read.
+*
+* Why we keep the lazy path instead of bundling: the SDK adds
+* ~42 KB minified to the userscript and pulls in MediaRecorder /
+* WebSocket setup that's only useful when the user actually opens
+* the STT tab. Lazy injection collapses that cost to zero until
+* 开始同传 is clicked, matching the strategy used for mpegts.js.
+*
+* Source files keep `import type { ... } from '@soniox/client'` for
+* static typing; the value-side reference goes through `loadSoniox()`
+* and reads off the page-window namespace at call time.
+*/
+var GLOBAL_KEY = "__sonioxClient";
+var inFlight = null;
+function getSonioxFromWindow() {
+	return _unsafeWindow[GLOBAL_KEY] ?? null;
+}
+function loadSoniox() {
+	const existing = getSonioxFromWindow();
+	if (existing) return Promise.resolve(existing);
+	if (inFlight) return inFlight;
+	inFlight = new Promise((resolve, reject) => {
+		const id = Date.now() + Math.floor(Math.random() * 1e3);
+		const resolveKey = `__sonioxClient_resolve_${id}`;
+		const rejectKey = `__sonioxClient_reject_${id}`;
+		const win = _unsafeWindow;
+		const cleanup = () => {
+			win[resolveKey] = void 0;
+			win[rejectKey] = void 0;
+		};
+		win[resolveKey] = () => {
+			cleanup();
+			const mod = getSonioxFromWindow();
+			if (mod) resolve(mod);
+			else reject(/* @__PURE__ */ new Error("Soniox module loaded but global not set"));
+		};
+		win[rejectKey] = (msg) => {
+			cleanup();
+			inFlight = null;
+			reject(new Error(msg));
+		};
+		const script = document.createElement("script");
+		script.type = "module";
+		script.textContent = `
+      import(${JSON.stringify(SONIOX_CDN_URL)})
+        .then((mod) => {
+          window[${JSON.stringify(GLOBAL_KEY)}] = mod;
+          window[${JSON.stringify(resolveKey)}]?.();
+        })
+        .catch((err) => {
+          window[${JSON.stringify(rejectKey)}]?.(String(err?.message || err));
+        });
+    `;
+		script.onerror = () => {
+			cleanup();
+			inFlight = null;
+			reject(/* @__PURE__ */ new Error(`failed to inject Soniox loader for ${SONIOX_CDN_URL}`));
+		};
+		document.head.appendChild(script);
+	});
+	return inFlight;
+}
+/**
+* Preact-native wrapper around @soniox/client's `Recording`.
+*
+* Why this exists: Soniox ships an official `@soniox/react` hook
+* package, but it depends on React's `useSyncExternalStore` and
+* `useContext` against the real React runtime. Our project uses
+* Preact (the `@preact/preset-vite` alias points `react` →
+* `preact/compat` at runtime, so @soniox/react *would* technically
+* work), but routing through the compat shim:
+*   1. Pulls react-compat into the userscript bundle for no reason
+*      other than to satisfy one hook's import declaration.
+*   2. Hides Preact-specific niceties (we want `@preact/signals`
+*      reactivity, not React's `useState` pattern).
+*
+* Instead we port the minimum useful surface of `useRecording` onto
+* Preact hooks directly. Behaviour mirrors the official hook's
+* contract — same field names (`state`, `isActive`, `start`,
+* `stop`, `pause`, etc.) so swapping back to @soniox/react later
+* would be a near-mechanical change.
+*
+* The hook handles the lazy `loadSoniox()` round-trip internally:
+* `start()` returns synchronously and the actual `Recording`
+* instance is wired in once the CDN bundle has landed. Callers
+* don't need to think about the loader — they just call `start()`.
+*
+* Key behavioural choices kept from the official hook:
+* - Callbacks routed through a ref so updates between renders
+*   never see stale closures inside Recording event listeners.
+* - `start()` aborts any in-flight Recording before creating the
+*   next one (Preact dev double-mount / impatient click safety).
+* - Cleanup on unmount via an AbortController shared with the
+*   in-flight Recording.
+*
+* Behaviour intentionally NOT ported (chatterbox doesn't need it):
+* - SonioxProvider / context plumbing — we accept the api key
+*   inline per call. There's only ever one client in this app.
+* - Token grouping, utterance buffers, segments — consumers use
+*   the raw `result` event for fine-grained control over when text
+*   enters their own buffers (e.g. the danmaku send queue).
+* - Reconnect introspection (`isReconnecting`, `reconnectAttempt`) —
+*   no UI for it yet. Re-add if/when we surface reconnect state.
+*/
+var TERMINAL_STATES = new Set([
+	"idle",
+	"stopped",
+	"canceled",
+	"error"
+]);
+function useSonioxRecording(config) {
+	const state = T$1(() => y$1("idle"), []);
+	const isActive = T$1(() => y$1(false), []);
+	const configRef = A$1(config);
+	configRef.current = config;
+	const clientRef = A$1(null);
+	const recordingRef = A$1(null);
+	const abortRef = A$1(null);
+	const updateState = (next) => {
+		state.value = next;
+		isActive.value = !TERMINAL_STATES.has(next);
+	};
+	const start = () => {
+		abortRef.current?.abort();
+		recordingRef.current?.cancel();
+		recordingRef.current = null;
+		const controller = new AbortController();
+		abortRef.current = controller;
+		updateState("starting");
+		const cfg = configRef.current;
+		loadSoniox().then((Soniox) => {
+			if (controller.signal.aborted) return;
+			const cached = clientRef.current;
+			const client = cached && cached.key === cfg.apiKey ? cached.client : (() => {
+				const c = new Soniox.SonioxClient({ config: { api_key: cfg.apiKey } });
+				clientRef.current = {
+					key: cfg.apiKey,
+					client: c
+				};
+				return c;
+			})();
+			const { apiKey: _apiKey, source: explicitSource, microphoneConstraints, onResult: _onResult, onEndpoint: _onEndpoint, onError: _onError, onFinished: _onFinished, onConnected: _onConnected, ...sttConfig } = cfg;
+			const source = explicitSource ?? (microphoneConstraints ? new Soniox.MicrophoneSource({ constraints: microphoneConstraints }) : void 0);
+			const recording = client.realtime.record({
+				...sttConfig,
+				...source !== void 0 ? { source } : {},
+				session_options: { signal: controller.signal }
+			});
+			recordingRef.current = recording;
+			recording.on("state_change", ({ new_state }) => updateState(new_state));
+			recording.on("result", (result) => {
+				configRef.current.onResult?.(result);
+			});
+			recording.on("endpoint", () => {
+				configRef.current.onEndpoint?.();
+			});
+			recording.on("error", (err) => {
+				configRef.current.onError?.(err);
+			});
+			recording.on("finished", () => {
+				configRef.current.onFinished?.();
+			});
+			recording.on("connected", () => {
+				configRef.current.onConnected?.();
+			});
+		}).catch((err) => {
+			if (controller.signal.aborted) return;
+			const error = err instanceof Error ? err : new Error(String(err));
+			updateState("error");
+			configRef.current.onError?.(error);
+		});
+	};
+	const stop = async () => {
+		const recording = recordingRef.current;
+		if (!recording) {
+			abortRef.current?.abort();
+			if (state.value === "starting") updateState("idle");
+			return;
+		}
+		await recording.stop();
+	};
+	const cancel = () => {
+		recordingRef.current?.cancel();
+		abortRef.current?.abort();
+		if (!recordingRef.current && state.value === "starting") updateState("canceled");
+	};
+	const pause = () => {
+		recordingRef.current?.pause();
+	};
+	const resume = () => {
+		recordingRef.current?.resume();
+	};
+	const finalize = (options) => {
+		recordingRef.current?.finalize(options);
+	};
+	y$2(() => {
+		return () => {
+			abortRef.current?.abort();
+			recordingRef.current?.cancel();
+			recordingRef.current = null;
+		};
+	}, []);
+	return {
+		state,
+		isActive,
+		start,
+		stop,
+		cancel,
+		pause,
+		resume,
+		finalize
+	};
+}
 var SONIOX_FLUSH_DELAY_MS = 5e3;
 function SttTab() {
 	const apiKeyVisible = useSignal(false);
@@ -34810,18 +35359,17 @@ function SttTab() {
 	const finalText = useSignal("");
 	const nonFinalText = useSignal("");
 	const audioDevices = useSignal([]);
-	const clientRef = A$1(null);
 	const accFinal = A$1("");
 	const accTranslated = A$1("");
 	const sendBuffer = A$1("");
 	const flushTimeout = A$1(null);
 	const isFlushing = A$1(false);
+	const translationModeRef = A$1(false);
 	const resetState = (nextStatusText = "未启动", nextStatusColor = "#666") => {
 		state.value = "stopped";
 		sttRunning.value = false;
 		statusText.value = nextStatusText;
 		statusColor.value = nextStatusColor;
-		clientRef.current = null;
 		sendBuffer.current = "";
 		isFlushing.current = false;
 		accFinal.current = "";
@@ -34917,14 +35465,122 @@ function SttTab() {
 		if (flushTimeout.current) clearTimeout(flushTimeout.current);
 		if (state.value === "running") flushTimeout.current = setTimeout(() => void flushBuffer(), SONIOX_FLUSH_DELAY_MS);
 	};
-	const toggle = () => {
+	const handleResult = (result) => {
+		const translationEnabled = translationModeRef.current;
+		let newFinal = "";
+		let nonFinal = "";
+		let newTransFinal = "";
+		let transNonFinal = "";
+		for (const token of result.tokens ?? []) if (translationEnabled) {
+			if (token.translation_status === "translation") if (token.is_final) newTransFinal += token.text;
+			else transNonFinal += token.text;
+		} else if (token.is_final) newFinal += token.text;
+		else nonFinal += token.text;
+		if (translationEnabled) {
+			if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal);
+			accTranslated.current += newTransFinal;
+			let display = accTranslated.current;
+			if (display.length > 500) display = `…${display.slice(-500)}`;
+			finalText.value = display;
+			nonFinalText.value = transNonFinal;
+			if (newTransFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newTransFinal;
+		} else {
+			if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal);
+			accFinal.current += newFinal;
+			let display = accFinal.current;
+			if (display.length > 500) display = `…${display.slice(-500)}`;
+			finalText.value = display;
+			nonFinalText.value = nonFinal;
+			if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal;
+		}
+	};
+	const handleEndpoint = () => {
+		if (sonioxAutoSend.value) setTimeout(() => void flushBuffer(), translationModeRef.current ? 300 : 0);
+		sttEndpointReached.value = true;
+	};
+	const handleFinished = async () => {
+		let waitCount = 0;
+		while (isFlushing.current && waitCount < 100) {
+			await new Promise((r) => setTimeout(r, 100));
+			waitCount++;
+		}
+		await flushBuffer();
+		appendLog("🎤 同传已停止");
+		resetState();
+	};
+	const handleError = (err) => {
+		console.error("Soniox error:", err);
+		const message = err.message || String(err);
+		if (err.name === "AudioPermissionError" || err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+			appendLog("❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风");
+			if (state.value !== "stopping" && state.value !== "stopped") resetState("麦克风权限被拒绝，请允许浏览器使用麦克风", "var(--cb-danger-text)");
+		} else if (err.name === "AudioDeviceError" || err.name === "NotFoundError") {
+			appendLog("❌ 未找到麦克风设备");
+			if (state.value !== "stopping" && state.value !== "stopped") resetState("未找到麦克风设备", "var(--cb-danger-text)");
+		} else {
+			appendLog(`🔴 Soniox 错误：${message}`);
+			if (state.value !== "stopping" && state.value !== "stopped") resetState(`错误: ${message}`, "var(--cb-danger-text)");
+		}
+	};
+	const handleConnected = () => {
+		state.value = "running";
+		sttRunning.value = true;
+		if (translationModeRef.current) {
+			const target = sonioxTranslationTarget.value;
+			statusText.value = `正在识别并翻译为${{
+				en: "English",
+				zh: "中文",
+				ja: "日本語"
+			}[target] ?? target}…`;
+			appendLog(`🎤 同传已启动（翻译模式：${target}）`);
+		} else {
+			statusText.value = "正在识别…";
+			appendLog("🎤 同传已启动");
+		}
+		statusColor.value = "var(--cb-success-text)";
+	};
+	const apiKeyForHook = sonioxApiKey.value.trim();
+	const langHintsForHook = sonioxLanguageHints.value;
+	const translationEnabledForHook = sonioxTranslationEnabled.value;
+	const translationTargetForHook = sonioxTranslationTarget.value;
+	const savedDeviceIdForHook = sonioxAudioDeviceId.value;
+	const deviceStillAvailable = !savedDeviceIdForHook || audioDevices.value.some((d) => d.deviceId === savedDeviceIdForHook);
+	const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : "";
+	const micConstraints = effectiveDeviceId ? {
+		deviceId: { exact: effectiveDeviceId },
+		echoCancellation: false,
+		noiseSuppression: false,
+		autoGainControl: false,
+		channelCount: 1,
+		sampleRate: 16e3
+	} : void 0;
+	const recording = useSonioxRecording({
+		apiKey: apiKeyForHook,
+		model: "stt-rt-v4",
+		language_hints: langHintsForHook,
+		enable_endpoint_detection: true,
+		...translationEnabledForHook ? { translation: {
+			type: "one_way",
+			target_language: translationTargetForHook
+		} } : {},
+		...micConstraints ? { microphoneConstraints: micConstraints } : {},
+		onResult: handleResult,
+		onEndpoint: handleEndpoint,
+		onError: handleError,
+		onFinished: handleFinished,
+		onConnected: handleConnected
+	});
+	const toggle = async () => {
 		if (state.value === "stopped") {
-			const apiKey = sonioxApiKey.value.trim();
-			if (!apiKey) {
+			if (!sonioxApiKey.value.trim()) {
 				appendLog("⚠️ 请先输入 Soniox API Key");
 				statusText.value = "请输入 API Key";
 				statusColor.value = "var(--cb-danger-text)";
 				return;
+			}
+			if (savedDeviceIdForHook && !deviceStillAvailable) {
+				appendLog("⚠️ 已选麦克风不可用，已切换至系统默认");
+				sonioxAudioDeviceId.value = "";
 			}
 			finalText.value = "";
 			nonFinalText.value = "";
@@ -34933,119 +35589,20 @@ function SttTab() {
 			state.value = "starting";
 			statusText.value = "正在连接…";
 			statusColor.value = "#666";
+			translationModeRef.current = translationEnabledForHook;
 			try {
-				const client = new SonioxClient({ apiKey });
-				clientRef.current = client;
-				const hints = sonioxLanguageHints.value;
-				const translationEnabled = sonioxTranslationEnabled.value;
-				const translationTarget = sonioxTranslationTarget.value;
-				const savedDeviceId = sonioxAudioDeviceId.value;
-				const deviceStillAvailable = !savedDeviceId || audioDevices.value.some((d) => d.deviceId === savedDeviceId);
-				if (savedDeviceId && !deviceStillAvailable) {
-					appendLog("⚠️ 已选麦克风不可用，已切换至系统默认");
-					sonioxAudioDeviceId.value = "";
-				}
-				const effectiveDeviceId = deviceStillAvailable ? savedDeviceId : "";
-				const startConfig = {
-					model: "stt-rt-v3",
-					languageHints: hints,
-					enableEndpointDetection: true,
-					onStarted: () => {
-						state.value = "running";
-						sttRunning.value = true;
-						if (translationEnabled) statusText.value = `正在识别并翻译为${{
-							en: "English",
-							zh: "中文",
-							ja: "日本語"
-						}[translationTarget] ?? translationTarget}…`;
-						else statusText.value = "正在识别…";
-						statusColor.value = "var(--cb-success-text)";
-						appendLog(translationEnabled ? `🎤 同传已启动（翻译模式：${translationTarget}）` : "🎤 同传已启动");
-					},
-					onPartialResult: (result) => {
-						let newFinal = "";
-						let nonFinal = "";
-						let newTransFinal = "";
-						let transNonFinal = "";
-						let endpointDetected = false;
-						for (const token of result.tokens ?? []) {
-							if (token.text === "<end>" && token.is_final) {
-								endpointDetected = true;
-								continue;
-							}
-							if (translationEnabled) {
-								if (token.translation_status === "translation") if (token.is_final) newTransFinal += token.text;
-								else transNonFinal += token.text;
-							} else if (token.is_final) newFinal += token.text;
-							else nonFinal += token.text;
-						}
-						if (translationEnabled) {
-							if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal);
-							accTranslated.current += newTransFinal;
-							let display = accTranslated.current;
-							if (display.length > 500) display = `…${display.slice(-500)}`;
-							finalText.value = display;
-							nonFinalText.value = transNonFinal;
-							if (newTransFinal) sttTranscriptBuffer.value += newTransFinal;
-						} else {
-							if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal);
-							accFinal.current += newFinal;
-							let display = accFinal.current;
-							if (display.length > 500) display = `…${display.slice(-500)}`;
-							finalText.value = display;
-							nonFinalText.value = nonFinal;
-							if (newFinal) sttTranscriptBuffer.value += newFinal;
-						}
-						if (endpointDetected) {
-							sttEndpointReached.value = true;
-							if (sonioxAutoSend.value) setTimeout(() => void flushBuffer(), translationEnabled ? 300 : 0);
-						}
-					},
-					onFinished: async () => {
-						let waitCount = 0;
-						while (isFlushing.current && waitCount < 100) {
-							await new Promise((r) => setTimeout(r, 100));
-							waitCount++;
-						}
-						await flushBuffer();
-						appendLog("🎤 同传已停止");
-						resetState();
-					},
-					onError: (_status, message) => {
-						appendLog(`🔴 Soniox 错误：${message}`);
-						if (state.value !== "stopping" && state.value !== "stopped") resetState(`错误: ${message}`, "var(--cb-danger-text)");
-					}
-				};
-				if (translationEnabled) startConfig.translation = {
-					type: "one_way",
-					target_language: translationTarget
-				};
-				if (effectiveDeviceId) startConfig.audioConstraints = {
-					deviceId: { exact: effectiveDeviceId },
-					echoCancellation: false,
-					noiseSuppression: false,
-					autoGainControl: false,
-					channelCount: 1,
-					sampleRate: 44100
-				};
-				client.start(startConfig);
+				await loadSoniox();
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				if (err instanceof Error && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
-					appendLog("❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风");
-					resetState("麦克风权限被拒绝，请允许浏览器使用麦克风", "var(--cb-danger-text)");
-				} else if (err instanceof Error && err.name === "NotFoundError") {
-					appendLog("❌ 未找到麦克风设备");
-					resetState("未找到麦克风设备", "var(--cb-danger-text)");
-				} else {
-					appendLog(`🔴 启动同传失败：${message}`);
-					resetState(`启动失败: ${message}`, "var(--cb-danger-text)");
-				}
+				appendLog(`🔴 加载 Soniox SDK 失败：${message}`);
+				resetState(`加载失败: ${message}`, "var(--cb-danger-text)");
+				return;
 			}
+			recording.start();
 		} else if (state.value === "running") {
 			state.value = "stopping";
 			statusText.value = "正在停止…";
-			if (clientRef.current) clientRef.current.stop();
+			recording.stop();
 		}
 	};
 	const updateLangHints = (lang, checked) => {
@@ -36282,6 +36839,10 @@ function App() {
 	y$2(() => {
 		startAudioOnly();
 		return () => stopAudioOnly();
+	}, []);
+	y$2(() => {
+		startAutoSeek();
+		return () => stopAutoSeek();
 	}, []);
 	y$2(() => {
 		if (aiCandidateEnabled.value) startAiCandidateEngine();

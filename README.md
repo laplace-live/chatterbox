@@ -81,7 +81,6 @@ bun run build
 当前脚本元信息里会请求这些权限：
 
 - `@match *://live.bilibili.com/*`：只在 B 站直播间页面运行。
-- `@require https://unpkg.com/@soniox/speech-to-text-web...`：加载 Soniox 浏览器端语音识别客户端，用于同传/语音识别功能。
 - `@run-at document-start`：尽早启动，方便准备样式隔离、UI 挂载和聊天适配。
 - `GM_addStyle`：向页面注入弹幕助手和 Chatterbox Chat 的隔离样式。
 - `GM_getValue` / `GM_setValue` / `GM_deleteValue`：在脚本管理器本地存储设置、模板、替换规则、观察记录和上次巡检结果。

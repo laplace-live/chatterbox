@@ -9,6 +9,30 @@ import { GM_info } from '$'
 export const VERSION = GM_info.script.version
 
 /**
+ * Soniox real-time speech-to-text SDK (v2). ESM-only package; we point
+ * at the package's own `dist/index.mjs` and load it via `<script
+ * type="module">` injection at first 「开始同传」 click — see
+ * `src/lib/soniox.ts`. Pinned to a specific version so a breaking
+ * upstream change doesn't silently land in user browsers on next CDN
+ * cache miss; bump deliberately when validating a new version, and keep
+ * in sync with the `@soniox/client` version pinned in `package.json`
+ * (installed purely for `import type { ... } from '@soniox/client'` so
+ * the locally-checked types stay accurate against the runtime ESM we
+ * fetch).
+ */
+export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.1.0/dist/index.mjs'
+
+/**
+ * mpegts.js FLV / MPEG-TS demuxer used by 仅音频模式. UMD bundle —
+ * assigns its exports to `window.mpegts` at runtime; picked up via the
+ * shared `loadScript()` probe in `src/lib/audio-only.ts`. Pinned for the
+ * same reasons as `SONIOX_CDN_URL` above; keep in sync with
+ * `package.json` (installed only for `import type Mpegts from
+ * 'mpegts.js'`).
+ */
+export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js'
+
+/**
  * API endpoint URLs used by the script.
  */
 export const BASE_URL = {

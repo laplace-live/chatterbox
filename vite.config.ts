@@ -1,7 +1,7 @@
 import preact from '@preact/preset-vite'
 import UnoCSS from 'unocss/vite'
 import { defineConfig } from 'vite'
-import monkey, { util } from 'vite-plugin-monkey'
+import monkey from 'vite-plugin-monkey'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -56,13 +56,12 @@ export default defineConfig({
       },
       build: {
         metaFileName: true,
-        externalGlobals: {
-          '@soniox/speech-to-text-web': [
-            'SonioxSpeechToTextWeb',
-            (version: string) =>
-              `https://unpkg.com/@soniox/speech-to-text-web@${version}/dist/speech-to-text-web.umd.cjs`,
-          ].concat(util.dataUrl(';window.SonioxSpeechToTextWeb=window["speech-to-text-web"];')),
-        },
+        // @soniox/client v2 不走 externalGlobals。v1 是 UMD，可以在 build 时
+        // 写 `window.SonioxSpeechToTextWeb=window["speech-to-text-web"]` 把
+        // bare import 重定向到全局；v2 是 ESM-only，没有 UMD bundle，所以
+        // 改用 `src/lib/soniox.ts` 里的 `<script type="module">` 注入懒加
+        // 载。所有源码用 `import type { ... } from '@soniox/client'`（编译
+        // 时擦除），运行时通过 `loadSoniox()` 读 `unsafeWindow.__sonioxClient`。
       },
     }),
   ],

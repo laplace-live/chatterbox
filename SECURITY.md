@@ -107,7 +107,7 @@
   - sender uid 只在客户端用于桶内 `distinctSenderUids: Set` 去重，**不放进 payload**；payload 里能反查到观众身份的字段只有 `reporter_uid`，并且 server 端在哈希前永远不会落 D1。
   - 切房间 / 关 toggle 立即丢未发的桶，不在用户改主意之后才发出去。
   - 失败一律静默（`reportRadarObservation` 内部 swallow），不影响其他功能。
-- **Soniox STT WebSocket**（`@soniox/speech-to-text-web` UMD 包通过 `@require https://unpkg.com/@soniox/speech-to-text-web@1.4.0/...` 加载，见 `src/components/stt-tab.tsx`）。
+- **Soniox STT WebSocket**（`@soniox/client` v2 ESM 包通过 `src/lib/soniox.ts` 注入 `<script type="module">` 动态 `import()` 加载，CDN 路径见 `SONIOX_CDN_URL`；首次"开始同传"时按需下载，不开同传就不下载）。
   - 入口：『同传』tab 自填 Soniox API key 并主动开始。
   - 数据：用户麦克风音频流 → Soniox 服务端，识别结果回到本机。脚本不持久化音频。
   - 完全可选，不开启则不加载麦克风、不连 Soniox。
@@ -154,7 +154,7 @@
 |---|---|---|---|
 | `api.live.bilibili.com` / `api.bilibili.com` | 直播间元信息、发弹幕、粉丝牌 | 必须 | 整个脚本不可用 |
 | B 站直播 WSS（动态 host） | 实时弹幕 / 礼物事件流 | 必须 | 自定义 Chatterbox Chat / 跟车失能，DOM fallback 仍可用 |
-| `unpkg.com`（`@require`） | 加载 Soniox UMD 客户端 | 安装时一次性 | 同传 tab 不可用 |
+| `unpkg.com`（动态 `<script type="module">`） | 加载 Soniox ESM 客户端 | 首次开同传时按需 | 同传 tab 不可用 |
 | `cdn.jsdelivr.net`（`@require`） | 加载 SystemJS 运行时 | 安装时一次性 | 脚本无法 boot —— 装好后会缓存，运行时不再实时拉 |
 | Soniox WSS | STT 识别 + 翻译 | opt-in，自填 key | 不开就不连 |
 | `api.anthropic.com` / `api.openai.com` / 自定义 base URL | LLM 决策 / 改写 | opt-in，自填 key | 不开就不调；AI 规避退化为本地启发式 |
@@ -168,7 +168,7 @@
 
 ## 依赖审计（Dependency audit）
 
-- 运行时依赖只有 4 个：`@laplace.live/ws`、`@preact/signals`、`@soniox/speech-to-text-web`、`preact`（见 `package.json`）。
+- 运行时依赖只有 3 个：`@laplace.live/ws`、`@preact/signals`、`preact`（见 `package.json`）。Soniox SDK (`@soniox/client`) 装在 dev 依赖里仅供 `import type` 编译期使用；运行时按需从 `unpkg.com` 动态注入 `<script type="module">` 加载。
 - **Dependabot** 每周一扫描 `bun` 与 `github-actions` 生态（见 `.github/dependabot.yml`），dev 依赖 minor / patch 自动合并组，preact 全家归组，`vite / vite-plugin-monkey / preact / typescript / @biomejs/biome` 的 major 升级显式忽略（升级前需手动评估 breaking change）。
 - 每个 PR 触发 `.github/workflows/ci.yml`，跑 `bun run release:check` —— 即 biome ci + 客户端测试 + 服务端测试 + 版本一致性 + build + artifact 验证 + bundle 体积预算。release tag 走 `.github/workflows/release.yml` 单独流程。
 - 项目当前**未启用 GitHub CodeQL / Snyk 等深度静态扫描**。这是一个已知缺口；外部研究员愿意贡献此类配置可直接发 PR。

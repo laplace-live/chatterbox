@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站独轮车 + 自动跟车 / Bilibili Live Auto Follow
 // @namespace    https://github.com/aijc123/bilibili-live-wheel-auto-follow
-// @version      2.14.0
+// @version      2.14.1
 // @author       aijc123
 // @description  替你说，替你看 —— 给每天泡 B 站直播、在弹幕里特别活跃的观众。独轮车循环 / 自动跟车 / 手动发送 + AI 润色 / 影子屏蔽自动改写 / Chatterbox Chat 接管评论区 / 粉丝牌禁言巡检 / 同传 + 烂梗库。
 // @license      AGPL-3.0
@@ -12,8 +12,6 @@
 // @source       https://github.com/aijc123/bilibili-live-wheel-auto-follow
 // @supportURL   https://github.com/aijc123/bilibili-live-wheel-auto-follow/issues
 // @match        *://live.bilibili.com/*
-// @require      https://unpkg.com/@soniox/speech-to-text-web@1.4.0/dist/speech-to-text-web.umd.cjs
-// @require      data:application/javascript,%3Bwindow.SonioxSpeechToTextWeb%3Dwindow%5B%22speech-to-text-web%22%5D%3B
 // @require      https://cdn.jsdelivr.net/npm/systemjs@6.15.1/dist/system.min.js
 // @require      https://cdn.jsdelivr.net/npm/systemjs@6.15.1/dist/extras/named-register.min.js
 // @require      data:application/javascript,%3B(typeof%20System!%3D'undefined')%26%26(System%3Dnew%20System.constructor())%3B
