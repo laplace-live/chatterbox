@@ -152,6 +152,29 @@ export function AiCandidateSection() {
 
       {enabled && gap && <div style={{ fontSize: '0.85em', color: '#c98a00', marginBottom: '6px' }}>⚠️ {gap}</div>}
 
+      {/* 候选队列单独跨在 enabled 闸门外 —— 智驾 candidate 档可能在 AI 陪聊本身
+       * 关闭的情况下往这条队列推内容,如果还藏在 enabled 块里,用户会看到
+       * 「智驾候选已入审」的 log 却找不到入审到哪里去了。 */}
+      {!enabled && candidates.length > 0 && (
+        <div style={{ fontSize: '0.85em', color: '#666', marginBottom: '6px' }}>
+          下面 {candidates.length} 条候选来自其他功能(如智能辅助驾驶 candidate 档),AI 陪聊引擎本身未启用。
+        </div>
+      )}
+      {candidates.length > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', flexWrap: 'wrap' }}>
+            <Button size='sm' variant='ghost' onClick={() => clearPendingCandidates()}>
+              清空候选（{candidates.length}）
+            </Button>
+          </div>
+          <div style={{ marginBottom: '6px' }}>
+            {candidates.map(c => (
+              <CandidateRow key={c.id} cand={c} />
+            ))}
+          </div>
+        </>
+      )}
+
       {enabled && (
         <>
           <div style={{ fontSize: '0.8em', color: '#888', marginBottom: '4px' }}>
@@ -163,11 +186,6 @@ export function AiCandidateSection() {
             <Button size='sm' onClick={() => triggerNow()} disabled={!!gap}>
               立即生成一条候选
             </Button>
-            {candidates.length > 0 && (
-              <Button size='sm' variant='ghost' onClick={() => clearPendingCandidates()}>
-                清空候选（{candidates.length}）
-              </Button>
-            )}
             {history.length > 0 && (
               <Button size='sm' variant='ghost' onClick={() => clearAiCandidateHistory()}>
                 清空历史
@@ -175,15 +193,9 @@ export function AiCandidateSection() {
             )}
           </div>
 
-          {candidates.length === 0 ? (
+          {candidates.length === 0 && (
             <div style={{ fontSize: '0.85em', color: '#888', padding: '4px 0' }}>
               （候选队列空。主播说话或房间弹幕到了 viewer 阈值后会自动生成。）
-            </div>
-          ) : (
-            <div style={{ marginBottom: '6px' }}>
-              {candidates.map(c => (
-                <CandidateRow key={c.id} cand={c} />
-              ))}
             </div>
           )}
 
@@ -251,6 +263,29 @@ export function AiCandidateSection() {
   )
 }
 
+/** 候选来源的视觉小 chip。智驾推送的候选用 🚗,AI 陪聊生成的用 🤖。 */
+function SourceChip({ source }: { source: AiCandidateItem['source'] }) {
+  const isDrive = source === 'hzm-drive'
+  const label = isDrive ? '🚗 智驾' : '🤖 AI 陪聊'
+  const bg = isDrive ? 'var(--cb-accent, #4a90e2)' : '#7e57c2'
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '0 5px',
+        borderRadius: '6px',
+        fontSize: '0.72em',
+        color: 'white',
+        background: bg,
+        verticalAlign: 'middle',
+        marginRight: '4px',
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
 function CandidateRow({ cand }: { cand: AiCandidateItem }) {
   const editing = useSignal(false)
   const draft = useSignal(cand.decision.message)
@@ -265,6 +300,9 @@ function CandidateRow({ cand }: { cand: AiCandidateItem }) {
         background: 'var(--cb-card-bg, #fafafa)',
       }}
     >
+      <div style={{ marginBottom: '4px' }}>
+        <SourceChip source={cand.source} />
+      </div>
       {editing.value ? (
         <input
           type='text'

@@ -73,7 +73,7 @@ const { _sendOneForTests } = await import('../src/lib/hzm-auto-drive')
 const { logLines } = await import('../src/lib/log')
 const { SendPriority } = await import('../src/lib/send-queue')
 const { maxLength } = await import('../src/lib/store-send')
-const { hzmDailyStatsByRoom, hzmDryRun, hzmRecentSentByRoom } = await import('../src/lib/store-hzm')
+const { hzmDailyStatsByRoom, hzmDriveSendMode, hzmRecentSentByRoom } = await import('../src/lib/store-hzm')
 
 // `appendLog` prepends a `HH:MM:SS ` timestamp to every line, so exact-string
 // assertions need to ignore that prefix. These helpers strip it and compare
@@ -125,7 +125,9 @@ beforeEach(() => {
   scriptedOutcomes = []
   defaultOutcome = { kind: 'success' }
   mockCsrfToken = 'csrf-fixture'
-  hzmDryRun.value = false
+  // 这些用例断言"live(直接发)"档行为;新 hzmDriveSendMode 默认 'dry' 会短路到
+  // appendLog + return,enqueueDanmaku 永远不会被调用。每个 case 显式启用 'live'。
+  hzmDriveSendMode.value = 'live'
   hzmRecentSentByRoom.value = {}
   hzmDailyStatsByRoom.value = {}
   maxLength.value = 38
@@ -353,8 +355,8 @@ describe('sendOne — recent dedup behaviour', () => {
 })
 
 describe('sendOne — pre-existing branches still work after refactor', () => {
-  test('dryRun=true → no enqueue, recent +1, no daily bump (dryRun branch is before the loop)', async () => {
-    hzmDryRun.value = true
+  test('sendMode=dry → no enqueue, recent +1, no daily bump (dry branch is before the loop)', async () => {
+    hzmDriveSendMode.value = 'dry'
     await _sendOneForTests(ROOM, meme(LONG_MEME))
 
     expect(enqueueCalls).toHaveLength(0)

@@ -55,7 +55,7 @@ var __exportAll = (all, no_symbols) => {
 	});
 	__defProp(target, Symbol.toStringTag, { value: "Module" });
 	return target;
-}, n$1, l$3, u$3, t$2, i$3, r$2, o$3, e$2, f$3, c$2, a$2, s$2, h$3, p$3, v$2, d$3 = {}, w$3 = [], _$3 = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, g$3 = Array.isArray;
+}, n$1, l$3, u$3, t$2, i$3, r$2, o$3, e$2, f$3, c$2, a$2, s$2, h$2, p$3, v$2, d$2 = {}, w$3 = [], _$3 = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i, g$3 = Array.isArray;
 function m$3(n, l) {
 	for (var u in l) n[u] = l[u];
 	return n;
@@ -101,7 +101,7 @@ function $$1(n, l) {
 function I(n) {
 	if (n.__P && n.__d) {
 		var u = n.__v, t = u.__e, i = [], r = [], o = m$3({}, u);
-		o.__v = u.__v + 1, l$3.vnode && l$3.vnode(o), q$3(n.__P, o, u, n.__n, n.__P.namespaceURI, 32 & u.__u ? [t] : null, i, null == t ? $$1(u) : t, !!(32 & u.__u), r), o.__v = u.__v, o.__.__k[o.__i] = o, D$2(i, o, r), u.__e = u.__ = null, o.__e != t && P$1(o);
+		o.__v = u.__v + 1, l$3.vnode && l$3.vnode(o), q$3(n.__P, o, u, n.__n, n.__P.namespaceURI, 32 & u.__u ? [t] : null, i, null == t ? $$1(u) : t, !!(32 & u.__u), r), o.__v = u.__v, o.__.__k[o.__i] = o, D$1(i, o, r), u.__e = u.__ = null, o.__e != t && P$1(o);
 	}
 }
 function P$1(n) {
@@ -121,7 +121,7 @@ function H$1() {
 }
 function L$1(n, l, u, t, i, r, o, e, f, c, a) {
 	var s, h, p, v, y, _, g, m = t && t.__k || w$3, b = l.length;
-	for (f = T$2(u, l, m, f, b), s = 0; s < b; s++) null != (p = u.__k[s]) && (h = -1 != p.__i && m[p.__i] || d$3, p.__i = s, _ = q$3(n, p, h, i, r, o, e, f, c, a), v = p.__e, p.ref && h.ref != p.ref && (h.ref && J$1(h.ref, null, p), a.push(p.ref, p.__c || v, p)), null == y && null != v && (y = v), (g = !!(4 & p.__u)) || h.__k === p.__k ? (f = j$3(p, f, n, g), g && h.__e && (h.__e = null)) : "function" == typeof p.type && void 0 !== _ ? f = _ : v && (f = v.nextSibling), p.__u &= -7);
+	for (f = T$2(u, l, m, f, b), s = 0; s < b; s++) null != (p = u.__k[s]) && (h = -1 != p.__i && m[p.__i] || d$2, p.__i = s, _ = q$3(n, p, h, i, r, o, e, f, c, a), v = p.__e, p.ref && h.ref != p.ref && (h.ref && J$1(h.ref, null, p), a.push(p.ref, p.__c || v, p)), null == y && null != v && (y = v), (g = !!(4 & p.__u)) || h.__k === p.__k ? (f = j$3(p, f, n, g), g && h.__e && (h.__e = null)) : "function" == typeof p.type && void 0 !== _ ? f = _ : v && (f = v.nextSibling), p.__u &= -7);
 	return u.__e = y, f;
 }
 function T$2(n, l, u, t, i) {
@@ -165,7 +165,7 @@ function N(n, l, u, t, i) {
 		if ("string" == typeof t && (n.style.cssText = t = ""), t) for (l in t) u && l in u || z$1(n.style, l, "");
 		if (u) for (l in u) t && u[l] == t[l] || z$1(n.style, l, u[l]);
 	}
-	else if ("o" == l[0] && "n" == l[1]) r = l != (l = l.replace(s$2, "$1")), o = l.toLowerCase(), l = o in n || "onFocusOut" == l || "onFocusIn" == l ? o.slice(2) : l.slice(2), n.l || (n.l = {}), n.l[l + r] = u, u ? t ? u[a$2] = t[a$2] : (u[a$2] = h$3, n.addEventListener(l, r ? v$2 : p$3, r)) : n.removeEventListener(l, r ? v$2 : p$3, r);
+	else if ("o" == l[0] && "n" == l[1]) r = l != (l = l.replace(s$2, "$1")), o = l.toLowerCase(), l = o in n || "onFocusOut" == l || "onFocusIn" == l ? o.slice(2) : l.slice(2), n.l || (n.l = {}), n.l[l + r] = u, u ? t ? u[a$2] = t[a$2] : (u[a$2] = h$2, n.addEventListener(l, r ? v$2 : p$3, r)) : n.removeEventListener(l, r ? v$2 : p$3, r);
 	else {
 		if ("http://www.w3.org/2000/svg" == i) l = l.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
 		else if ("width" != l && "height" != l && "href" != l && "list" != l && "form" != l && "tabIndex" != l && "download" != l && "rowSpan" != l && "colSpan" != l && "role" != l && "popover" != l && l in n) try {
@@ -179,7 +179,7 @@ function V$1(n) {
 	return function(u) {
 		if (this.l) {
 			var t = this.l[u.type + n];
-			if (null == u[c$2]) u[c$2] = h$3++;
+			if (null == u[c$2]) u[c$2] = h$2++;
 			else if (u[c$2] < t[a$2]) return;
 			return t(l$3.event ? l$3.event(u) : u);
 		}
@@ -224,7 +224,7 @@ function q$3(n, u, t, i, r, o, e, f, c, a) {
 function B$2(n) {
 	n && (n.__c && (n.__c.__e = true), n.__k && n.__k.some(B$2));
 }
-function D$2(n, u, t) {
+function D$1(n, u, t) {
 	for (var i = 0; i < t.length; i++) J$1(t[i], t[++i], t[++i]);
 	l$3.__c && l$3.__c(u, n), n.some(function(u) {
 		try {
@@ -240,7 +240,7 @@ function E$2(n) {
 	return "object" != typeof n || null == n || n.__b > 0 ? n : g$3(n) ? n.map(E$2) : void 0 !== n.constructor ? null : m$3({}, n);
 }
 function G$1(u, t, i, r, o, e, f, c, a) {
-	var s, h, p, v, y, w, _, m = i.props || d$3, k = t.props, x = t.type;
+	var s, h, p, v, y, w, _, m = i.props || d$2, k = t.props, x = t.type;
 	if ("svg" == x ? o = "http://www.w3.org/2000/svg" : "math" == x ? o = "http://www.w3.org/1998/Math/MathML" : o || (o = "http://www.w3.org/1999/xhtml"), null != e) {
 		for (s = 0; s < e.length; s++) if ((y = e[s]) && "setAttribute" in y == !!x && (x ? y.localName == x : 3 == y.nodeType)) {
 			u = y, e[s] = null;
@@ -290,7 +290,7 @@ function Q$1(n, l, u) {
 }
 function R(u, t, i) {
 	var r, o, e, f;
-	t == document && (t = document.documentElement), l$3.__ && l$3.__(u, t), o = (r = "function" == "undefined") ? null : t.__k, e = [], f = [], q$3(t, u = (t).__k = k$2(S$1, null, [u]), o || d$3, d$3, t.namespaceURI, o ? null : t.firstChild ? n$1.call(t.childNodes) : null, e, o ? o.__e : t.firstChild, r, f), D$2(e, u, f);
+	t == document && (t = document.documentElement), l$3.__ && l$3.__(u, t), o = (r = "function" == "undefined") ? null : t.__k, e = [], f = [], q$3(t, u = (t).__k = k$2(S$1, null, [u]), o || d$2, d$2, t.namespaceURI, o ? null : t.firstChild ? n$1.call(t.childNodes) : null, e, o ? o.__e : t.firstChild, r, f), D$1(e, u, f);
 }
 n$1 = w$3.slice, l$3 = { __e: function(n, l, u, t) {
 	for (var i, r, o; l = l.__;) if ((i = l.__c) && !i.__) try {
@@ -308,7 +308,7 @@ n$1 = w$3.slice, l$3 = { __e: function(n, l, u, t) {
 	this.__v && (this.__e = true, n && this.__h.push(n), A$2(this));
 }, C$1.prototype.render = S$1, i$3 = [], o$3 = "function" == typeof Promise ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, e$2 = function(n, l) {
 	return n.__v.__b - l.__v.__b;
-}, H$1.__r = 0, f$3 = Math.random().toString(8), c$2 = "__d" + f$3, a$2 = "__a" + f$3, s$2 = /(PointerCapture)$|Capture$/i, h$3 = 0, p$3 = V$1(false), v$2 = V$1(true);
+}, H$1.__r = 0, f$3 = Math.random().toString(8), c$2 = "__d" + f$3, a$2 = "__a" + f$3, s$2 = /(PointerCapture)$|Capture$/i, h$2 = 0, p$3 = V$1(false), v$2 = V$1(true);
 var client_exports = /* @__PURE__ */ __exportAll({
 	GM_addStyle: () => _GM_addStyle,
 	GM_deleteValue: () => _GM_deleteValue,
@@ -335,43 +335,6 @@ function p$2(n, t) {
 		__h: []
 	});
 	return n >= u.__.length && u.__.push({}), u.__[n];
-}
-function d$2(n) {
-	return o$2 = 1, h$2(D$1, n);
-}
-function h$2(n, u, i) {
-	var o = p$2(t$1++, 2);
-	if (o.t = n, !o.__c && (o.__ = [D$1(void 0, u), function(n) {
-		var t = o.__N ? o.__N[0] : o.__[0], r = o.t(t, n);
-		t !== r && (o.__N = [r, o.__[1]], o.__c.setState({}));
-	}], o.__c = r$1, !r$1.__f)) {
-		var f = function(n, t, r) {
-			if (!o.__c.__H) return true;
-			var u = o.__c.__H.__.filter(function(n) {
-				return n.__c;
-			});
-			if (u.every(function(n) {
-				return !n.__N;
-			})) return !c || c.call(this, n, t, r);
-			var i = o.__c.props !== n;
-			return u.some(function(n) {
-				if (n.__N) {
-					var t = n.__[0];
-					n.__ = n.__N, n.__N = void 0, t !== n.__[0] && (i = true);
-				}
-			}), c && c.call(this, n, t, r) || i;
-		};
-		r$1.__f = true;
-		var c = r$1.shouldComponentUpdate, e = r$1.componentWillUpdate;
-		r$1.componentWillUpdate = function(n, t, r) {
-			if (this.__e) {
-				var u = c;
-				c = void 0, f(n, t, r), c = u;
-			}
-			e && e.call(this, n, t, r);
-		}, r$1.shouldComponentUpdate = f;
-	}
-	return o.__N || o.__;
 }
 function y$2(n, u) {
 	var i = p$2(t$1++, 3);
@@ -463,9 +426,6 @@ function C(n, t) {
 	return !n || n.length !== t.length || t.some(function(t, r) {
 		return t !== n[r];
 	});
-}
-function D$1(n, t) {
-	return "function" == typeof t ? t(n) : t;
 }
 var i$1 = Symbol.for("preact-signals");
 function t() {
@@ -2031,6 +1991,23 @@ var cbBackendHealthDetail = y$1("");
 * 重复的网络请求。MemesList 默认 30s 轮询保证数据新鲜。
 */
 var currentMemesList = y$1([]);
+/**
+* `currentMemesList` 对应的 roomId —— 用来识别"列表是哪个房间的"。
+*
+* 为什么需要:B 站 live 支持在同一 tab 内 SPA 切房间(`ensureRoomId()` 注释 line 161-162
+* 有说明)。切房间到新房间 `loadMemes()` 完成是个 1–10s 的异步窗口,期间 `currentMemesList`
+* 里仍然是**前一个房间**的梗。任何按这个 list 做决策的兄弟组件(智能辅助驾驶的
+* 挂载 gate 是典型受害者:用旧梗 count ≥10 通过 gate,新房间数据空了又显示
+* "有 N 条梗,开车")必须先校验 roomId 匹配,否则就会跨房间使用陈旧素材。
+*
+* 写入方:`MemesList.loadMemes()` —— 永远和 `currentMemesList` 一起更新(同步 tick,
+* 利用 signal 同步语义保持原子)。
+*
+* 读取方:智驾 `decideHzmMount` 的 `memesRoomId` 参数(见 hzm-drive-panel.tsx)。
+*
+* 初始 `null` = 还从来没成功 load 过任何房间(MemesList 还没挂载完 / 第一次 load 还没回)。
+*/
+var currentMemesListRoomId = y$1(null);
 function isUnknownArray(val) {
 	return Array.isArray(val);
 }
@@ -2759,8 +2736,41 @@ var hasConfirmedHzmRealFire = gmSignal("hasConfirmedHzmRealFire", false);
 /**
 * 试运行：选了梗但不真发，只 appendLog。
 * 默认 true，避免新用户开机就开始往别人房间发。
+*
+* @deprecated — 新代码用 `hzmDriveSendMode`。这里保留是为了一次性迁移老用户的
+* 持久化偏好(下面的 `migrateHzmDryRunToSendMode` 在模块加载时读一次老 key,把
+* 它折算成 'dry' / 'live' 写入新 key,之后这个 signal 不再被 UI/runtime 读)。
 */
 var hzmDryRun = gmSignal("hzmDryRun", true);
+var VALID_SEND_MODES = [
+	"dry",
+	"candidate",
+	"live"
+];
+var isValidSendMode = (v) => typeof v === "string" && VALID_SEND_MODES.includes(v);
+var hzmDriveSendMode = gmSignal("hzmDriveSendMode", "dry", { validate: isValidSendMode });
+/**
+* One-shot migration: 老用户的 `hzmDryRun` 决定 `hzmDriveSendMode` 初始值。
+*  - true  → 'dry'(老用户偏向保守)
+*  - false → 'live'(老用户主动关过 dryRun,延续直发偏好;不强行换到 candidate)
+*
+* 只跑一次(用 marker key 标记完成),之后用户对新 segment 的任何点击都
+* authoritative。Exported with injectable IO 为了测试,模式参考
+* `migrateLegacyHzmDriveMode` 上面的写法。
+*/
+var HZM_SEND_MODE_MIGRATION_KEY = "hzmDryRunToSendModeMigrated";
+function migrateHzmDryRunToSendMode(io) {
+	if (io.get("hzmDryRunToSendModeMigrated", false)) return;
+	if (io.get("hzmDriveSendMode", void 0) === void 0) {
+		const wasDryRun = io.get("hzmDryRun", true);
+		io.set("hzmDriveSendMode", wasDryRun ? "dry" : "live");
+	}
+	io.set(HZM_SEND_MODE_MIGRATION_KEY, true);
+}
+migrateHzmDryRunToSendMode({
+	get: _GM_getValue,
+	set: _GM_setValue
+});
 /** Tick 基础间隔（秒），加 0.7×–1.5× jitter。默认 8s。 */
 var hzmDriveIntervalSec = gmSignal("hzmDriveIntervalSec", 8);
 /** 每分钟最多发送条数。默认 6（与参考插件一致）。 */
@@ -3027,7 +3037,6 @@ var logPanelOpen = gmSignal("logPanelOpen", false);
 var logPanelFocusRequest = y$1(0);
 var autoSendPanelOpen = gmSignal("autoSendPanelOpen", true);
 var autoBlendPanelOpen = gmSignal("autoBlendPanelOpen", true);
-var memesPanelOpen = gmSignal("memesPanelOpen", false);
 /**
 * 主面板「我的状态」(粉丝牌禁言巡检的紧凑视图) 折叠状态。默认折叠 —— 没有
 * 巡检过的新用户看到的是一行 summary("尚未巡检 · 点这里在设置里巡检"),不
@@ -9531,7 +9540,37 @@ function addPendingCandidate(transcript, decision) {
 		id: nextEntryId++,
 		transcript,
 		decision,
-		createdAt: Date.now()
+		createdAt: Date.now(),
+		source: "ai-chat"
+	};
+	const next = [...pendingCandidates.value, cand];
+	while (next.length > PENDING_CAP) next.shift();
+	pendingCandidates.value = next;
+}
+/**
+* 外部功能(目前是智能辅助驾驶 candidate 模式)往 review 队列推一条候选。
+*
+* 设计原因(Jobs 式减心智):"今天有 N 条等我确认的弹幕"是一个单一概念,无论
+* 它是 AI 陪聊 LLM 现编的、还是智驾从烂梗库挑的,用户都在同一个面板看 + 确认。
+* 通过 `source` 字段在 UI 上区分来源 chip(🤖 / 🚗),底层走完全一致的
+* accept / skip / PENDING_CAP / FINISHED_HISTORY_CAP 流程。
+*
+* - 不依赖 AI 陪聊引擎是否 enabled —— 智驾候选要独立工作。
+* - 不写 `aiCandidateLastGenAt`(那是引擎自己的指标),只写队列。
+*/
+function enqueueExternalCandidate(opts) {
+	const message = opts.content.trim();
+	if (!message) return;
+	const cand = {
+		id: nextEntryId++,
+		transcript: opts.transcript ?? "",
+		decision: {
+			send: true,
+			message,
+			reason: opts.reason
+		},
+		createdAt: Date.now(),
+		source: opts.source
 	};
 	const next = [...pendingCandidates.value, cand];
 	while (next.length > PENDING_CAP) next.shift();
@@ -9826,6 +9865,21 @@ function getCbBackendBaseUrl() {
 */
 var CB_MERGED_TTL_MS = 3e4;
 var mergedCache = new FetchCache();
+var consecutiveCbFailures = 0;
+var lastCbFailureLogAt = 0;
+var CB_FAILURE_LOG_COOLDOWN_MS = 6e4;
+var CB_FAILURE_LOG_THRESHOLD = 3;
+function maybeLogCbFailure(message) {
+	consecutiveCbFailures++;
+	const now = Date.now();
+	if (consecutiveCbFailures >= CB_FAILURE_LOG_THRESHOLD && now - lastCbFailureLogAt >= CB_FAILURE_LOG_COOLDOWN_MS) {
+		lastCbFailureLogAt = now;
+		appendLog(message);
+	}
+}
+function resetCbFailureStreak() {
+	consecutiveCbFailures = 0;
+}
 /**
 * 从后端拉取已合并的梗列表(Phase C:聚合 cb+LAPLACE+SBHZM)。
 *
@@ -9837,6 +9891,15 @@ var mergedCache = new FetchCache();
 * 失败结果**不会被缓存**——抛进 fetch-cache 的 reject 分支,下次调用立刻重试。
 */
 async function fetchCbMergedMemes(opts = {}) {
+	if (!cbBackendEnabled.value) return {
+		items: [],
+		sources: {
+			laplace: false,
+			sbhzm: false,
+			cb: false
+		},
+		fatal: false
+	};
 	const base = getCbBackendBaseUrl();
 	if (!base) return {
 		items: [],
@@ -9868,21 +9931,22 @@ async function fetchCbMergedMemes(opts = {}) {
 						timeoutMs: 1e4
 					});
 				} catch (err) {
-					appendLog(`⚠️ chatterbox-cloud 网络错误:${err instanceof Error ? err.message : String(err)}`);
+					maybeLogCbFailure(`⚠️ chatterbox-cloud 网络错误:${err instanceof Error ? err.message : String(err)}`);
 					throw err;
 				}
 				if (!resp.ok) {
-					appendLog(`⚠️ chatterbox-cloud HTTP ${resp.status}`);
+					maybeLogCbFailure(`⚠️ chatterbox-cloud HTTP ${resp.status}`);
 					throw new Error(`HTTP ${resp.status}`);
 				}
 				let body;
 				try {
 					body = resp.json();
 				} catch (err) {
-					appendLog(`⚠️ chatterbox-cloud JSON 解析失败:${err instanceof Error ? err.message : String(err)}`);
+					maybeLogCbFailure(`⚠️ chatterbox-cloud JSON 解析失败:${err instanceof Error ? err.message : String(err)}`);
 					throw err;
 				}
 				if (!Array.isArray(body.items)) throw new Error("chatterbox-cloud 响应缺少 items");
+				resetCbFailureStreak();
 				return {
 					items: body.items.filter((m) => m != null && typeof m.content === "string" && m.content.trim().length > 0).map((m) => {
 						const tag = m._source === "laplace" || m._source === "sbhzm" || m._source === "cb" ? m._source : "cb";
@@ -10778,6 +10842,29 @@ var PANEL_STYLE = `
 
       #laplace-chatterbox-dialog .cb-core-group + .cb-core-group {
         margin-top: 4px;
+      }
+
+      /*
+       * Library section: top-level "noun area" parallel with the three verb
+       * cb-core-groups (独轮车 / 跟车 / 手动发送). Visually distinct from
+       * cb-core-group on purpose — three verbs have controls + buttons; this
+       * is a browse-only data shelf. Slightly recessed background + smaller
+       * top margin signals "lookup, not action".
+       */
+      #laplace-chatterbox-dialog .cb-library-section {
+        margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.02);
+      }
+      @media (prefers-color-scheme: dark) {
+        #laplace-chatterbox-dialog .cb-library-section {
+          background: rgba(255, 255, 255, 0.03);
+        }
+      }
+      #laplace-chatterbox-dialog .cb-library-section > .cb-heading {
+        font-size: 0.95em;
+        font-weight: 600;
       }
 
       /*
@@ -24845,6 +24932,39 @@ function AiCandidateSection() {
 				},
 				children: ["⚠️ ", gap]
 			}),
+			!enabled && candidates.length > 0 && /* @__PURE__ */ u("div", {
+				style: {
+					fontSize: "0.85em",
+					color: "#666",
+					marginBottom: "6px"
+				},
+				children: [
+					"下面 ",
+					candidates.length,
+					" 条候选来自其他功能(如智能辅助驾驶 candidate 档),AI 陪聊引擎本身未启用。"
+				]
+			}),
+			candidates.length > 0 && /* @__PURE__ */ u(S$1, { children: [/* @__PURE__ */ u("div", {
+				style: {
+					display: "flex",
+					gap: "4px",
+					marginBottom: "6px",
+					flexWrap: "wrap"
+				},
+				children: /* @__PURE__ */ u(Button, {
+					size: "sm",
+					variant: "ghost",
+					onClick: () => clearPendingCandidates(),
+					children: [
+						"清空候选（",
+						candidates.length,
+						"）"
+					]
+				})
+			}), /* @__PURE__ */ u("div", {
+				style: { marginBottom: "6px" },
+				children: candidates.map((c) => /* @__PURE__ */ u(CandidateRow$1, { cand: c }, c.id))
+			})] }),
 			enabled && /* @__PURE__ */ u(S$1, { children: [
 				/* @__PURE__ */ u("div", {
 					style: {
@@ -24869,41 +24989,25 @@ function AiCandidateSection() {
 						marginBottom: "6px",
 						flexWrap: "wrap"
 					},
-					children: [
-						/* @__PURE__ */ u(Button, {
-							size: "sm",
-							onClick: () => triggerNow(),
-							disabled: !!gap,
-							children: "立即生成一条候选"
-						}),
-						candidates.length > 0 && /* @__PURE__ */ u(Button, {
-							size: "sm",
-							variant: "ghost",
-							onClick: () => clearPendingCandidates(),
-							children: [
-								"清空候选（",
-								candidates.length,
-								"）"
-							]
-						}),
-						history.length > 0 && /* @__PURE__ */ u(Button, {
-							size: "sm",
-							variant: "ghost",
-							onClick: () => clearAiCandidateHistory(),
-							children: "清空历史"
-						})
-					]
+					children: [/* @__PURE__ */ u(Button, {
+						size: "sm",
+						onClick: () => triggerNow(),
+						disabled: !!gap,
+						children: "立即生成一条候选"
+					}), history.length > 0 && /* @__PURE__ */ u(Button, {
+						size: "sm",
+						variant: "ghost",
+						onClick: () => clearAiCandidateHistory(),
+						children: "清空历史"
+					})]
 				}),
-				candidates.length === 0 ? /* @__PURE__ */ u("div", {
+				candidates.length === 0 && /* @__PURE__ */ u("div", {
 					style: {
 						fontSize: "0.85em",
 						color: "#888",
 						padding: "4px 0"
 					},
 					children: "（候选队列空。主播说话或房间弹幕到了 viewer 阈值后会自动生成。）"
-				}) : /* @__PURE__ */ u("div", {
-					style: { marginBottom: "6px" },
-					children: candidates.map((c) => /* @__PURE__ */ u(CandidateRow$1, { cand: c }, c.id))
 				}),
 				/* @__PURE__ */ u("details", {
 					style: { marginTop: "6px" },
@@ -24988,6 +25092,23 @@ function AiCandidateSection() {
 		]
 	});
 }
+/** 候选来源的视觉小 chip。智驾推送的候选用 🚗,AI 陪聊生成的用 🤖。 */
+function SourceChip({ source }) {
+	const isDrive = source === "hzm-drive";
+	return /* @__PURE__ */ u("span", {
+		style: {
+			display: "inline-block",
+			padding: "0 5px",
+			borderRadius: "6px",
+			fontSize: "0.72em",
+			color: "white",
+			background: isDrive ? "var(--cb-accent, #4a90e2)" : "#7e57c2",
+			verticalAlign: "middle",
+			marginRight: "4px"
+		},
+		children: isDrive ? "🚗 智驾" : "🤖 AI 陪聊"
+	});
+}
 function CandidateRow$1({ cand }) {
 	const editing = useSignal(false);
 	const draft = useSignal(cand.decision.message);
@@ -25000,6 +25121,10 @@ function CandidateRow$1({ cand }) {
 			background: "var(--cb-card-bg, #fafafa)"
 		},
 		children: [
+			/* @__PURE__ */ u("div", {
+				style: { marginBottom: "4px" },
+				children: /* @__PURE__ */ u(SourceChip, { source: cand.source })
+			}),
 			editing.value ? /* @__PURE__ */ u("input", {
 				type: "text",
 				value: draft.value,
@@ -26704,7 +26829,7 @@ function updateHzmStatusText() {
 	hzmDriveStatusText.value = formatHzmDriveStatus({
 		enabled: hzmDriveEnabled.value,
 		mode: hzmDriveMode.value,
-		dryRun: hzmDryRun.value,
+		dryRun: hzmDriveSendMode.value !== "live",
 		lastActionAt,
 		now: Date.now(),
 		gateOpen: isActivityGateOpen(Date.now())
@@ -26730,7 +26855,7 @@ function isActivityGateOpen(now, records) {
 j$1(() => {
 	hzmDriveEnabled.value;
 	hzmDriveMode.value;
-	hzmDryRun.value;
+	hzmDriveSendMode.value;
 	updateHzmStatusText();
 });
 function getRecentDanmuTexts() {
@@ -26884,8 +27009,21 @@ async function pickByLLM(roomId, source, opts) {
 	}
 }
 async function sendOne(roomId, meme) {
-	if (hzmDryRun.value) {
+	const sendMode = hzmDriveSendMode.value;
+	if (sendMode === "dry") {
 		appendLog(`🚗[试运行] 智驾候选：${meme.content}`);
+		pushRecentSent(roomId, meme.content);
+		lastActionAt = Date.now();
+		updateHzmStatusText();
+		return;
+	}
+	if (sendMode === "candidate") {
+		enqueueExternalCandidate({
+			source: "hzm-drive",
+			content: meme.content,
+			reason: `智驾(${hzmDriveMode.value})选中`
+		});
+		appendLog(`🚗 智驾候选已入审:${meme.content}`);
 		pushRecentSent(roomId, meme.content);
 		lastActionAt = Date.now();
 		updateHzmStatusText();
@@ -27577,7 +27715,7 @@ function LlmApiConfigSummary({ onJumpToSettings }) {
 	});
 }
 /**
-* 智能辅助驾驶（灰泽满烂梗库）独立面板。
+* 智能辅助驾驶 独立面板。
 *
 * 设计：UIUX 镜像 `AutoBlendControls`：
 *  - 顶部：开车/停车按钮 + 状态指示点
@@ -27594,6 +27732,16 @@ var MODE_LABEL = {
 var MODE_HINT = {
 	heuristic: "关键词触发，按 tag 命中本地梗库",
 	llm: "由 LLM 阅读弹幕选梗，需要 API key"
+};
+var SEND_MODE_LABEL = {
+	dry: "🧪 试运行",
+	candidate: "📝 候选",
+	live: "🚗 直接发送"
+};
+var SEND_MODE_HINT = {
+	dry: "只在日志显示选中的梗,不发送、不入审",
+	candidate: "选中的梗推到「AI 陪聊」面板,等你点确认才发(推荐)",
+	live: "选中即发,与你手动发弹幕等同"
 };
 function modeButtonStyle(active) {
 	return { fontWeight: active ? "bold" : void 0 };
@@ -27619,18 +27767,74 @@ function resolveCurrentRoomIdSync() {
 		return null;
 	}
 }
-function HzmDrivePanelMount() {
-	const source = getMemeSourceForRoom(resolveCurrentRoomIdSync());
-	if (!source) return null;
-	return /* @__PURE__ */ u(HzmDrivePanel, { source });
+/**
+* 在任何房间没有 source 注册时合成一个最小可用的 MemeSource。这让智驾运行时
+* (startHzmAutoDrive 要求 roomId === source.roomId)能在非灰泽满房间起,且
+* 让面板内引用 source.name / pauseKeywords 的代码自然降级到中性默认值。
+*
+* listEndpoint 给空串 —— 智驾通过 memesProvider() callback 拿梗(memes-list
+* 已经在合并 LAPLACE/sbhzm/cb 后写入 currentMemesList),从不读这个字段。
+*/
+function makeSyntheticSource(roomId) {
+	return {
+		roomId,
+		name: "当前房间梗库",
+		listEndpoint: ""
+	};
 }
-function HzmDrivePanel({ source }) {
+/**
+* 纯函数:根据 roomId + 注册源 + 当前梗库大小 + drive 是否在跑,决定面板该不该挂载、
+* 以及挂载时用什么 source。抽出来是为了在 tests/hzm-drive-panel-mount.test.ts 里能稳
+* 定断言这套决策,不需要起 Preact 渲染。
+*
+* 关键不变量:
+*  - 有注册源(灰泽满)→ 永远 native,与 memesCount / driveEnabled 无关。
+*  - 无注册源 + drive 已在跑 → synthetic 挂载,即使 memesCount=0(用户必须能看到停车按钮)。
+*  - 无注册源 + drive 没在跑 + memesCount≥10 → synthetic 挂载(常规入场),**但** memesCount
+*    必须来自当前房间(`memesRoomId === roomId`)。SPA 切房间到 loadMemes 完成是一个
+*    1–10s 异步窗口,期间 `currentMemesList` 还是前一个房间的数据。如果不校验房间
+*    归属,陈旧的 ≥10 会让 gate 通过 → 用户开车 → 智驾用旧房间的梗发到新房间(主播
+*    一脸懵 + 用户被拉黑)。见 Codex round-2 on PR #36。
+*  - 其他 → none。
+*/
+function decideHzmMount(opts) {
+	if (opts.roomId === null) return { kind: "none" };
+	if (opts.source) return {
+		kind: "native",
+		source: opts.source
+	};
+	if ((opts.memesRoomId === opts.roomId ? opts.memesCount : 0) >= 10 || opts.driveEnabled) return {
+		kind: "synthetic",
+		roomId: opts.roomId
+	};
+	return { kind: "none" };
+}
+function HzmDrivePanelMount() {
+	const roomId = resolveCurrentRoomIdSync();
+	const decision = decideHzmMount({
+		roomId,
+		source: getMemeSourceForRoom(roomId),
+		memesCount: currentMemesList.value.length,
+		memesRoomId: currentMemesListRoomId.value,
+		driveEnabled: hzmDriveEnabled.value
+	});
+	if (decision.kind === "none") return null;
+	if (decision.kind === "native") return /* @__PURE__ */ u(HzmDrivePanel, {
+		source: decision.source,
+		hasNativeSource: true
+	});
+	return /* @__PURE__ */ u(HzmDrivePanel, {
+		source: makeSyntheticSource(decision.roomId),
+		hasNativeSource: false
+	});
+}
+function HzmDrivePanel({ source, hasNativeSource }) {
 	const roomId = cachedRoomId.value;
 	const stats = getDailyStats(roomId);
 	const selected = getSelectedTags(roomId);
 	const blacklist = getBlacklistTags(roomId);
 	const isOn = hzmDriveEnabled.value;
-	const mode = hzmDriveMode.value;
+	const mode = hasNativeSource ? hzmDriveMode.value : "llm";
 	const memes = currentMemesList.value;
 	const tagOptions = (() => {
 		const set = /* @__PURE__ */ new Set();
@@ -27640,13 +27844,15 @@ function HzmDrivePanel({ source }) {
 	const advancedOpen = useSignal(false);
 	const statusText = hzmDriveStatusText.value;
 	const statusColor = !isOn ? "#777" : statusText.includes("试运行") ? "var(--cb-warning-text)" : statusText.includes("运行中") ? "var(--cb-accent)" : "var(--cb-success-text)";
+	const sendMode = hzmDriveSendMode.value;
+	const isLive = sendMode === "live";
 	const toggleEnabled = async () => {
 		if (isOn) {
 			hzmDriveEnabled.value = false;
 			stopHzmAutoDrive();
 			return;
 		}
-		if (sendMsg.value && !hzmDryRun.value) {
+		if (sendMsg.value && isLive) {
 			if (!await showConfirm({
 				title: "文字独轮车正在运行",
 				body: "与智驾叠加后两边一起发，可能超过每分钟限速被风控/封禁。建议先停一边再开。继续吗？",
@@ -27663,10 +27869,10 @@ function HzmDrivePanel({ source }) {
 			})) activeTab.value = "settings";
 			return;
 		}
-		if (!hzmDryRun.value && !hasConfirmedHzmRealFire.value) {
+		if (isLive && !hasConfirmedHzmRealFire.value) {
 			if (!await showConfirm({
 				title: "智能辅助驾驶将以你的账号真实发送弹幕",
-				body: "试运行已关闭。建议先打开「试运行」观察一段时间。是否继续直接开车？",
+				body: "当前已选「直接发送」。建议先用「候选」或「试运行」观察一段时间。是否继续直接开车？",
 				confirmText: "我已了解，开车",
 				cancelText: "取消"
 			})) return;
@@ -27696,10 +27902,18 @@ function HzmDrivePanel({ source }) {
 				alignItems: "center",
 				gap: ".5em"
 			},
-			children: [/* @__PURE__ */ u("span", { children: source.name }), isOn && /* @__PURE__ */ u("span", {
+			children: [/* @__PURE__ */ u("span", { children: "智能辅助驾驶" }), isOn && /* @__PURE__ */ u("span", {
 				className: "cb-soft",
 				children: "运行中"
 			})]
+		}),
+		/* @__PURE__ */ u("div", {
+			className: "cb-note",
+			style: {
+				marginTop: "-.25em",
+				marginBottom: ".25em"
+			},
+			children: ["当前梗源:", source.name]
 		}),
 		/* @__PURE__ */ u("div", {
 			className: "cb-body cb-stack",
@@ -27734,7 +27948,7 @@ function HzmDrivePanel({ source }) {
 						]
 					})]
 				}),
-				/* @__PURE__ */ u("div", { children: [/* @__PURE__ */ u("div", {
+				hasNativeSource ? /* @__PURE__ */ u("div", { children: [/* @__PURE__ */ u("div", {
 					className: "cb-segment",
 					children: ["heuristic", "llm"].map((m) => /* @__PURE__ */ u("button", {
 						type: "button",
@@ -27750,37 +27964,38 @@ function HzmDrivePanel({ source }) {
 					className: "cb-note",
 					style: { marginTop: ".25em" },
 					children: ["当前：", MODE_HINT[mode]]
-				})] }),
-				/* @__PURE__ */ u("span", {
-					style: {
-						display: "inline-flex",
-						alignItems: "center",
-						gap: ".25em"
-					},
-					children: [
-						/* @__PURE__ */ u("input", {
-							id: "hzmDryRun",
-							type: "checkbox",
-							checked: hzmDryRun.value,
-							onInput: (e) => {
-								hzmDryRun.value = e.currentTarget.checked;
-							}
-						}),
-						/* @__PURE__ */ u("label", {
-							htmlFor: "hzmDryRun",
-							title: "开启后只在日志显示候选，不真发到弹幕——新手强烈建议先开",
-							children: "试运行（只观察，不发送）"
-						}),
-						!hzmDryRun.value && /* @__PURE__ */ u("span", {
-							style: {
-								color: "var(--cb-warning-text)",
-								fontSize: "0.85em"
-							},
-							title: "当前关闭试运行，会真实发送弹幕。",
-							children: "关闭后会真实发送"
-						})
-					]
+				})] }) : /* @__PURE__ */ u("div", {
+					className: "cb-note",
+					style: { marginTop: ".25em" },
+					children: "此房间无关键词配置,自动使用 LLM 模式选梗(需要 API key)"
 				}),
+				/* @__PURE__ */ u("div", { children: [/* @__PURE__ */ u("div", {
+					className: "cb-segment",
+					children: [
+						"dry",
+						"candidate",
+						"live"
+					].map((m) => /* @__PURE__ */ u("button", {
+						type: "button",
+						"aria-pressed": sendMode === m,
+						onClick: () => {
+							hzmDriveSendMode.value = m;
+						},
+						style: modeButtonStyle(sendMode === m),
+						title: SEND_MODE_HINT[m],
+						children: SEND_MODE_LABEL[m]
+					}, m))
+				}), /* @__PURE__ */ u("div", {
+					className: "cb-note",
+					style: { marginTop: ".25em" },
+					children: [SEND_MODE_HINT[sendMode], sendMode === "live" && /* @__PURE__ */ u("span", {
+						style: {
+							marginLeft: ".5em",
+							color: "var(--cb-warning-text)"
+						},
+						children: "会真实发送弹幕"
+					})]
+				})] }),
 				/* @__PURE__ */ u("div", {
 					className: "cb-panel",
 					style: {
@@ -28914,6 +29129,17 @@ async function submitSbhzmMeme(content, tagIds = []) {
 		content: typeof json.content === "string" ? json.content : trimmed
 	};
 }
+var lastFatalFallbackLogAt = 0;
+var FATAL_FALLBACK_LOG_COOLDOWN_MS = 6e4;
+function maybeLogCbFatalFallback() {
+	const now = Date.now();
+	if (now - lastFatalFallbackLogAt < FATAL_FALLBACK_LOG_COOLDOWN_MS) return;
+	lastFatalFallbackLogAt = now;
+	appendLog("⚠️ chatterbox-cloud 后端不可达,降级到本地直拉 LAPLACE/SBHZM");
+}
+function resetFatalFallbackStreak() {
+	lastFatalFallbackLogAt = 0;
+}
 /** 跨多个 _source 的统一排序;按 sortBy 三种 key 各自的语义降序。 */
 function sortMemes(memes, sortBy) {
 	memes.sort((a, b) => {
@@ -28960,6 +29186,7 @@ async function fetchAllMemes(roomId, sortBy, source) {
 			perPage: 500
 		});
 		if (!cb.fatal) {
+			resetFatalFallbackStreak();
 			const cbItems = filterBackendMemesForRoom(cb.items, source !== null);
 			const fallbacks = [];
 			fallbacks.push(d.fetchLaplaceMemes(roomId, sortBy).then((data) => {
@@ -28985,7 +29212,7 @@ async function fetchAllMemes(roomId, sortBy, source) {
 			sortMemes(merged, sortBy);
 			return merged;
 		}
-		appendLog("⚠️ chatterbox-cloud 后端不可达,降级到本地直拉 LAPLACE/SBHZM");
+		maybeLogCbFatalFallback();
 	}
 	const tasks = [];
 	tasks.push(d.fetchLaplaceMemes(roomId, sortBy).then((data) => {
@@ -29893,6 +30120,7 @@ function MemesList() {
 			if (data.length === 0) {
 				memes.value = [];
 				currentMemesList.value = [];
+				currentMemesListRoomId.value = roomId;
 				status.value = "当前房间暂无烂梗";
 				return;
 			}
@@ -29912,6 +30140,7 @@ function MemesList() {
 			status.value = parts.length > 1 ? parts.join(" + ") : `${data.length} 条`;
 			memes.value = data;
 			currentMemesList.value = data;
+			currentMemesListRoomId.value = roomId;
 			refreshTrendingMemes();
 		} catch (err) {
 			status.value = `加载失败: ${err instanceof Error ? err.message : String(err)}`;
@@ -29957,28 +30186,14 @@ function MemesList() {
 		filterText.value = filterText.peek() === tagName ? "" : tagName;
 	};
 	y$2(() => {
-		if (!memesPanelOpen.value && !memeSource) return void 0;
 		loadMemes();
 		const timer = setInterval(() => void loadMemes({ silent: true }), MEME_RELOAD_INTERVAL);
 		return () => clearInterval(timer);
-	}, [
-		sortBy.value,
-		memesPanelOpen.value,
-		memeSource
-	]);
-	const [contentMounted, setContentMounted] = d$2(memesPanelOpen.value);
-	y$2(() => {
-		if (memesPanelOpen.value) {
-			setContentMounted(true);
-			return;
-		}
-		const t = setTimeout(() => setContentMounted(false), 280);
-		return () => clearTimeout(t);
-	}, [memesPanelOpen.value]);
+	}, [sortBy.value, memeSource]);
 	y$2(() => {
 		maybeProbeSbhzmFreshness(memeSource);
 	}, [memeSource]);
-	return /* @__PURE__ */ u(S$1, { children: contentMounted && /* @__PURE__ */ u(S$1, { children: [
+	return /* @__PURE__ */ u(S$1, { children: [
 		/* @__PURE__ */ u("div", {
 			style: {
 				display: "flex",
@@ -30281,7 +30496,7 @@ function MemesList() {
 				onTagClick: handleTagClick
 			}, meme.id))
 		})
-	] }) });
+	] });
 }
 var flashOk = y$1(false);
 function NormalSendTab() {
@@ -32223,7 +32438,7 @@ function ChatfilterSection({ query = "" }) {
 								color: "#888",
 								marginTop: ".5em"
 							},
-							children: ["字典版本 v", "2026-05-19"]
+							children: ["字典版本 v", "2026-05-20"]
 						})
 					]
 				}),
@@ -35376,19 +35591,8 @@ function Configurator() {
 				children: visited.current.has("fasong") && /* @__PURE__ */ u(S$1, { children: [
 					/* @__PURE__ */ u("section", {
 						className: "cb-core-group",
-						"aria-label": "独轮车与烂梗库",
-						children: [/* @__PURE__ */ u(AutoSendControls, {}), /* @__PURE__ */ u("details", {
-							className: "cb-supporting-feature",
-							open: memesPanelOpen.value,
-							onToggle: (e) => {
-								memesPanelOpen.value = e.currentTarget.open;
-							},
-							children: [/* @__PURE__ */ u("summary", { children: [/* @__PURE__ */ u("span", {
-								className: "cb-supporting-feature-icon",
-								"aria-hidden": "true",
-								children: /* @__PURE__ */ u(Icon, { name: "book" })
-							}), "从烂梗库挑模板"] }), /* @__PURE__ */ u(MemesList, {})]
-						})]
+						"aria-label": "独轮车",
+						children: /* @__PURE__ */ u(AutoSendControls, {})
 					}),
 					/* @__PURE__ */ u("section", {
 						className: "cb-core-group",
@@ -35403,7 +35607,7 @@ function Configurator() {
 								className: "cb-supporting-feature-icon",
 								"aria-hidden": "true",
 								children: /* @__PURE__ */ u(Icon, { name: "robot" })
-							}), "用 LLM 选梗（智驾，仅特定房间）"] }), /* @__PURE__ */ u(HzmDrivePanelMount, {})]
+							}), "智能辅助驾驶 · LLM 自动选梗"] }), /* @__PURE__ */ u(HzmDrivePanelMount, {})]
 						})]
 					}),
 					/* @__PURE__ */ u("section", {
@@ -35428,6 +35632,32 @@ function Configurator() {
 								}), "AI 陪聊（候选 · 你确认才发）"] }), /* @__PURE__ */ u(AiCandidateSection, {})]
 							})
 						]
+					}),
+					/* @__PURE__ */ u("section", {
+						className: "cb-library-section",
+						"aria-label": "烂梗库",
+						children: [/* @__PURE__ */ u("div", {
+							className: "cb-heading",
+							style: {
+								display: "flex",
+								alignItems: "center",
+								gap: ".5em",
+								flexWrap: "wrap"
+							},
+							children: [
+								/* @__PURE__ */ u("span", {
+									className: "cb-supporting-feature-icon",
+									"aria-hidden": "true",
+									children: /* @__PURE__ */ u(Icon, { name: "book" })
+								}),
+								/* @__PURE__ */ u("span", { children: "烂梗库" }),
+								/* @__PURE__ */ u("span", {
+									className: "cb-soft",
+									style: { fontSize: ".85em" },
+									children: "LAPLACE + sbhzm + 自建后端 聚合"
+								})
+							]
+						}), /* @__PURE__ */ u(MemesList, {})]
 					}),
 					/* @__PURE__ */ u(MedalStatusPanel, {})
 				] })

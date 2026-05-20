@@ -22,6 +22,26 @@ import { cbBackendEnabled } from './store-meme'
 
 export type MemeSortBy = NonNullable<LaplaceInternal.HTTPS.Workers.MemeListQuery['sortBy']>
 
+// fatal-fallback 日志节流
+// ----------
+// 启用 cb 后端但后端整体不可达时,30s polling 会让"降级到本地直拉"反复刷屏。
+// 改成 1 分钟最多 1 条。每次成功(fetcher 返回 !fatal)清零。
+let lastFatalFallbackLogAt = 0
+const FATAL_FALLBACK_LOG_COOLDOWN_MS = 60_000
+function maybeLogCbFatalFallback(): void {
+  const now = Date.now()
+  if (now - lastFatalFallbackLogAt < FATAL_FALLBACK_LOG_COOLDOWN_MS) return
+  lastFatalFallbackLogAt = now
+  appendLog('⚠️ chatterbox-cloud 后端不可达,降级到本地直拉 LAPLACE/SBHZM')
+}
+function resetFatalFallbackStreak(): void {
+  lastFatalFallbackLogAt = 0
+}
+/** @internal 测试用。 */
+export function _resetFatalFallbackLogForTests(): void {
+  lastFatalFallbackLogAt = 0
+}
+
 /** 跨多个 _source 的统一排序;按 sortBy 三种 key 各自的语义降序。 */
 export function sortMemes(memes: LaplaceInternal.HTTPS.Workers.MemeWithUser[], sortBy: MemeSortBy): void {
   memes.sort((a, b) => {
@@ -85,6 +105,8 @@ export async function fetchAllMemes(
   if (cbBackendEnabled.value) {
     const cb = await d.fetchCbMergedMemes({ roomId, sortBy, perPage: 500 })
     if (!cb.fatal) {
+      // 成功一次就清零节流计数,这样下次抖动会立刻提示用户(而不是等 1 分钟)
+      resetFatalFallbackStreak()
       const cbItems = filterBackendMemesForRoom(cb.items, source !== null)
       // 后端能用 —— 走主路径。但后端 LAPLACE 镜像没按 roomId 分桶
       //(详见 meme-room-filter.ts 的注释),进入任意房间都会拿到全局池,
@@ -125,7 +147,9 @@ export async function fetchAllMemes(
       return merged
     }
     // fatal:后端整体挂了,告知一次然后走旧逻辑。mirror 推送也跳过(后端不在)。
-    appendLog('⚠️ chatterbox-cloud 后端不可达,降级到本地直拉 LAPLACE/SBHZM')
+    // 节流:30s polling + 持续抖动会让这条 log 反复刷屏,叠加上 cb-backend-client
+    // 里的网络错误 log,用户实际只想知道一次"现在没在用 cb"。1 分钟内最多一条。
+    maybeLogCbFatalFallback()
   }
 
   // 旧逻辑(后端关闭或后端整体挂了)

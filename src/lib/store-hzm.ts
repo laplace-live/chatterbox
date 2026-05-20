@@ -80,8 +80,51 @@ export const hasConfirmedHzmRealFire = gmSignal('hasConfirmedHzmRealFire', false
 /**
  * 试运行：选了梗但不真发，只 appendLog。
  * 默认 true，避免新用户开机就开始往别人房间发。
+ *
+ * @deprecated — 新代码用 `hzmDriveSendMode`。这里保留是为了一次性迁移老用户的
+ * 持久化偏好(下面的 `migrateHzmDryRunToSendMode` 在模块加载时读一次老 key,把
+ * 它折算成 'dry' / 'live' 写入新 key,之后这个 signal 不再被 UI/runtime 读)。
  */
 export const hzmDryRun = gmSignal<boolean>('hzmDryRun', true)
+
+/**
+ * 智驾发送模式(三态,替代老的 dry/non-dry 二态):
+ *  - `dry` — 试运行,只 appendLog,不发,也不进候选队列
+ *  - `candidate` — 选了梗 push 到 AI 陪聊 review 队列,等用户点确认才发(推荐档)
+ *  - `live` — 现行"直接发"(保留首次开启的 `hasConfirmedHzmRealFire` 二次确认)
+ *
+ * 默认 `dry` —— 和老 `hzmDryRun=true` 行为一致,首次进入产品不会真发。
+ */
+export type HzmDriveSendMode = 'dry' | 'candidate' | 'live'
+const VALID_SEND_MODES: HzmDriveSendMode[] = ['dry', 'candidate', 'live']
+const isValidSendMode = (v: unknown): v is HzmDriveSendMode =>
+  typeof v === 'string' && (VALID_SEND_MODES as string[]).includes(v)
+export const hzmDriveSendMode = gmSignal<HzmDriveSendMode>('hzmDriveSendMode', 'dry', { validate: isValidSendMode })
+
+/**
+ * One-shot migration: 老用户的 `hzmDryRun` 决定 `hzmDriveSendMode` 初始值。
+ *  - true  → 'dry'(老用户偏向保守)
+ *  - false → 'live'(老用户主动关过 dryRun,延续直发偏好;不强行换到 candidate)
+ *
+ * 只跑一次(用 marker key 标记完成),之后用户对新 segment 的任何点击都
+ * authoritative。Exported with injectable IO 为了测试,模式参考
+ * `migrateLegacyHzmDriveMode` 上面的写法。
+ */
+export const HZM_SEND_MODE_MIGRATION_KEY = 'hzmDryRunToSendModeMigrated'
+export function migrateHzmDryRunToSendMode(io: {
+  get: <T>(key: string, defaultValue: T) => T
+  set: (key: string, value: unknown) => void
+}): void {
+  if (io.get(HZM_SEND_MODE_MIGRATION_KEY, false)) return
+  // 只在用户没显式设过新 key 的情况下迁移,避免回滚后再次启动覆盖新偏好
+  const existing = io.get<string | undefined>('hzmDriveSendMode', undefined)
+  if (existing === undefined) {
+    const wasDryRun = io.get('hzmDryRun', true)
+    io.set('hzmDriveSendMode', wasDryRun ? 'dry' : 'live')
+  }
+  io.set(HZM_SEND_MODE_MIGRATION_KEY, true)
+}
+migrateHzmDryRunToSendMode({ get: GM_getValue, set: GM_setValue })
 
 /** Tick 基础间隔（秒），加 0.7×–1.5× jitter。默认 8s。 */
 export const hzmDriveIntervalSec = gmSignal<number>('hzmDriveIntervalSec', 8)

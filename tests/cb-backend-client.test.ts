@@ -152,7 +152,20 @@ describe('getCbBackendBaseUrl', () => {
 
 describe('fetchCbMergedMemes', () => {
   beforeEach(() => {
+    // 这一组 case 都断言"启用 cb 后端时的网络行为";entry guard 加上后,
+    // 必须在 describe 级别显式启用 flag,否则会被 guard 短路。
+    cbBackendEnabled.value = true
     cbBackendUrlOverride.value = 'https://cb.test.local'
+  })
+
+  test('cbBackendEnabled=false: returns empty non-fatal result without any HTTP', async () => {
+    cbBackendEnabled.value = false
+    responder = () => ({ status: 200, body: '{}' })
+    const out = await fetchCbMergedMemes({ roomId: 1, sortBy: 'copyCount' })
+    expect(out.fatal).toBe(false)
+    expect(out.items).toEqual([])
+    expect(out.sources).toEqual({ laplace: false, sbhzm: false, cb: false })
+    expect(captured).toHaveLength(0) // 关键:绝对不能调网络
   })
 
   function memeListBody(items: unknown[], sources = { laplace: true, sbhzm: true, cb: true }) {

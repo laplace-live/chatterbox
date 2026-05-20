@@ -85,11 +85,22 @@ export interface AiCandidateDecision {
   reason: string
 }
 
+/**
+ * 候选来源:
+ *  - `'ai-chat'`(默认/历史值) — AI 陪聊引擎自己 LLM 生成的候选
+ *  - `'hzm-drive'` — 智能辅助驾驶 candidate 模式选中,推到这个队列让用户复审
+ *
+ * 未来如果别的功能也想用这条 review 通道,在这里加新值,UI badge 同步加一种 chip。
+ */
+export type AiCandidateSource = 'ai-chat' | 'hzm-drive'
+
 export interface AiCandidateItem {
   id: number
   transcript: string
   decision: AiCandidateDecision
   createdAt: number
+  /** 缺省 = 'ai-chat'(历史候选都是 AI 陪聊生成);新代码请显式传值。 */
+  source?: AiCandidateSource
 }
 
 export interface AiCandidateHistoryEntry {
@@ -405,6 +416,38 @@ function addPendingCandidate(transcript: string, decision: AiCandidateDecision):
     transcript,
     decision,
     createdAt: Date.now(),
+    source: 'ai-chat',
+  }
+  const next = [...pendingCandidates.value, cand]
+  while (next.length > PENDING_CAP) next.shift()
+  pendingCandidates.value = next
+}
+
+/**
+ * 外部功能(目前是智能辅助驾驶 candidate 模式)往 review 队列推一条候选。
+ *
+ * 设计原因(Jobs 式减心智):"今天有 N 条等我确认的弹幕"是一个单一概念,无论
+ * 它是 AI 陪聊 LLM 现编的、还是智驾从烂梗库挑的,用户都在同一个面板看 + 确认。
+ * 通过 `source` 字段在 UI 上区分来源 chip(🤖 / 🚗),底层走完全一致的
+ * accept / skip / PENDING_CAP / FINISHED_HISTORY_CAP 流程。
+ *
+ * - 不依赖 AI 陪聊引擎是否 enabled —— 智驾候选要独立工作。
+ * - 不写 `aiCandidateLastGenAt`(那是引擎自己的指标),只写队列。
+ */
+export function enqueueExternalCandidate(opts: {
+  source: Exclude<AiCandidateSource, 'ai-chat'>
+  content: string
+  reason: string
+  transcript?: string
+}): void {
+  const message = opts.content.trim()
+  if (!message) return
+  const cand: AiCandidateItem = {
+    id: nextEntryId++,
+    transcript: opts.transcript ?? '',
+    decision: { send: true, message, reason: opts.reason },
+    createdAt: Date.now(),
+    source: opts.source,
   }
   const next = [...pendingCandidates.value, cand]
   while (next.length > PENDING_CAP) next.shift()

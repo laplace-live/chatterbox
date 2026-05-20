@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals'
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks'
 
 import type { LaplaceMemeWithSource } from '../lib/sbhzm-client'
 
@@ -23,11 +23,10 @@ import {
   enableMemeContribution,
   maxLength,
   memeContributorCandidates,
-  memesPanelOpen,
   msgSendInterval,
   optimizeLayout,
 } from '../lib/store'
-import { cbBackendEnabled } from '../lib/store-meme'
+import { cbBackendEnabled, currentMemesListRoomId } from '../lib/store-meme'
 import { processMessages } from '../lib/utils'
 import { CbSubmitRow } from './cb-submit-row'
 import { MemeTagsBar } from './meme-tags-bar'
@@ -328,6 +327,8 @@ export function MemesList() {
       if (data.length === 0) {
         memes.value = []
         currentMemesList.value = []
+        // 空结果也标记成"这是这个房间的结果",防止之后下游误用上一房间的列表。
+        currentMemesListRoomId.value = roomId
         status.value = '当前房间暂无烂梗'
         return
       }
@@ -347,6 +348,9 @@ export function MemesList() {
       status.value = parts.length > 1 ? parts.join(' + ') : `${data.length} 条`
       memes.value = data
       currentMemesList.value = data
+      // Atomically 标记 list 属于哪个房间(读取方:智驾 decideHzmMount 的 memesRoomId 校验)。
+      // 必须和 currentMemesList 同一同步 tick 写入,否则 SPA 切房间的窗口期会让下游误用旧列表。
+      currentMemesListRoomId.value = roomId
 
       // Fire-and-forget refresh of the cross-room trending map. TTL-gated
       // inside the helper so calling this from every 30s loadMemes tick
@@ -412,38 +416,12 @@ export function MemesList() {
   }
 
   useEffect(() => {
-    // 在有专属梗源的房间（如灰泽满），即使梗库面板折叠也要拉取——
-    // 智能辅助驾驶面板独立于此面板，需要 memes 数据才能选梗。
-    if (!memesPanelOpen.value && !memeSource) return undefined
+    // 烂梗库已经从 supporting feature 升级为顶级 section,常驻可见。无需再按
+    // memesPanelOpen 闸门:进入直播间就拉一次,然后按 MEME_RELOAD_INTERVAL polling。
     void loadMemes()
     const timer = setInterval(() => void loadMemes({ silent: true }), MEME_RELOAD_INTERVAL)
     return () => clearInterval(timer)
-  }, [sortBy.value, memesPanelOpen.value, memeSource])
-
-  // Keep heavy content mounted during the close animation.
-  //
-  // The outer <details> wrapper (configurator.tsx 📚) collapses via a 200ms
-  // ::details-content block-size transition. If we unmount content the
-  // instant memesPanelOpen flips false, the browser captures the "from"
-  // height as 0 (empty pseudo) and the transition is a no-op snap.
-  //
-  // Defer unmount by 280ms (close duration 200ms + buffer) so the close
-  // transition has a real "from" height to animate from. Open is immediate
-  // — content shows up the moment memesPanelOpen flips true, then the
-  // outer ::details-content transitions from 0 → measured height.
-  //
-  // Without this defer, only the OPEN animation worked; CLOSE snapped.
-  // It's the same pattern React-Spring / Framer-Motion use under the hood:
-  // animating an unmount requires the DOM to outlive the unmount intent.
-  const [contentMounted, setContentMounted] = useState(memesPanelOpen.value)
-  useEffect(() => {
-    if (memesPanelOpen.value) {
-      setContentMounted(true)
-      return undefined
-    }
-    const t = setTimeout(() => setContentMounted(false), 280)
-    return () => clearTimeout(t)
-  }, [memesPanelOpen.value])
+  }, [sortBy.value, memeSource])
 
   // SBHZM 保鲜探测:每次 memes-list mount 时,30 分钟节流地拉一次 SBHZM 首页 +
   // mirror 推到后端。Phase D.1 起这是 SBHZM 数据保鲜的主要机制(后端 cron 只
@@ -452,292 +430,264 @@ export function MemesList() {
     void maybeProbeSbhzmFreshness(memeSource)
   }, [memeSource])
 
-  // Inner <details>/<summary>烂梗库</summary></details> removed:
-  //   - The summary's label ("烂梗库") just duplicated the outer wrapper's
-  //     "📚 从烂梗库挑模板" — two chevrons stacked for the same control.
-  //   - The inner <details> had ONLY the summary inside; the actual content
-  //     was rendered as siblings outside the <details>, so the inner toggle
-  //     had no ::details-content to animate (chevron rotated but content
-  //     just snapped). Removing it makes the outer toggle the single
-  //     animatable surface.
-  //
-  // The outer 📚 wrapper in configurator.tsx now binds to `memesPanelOpen`
-  // (preserves the persisted GM state). The gate below uses `contentMounted`
-  // (defined above via useState + delayed unmount) — NOT `memesPanelOpen`
-  // directly — so the heavy meme tree stays in DOM during the close
-  // animation. See the comment on the `contentMounted` useEffect for why
-  // unmounting on the immediate signal write would break the close
-  // transition (it would).
+  // 烂梗库现在是顶级 section,常驻可见 —— 不再需要 details 折叠 + delayed-unmount
+  // 的 close-animation hack。直接渲染。
   return (
     <>
-      {contentMounted && (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.5em', marginTop: '.5em', marginBottom: '.5em' }}>
-            <select
-              style={{ fontSize: '12px' }}
-              value={sortBy.value}
-              onChange={e => {
-                const v = e.currentTarget.value
-                if (isMemeSortBy(v)) sortBy.value = v
-              }}
-            >
-              <option value='lastCopiedAt'>最近使用</option>
-              <option value='copyCount'>最多复制</option>
-              <option value='createdAt'>最新添加</option>
-            </select>
-            <button
-              type='button'
-              style={{ fontSize: '12px' }}
-              disabled={loading.value}
-              onClick={() => void loadMemes()}
-            >
-              {loading.value ? '加载中…' : '刷新'}
-            </button>
-            <span style={{ color: statusColor.value }}>{status.value}</span>
-            <a
-              href={`https://laplace.live/memes${cachedStreamerUid.value ? `?contribute=${cachedStreamerUid.value}` : ''}`}
-              target='_blank'
-              rel='noopener'
-              title='打开 LAPLACE 烂梗贡献页（LAPLACE 库供所有直播间共享）'
-              style={{ color: '#288bb8', textDecoration: 'none', fontSize: '12px' }}
-            >
-              贡献到 LAPLACE
-            </a>
-            {memeSource && (
-              <a
-                href={memeSource.submitPage ?? memeSource.listEndpoint}
-                target='_blank'
-                rel='noopener'
-                title={`打开 ${memeSource.name} 提交页（仅本房间烂梗库；推荐用候选行的「↑ 上传」按钮直接 API 提交）`}
-                style={{ color: '#10b981', textDecoration: 'none', fontSize: '12px' }}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.5em', marginTop: '.5em', marginBottom: '.5em' }}>
+        <select
+          style={{ fontSize: '12px' }}
+          value={sortBy.value}
+          onChange={e => {
+            const v = e.currentTarget.value
+            if (isMemeSortBy(v)) sortBy.value = v
+          }}
+        >
+          <option value='lastCopiedAt'>最近使用</option>
+          <option value='copyCount'>最多复制</option>
+          <option value='createdAt'>最新添加</option>
+        </select>
+        <button type='button' style={{ fontSize: '12px' }} disabled={loading.value} onClick={() => void loadMemes()}>
+          {loading.value ? '加载中…' : '刷新'}
+        </button>
+        <span style={{ color: statusColor.value }}>{status.value}</span>
+        <a
+          href={`https://laplace.live/memes${cachedStreamerUid.value ? `?contribute=${cachedStreamerUid.value}` : ''}`}
+          target='_blank'
+          rel='noopener'
+          title='打开 LAPLACE 烂梗贡献页（LAPLACE 库供所有直播间共享）'
+          style={{ color: '#288bb8', textDecoration: 'none', fontSize: '12px' }}
+        >
+          贡献到 LAPLACE
+        </a>
+        {memeSource && (
+          <a
+            href={memeSource.submitPage ?? memeSource.listEndpoint}
+            target='_blank'
+            rel='noopener'
+            title={`打开 ${memeSource.name} 提交页（仅本房间烂梗库；推荐用候选行的「↑ 上传」按钮直接 API 提交）`}
+            style={{ color: '#10b981', textDecoration: 'none', fontSize: '12px' }}
+          >
+            贡献到 {memeSource.name.replace('烂梗库', '')}
+          </a>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.25em', marginBottom: '.5em' }}>
+        <input
+          id='enableMemeContribution'
+          type='checkbox'
+          checked={enableMemeContribution.value}
+          onInput={e => {
+            enableMemeContribution.value = e.currentTarget.checked
+          }}
+        />
+        <label htmlFor='enableMemeContribution' style={{ fontSize: '12px' }}>
+          自动挖掘待贡献梗
+        </label>
+      </div>
+
+      {enableMemeContribution.value && memeContributorCandidates.value.length > 0 && (
+        <div style={{ marginBottom: '.5em' }}>
+          <div style={{ fontSize: '12px', color: '#666', marginBottom: '.25em' }}>
+            候选梗（{memeContributorCandidates.value.length} 条）：
+          </div>
+          {memeContributorCandidates.value.map(text => {
+            const expanded = submittingFor.value
+            const isSbhzmOpen = expanded?.text === text && expanded.target === 'sbhzm'
+            const isCbOpen = expanded?.text === text && expanded.target === 'cb'
+            const otherFormOpenForThisText = expanded !== null && expanded.text === text && !isSbhzmOpen && !isCbOpen
+            const otherFormOpenForAnotherText = expanded !== null && expanded.text !== text
+            return (
+              <div
+                key={text}
+                style={{
+                  padding: '.2em 0',
+                  borderBottom: '1px solid var(--Ga2, #eee)',
+                }}
               >
-                贡献到 {memeSource.name.replace('烂梗库', '')}
-              </a>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.25em', marginBottom: '.5em' }}>
-            <input
-              id='enableMemeContribution'
-              type='checkbox'
-              checked={enableMemeContribution.value}
-              onInput={e => {
-                enableMemeContribution.value = e.currentTarget.checked
-              }}
-            />
-            <label htmlFor='enableMemeContribution' style={{ fontSize: '12px' }}>
-              自动挖掘待贡献梗
-            </label>
-          </div>
-
-          {enableMemeContribution.value && memeContributorCandidates.value.length > 0 && (
-            <div style={{ marginBottom: '.5em' }}>
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '.25em' }}>
-                候选梗（{memeContributorCandidates.value.length} 条）：
-              </div>
-              {memeContributorCandidates.value.map(text => {
-                const expanded = submittingFor.value
-                const isSbhzmOpen = expanded?.text === text && expanded.target === 'sbhzm'
-                const isCbOpen = expanded?.text === text && expanded.target === 'cb'
-                const otherFormOpenForThisText =
-                  expanded !== null && expanded.text === text && !isSbhzmOpen && !isCbOpen
-                const otherFormOpenForAnotherText = expanded !== null && expanded.text !== text
-                return (
-                  <div
-                    key={text}
-                    style={{
-                      padding: '.2em 0',
-                      borderBottom: '1px solid var(--Ga2, #eee)',
+                <div style={{ display: 'flex', gap: '.4em', alignItems: 'center' }}>
+                  <span style={{ flex: 1, fontSize: '12px', wordBreak: 'break-all' }}>{text}</span>
+                  <button
+                    type='button'
+                    style={{ fontSize: '11px', cursor: 'pointer', padding: '.1em .4em', flexShrink: 0 }}
+                    title='复制到剪贴板，并打开 LAPLACE 贡献页面'
+                    onClick={() => {
+                      const id = cachedRoomId.peek()
+                      if (id === null) return
+                      void copyTextToClipboard(text)
+                      const uid = cachedStreamerUid.value
+                      window.open(`https://laplace.live/memes${uid ? `?contribute=${uid}` : ''}`, '_blank', 'noopener')
+                      ignoreMemeCandidate(text, id)
                     }}
                   >
-                    <div style={{ display: 'flex', gap: '.4em', alignItems: 'center' }}>
-                      <span style={{ flex: 1, fontSize: '12px', wordBreak: 'break-all' }}>{text}</span>
-                      <button
-                        type='button'
-                        style={{ fontSize: '11px', cursor: 'pointer', padding: '.1em .4em', flexShrink: 0 }}
-                        title='复制到剪贴板，并打开 LAPLACE 贡献页面'
-                        onClick={() => {
-                          const id = cachedRoomId.peek()
-                          if (id === null) return
-                          void copyTextToClipboard(text)
-                          const uid = cachedStreamerUid.value
-                          window.open(
-                            `https://laplace.live/memes${uid ? `?contribute=${uid}` : ''}`,
-                            '_blank',
-                            'noopener'
-                          )
-                          ignoreMemeCandidate(text, id)
-                        }}
-                      >
-                        复制+贡献 LAPLACE
-                      </button>
-                      {memeSource && (
-                        <button
-                          type='button'
-                          style={{
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            padding: '.1em .4em',
-                            flexShrink: 0,
-                            background: isSbhzmOpen ? '#10b981' : 'transparent',
-                            color: isSbhzmOpen ? '#fff' : 'inherit',
-                            border: '1px solid var(--Ga2, #ccc)',
-                            borderRadius: '3px',
-                            opacity: !isSbhzmOpen && (otherFormOpenForThisText || isCbOpen) ? 0.55 : 1,
-                          }}
-                          title={
-                            isCbOpen
-                              ? `当前正在贡献到 chatterbox-cloud。点击改为上传到 ${memeSource.name}（一次只能开一个表单）`
-                              : otherFormOpenForAnotherText
-                                ? '另一条候选的表单正打开；点这里会切换到本条'
-                                : `选标签后上传到 ${memeSource.name}（API：POST /api/admin/memes）`
-                          }
-                          onClick={() => {
-                            submittingFor.value = isSbhzmOpen ? null : { text, target: 'sbhzm' }
-                          }}
-                        >
-                          {isSbhzmOpen ? '收起' : `↑ 上传到 ${memeSource.name.replace('烂梗库', '')}`}
-                        </button>
-                      )}
-                      {cbBackendEnabled.value && (
-                        <button
-                          type='button'
-                          style={{
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            padding: '.1em .4em',
-                            flexShrink: 0,
-                            background: isCbOpen ? '#3b82f6' : 'transparent',
-                            color: isCbOpen ? '#fff' : '#3b82f6',
-                            border: '1px solid #3b82f6',
-                            borderRadius: '3px',
-                            opacity: !isCbOpen && (otherFormOpenForThisText || isSbhzmOpen) ? 0.55 : 1,
-                          }}
-                          title={
-                            isSbhzmOpen
-                              ? '当前正在上传到 SBHZM。点击改为贡献到 chatterbox-cloud（一次只能开一个表单）'
-                              : otherFormOpenForAnotherText
-                                ? '另一条候选的表单正打开；点这里会切换到本条'
-                                : '选标签后提交到 chatterbox-cloud(进 pending 队列等管理员审核)'
-                          }
-                          onClick={() => {
-                            submittingFor.value = isCbOpen ? null : { text, target: 'cb' }
-                          }}
-                        >
-                          {isCbOpen ? '收起' : '↑ 贡献到 cb'}
-                        </button>
-                      )}
-                      <button
-                        type='button'
-                        style={{ fontSize: '11px', cursor: 'pointer', padding: '.1em .4em', flexShrink: 0 }}
-                        onClick={() => {
-                          const id = cachedRoomId.peek()
-                          if (id !== null) ignoreMemeCandidate(text, id)
-                          if (submittingFor.value?.text === text) submittingFor.value = null
-                        }}
-                      >
-                        忽略
-                      </button>
-                    </div>
-                    {isSbhzmOpen && memeSource && (
-                      <SbhzmSubmitRow
-                        content={text}
-                        source={memeSource}
-                        onDone={() => {
-                          const id = cachedRoomId.peek()
-                          if (id !== null) ignoreMemeCandidate(text, id)
-                          submittingFor.value = null
-                        }}
-                        onCancel={() => {
-                          submittingFor.value = null
-                        }}
-                      />
-                    )}
-                    {isCbOpen && (
-                      <CbSubmitRow
-                        content={text}
-                        source={memeSource}
-                        onDone={() => {
-                          const id = cachedRoomId.peek()
-                          if (id !== null) ignoreMemeCandidate(text, id)
-                          submittingFor.value = null
-                        }}
-                        onCancel={() => {
-                          submittingFor.value = null
-                        }}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {memes.value.length > 0 && (
-            <input
-              type='text'
-              placeholder='筛选烂梗…'
-              value={filterText.value}
-              onInput={e => {
-                filterText.value = e.currentTarget.value
-              }}
-              style={{ boxSizing: 'border-box', width: '100%', marginBottom: '.5em' }}
-            />
-          )}
-
-          {/* 双源直播间：来源过滤药丸 */}
-          {memeSource && memes.value.length > 0 && (
-            <div style={{ display: 'flex', gap: '.3em', marginBottom: '.4em', fontSize: '11px' }}>
-              {(['all', 'laplace', 'sbhzm'] as const).map(s => (
-                <button
-                  key={s}
-                  type='button'
-                  onClick={() => {
-                    sourceFilter.value = s
-                  }}
-                  style={{
-                    padding: '.1em .5em',
-                    borderRadius: '999px',
-                    border: '1px solid var(--Ga2, #ccc)',
-                    background: sourceFilter.value === s ? 'var(--Ga2, #eee)' : 'transparent',
-                    fontWeight: sourceFilter.value === s ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {s === 'all' ? '全部' : s === 'laplace' ? 'LAPLACE' : memeSource.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* 顶部 tag 标签栏：根据当前梗列表聚合可点击 */}
-          {memes.value.length > 0 && <MemeTagsBar memes={memes.value} filterText={filterText} />}
-
-          <div
-            ref={containerRef}
-            style={{
-              overflowY: 'auto',
-              marginLeft: '-10px',
-              marginRight: '-10px',
-              paddingInline: '10px',
-              maxHeight: optimizeLayout.value ? '180px' : '240px',
-            }}
-          >
-            {memes.value
-              .filter(m => {
-                if (sourceFilter.value === 'laplace' && m._source === 'sbhzm') return false
-                if (sourceFilter.value === 'sbhzm' && m._source !== 'sbhzm') return false
-                const q = filterText.value.trim().toLowerCase()
-                if (!q) return true
-                if (m.content.toLowerCase().includes(q)) return true
-                return m.tags.some(t => t.name.toLowerCase().includes(q))
-              })
-              .map(meme => (
-                <MemeItem key={meme.id} meme={meme} onUpdateCount={updateCount} onTagClick={handleTagClick} />
-              ))}
-          </div>
-        </>
+                    复制+贡献 LAPLACE
+                  </button>
+                  {memeSource && (
+                    <button
+                      type='button'
+                      style={{
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        padding: '.1em .4em',
+                        flexShrink: 0,
+                        background: isSbhzmOpen ? '#10b981' : 'transparent',
+                        color: isSbhzmOpen ? '#fff' : 'inherit',
+                        border: '1px solid var(--Ga2, #ccc)',
+                        borderRadius: '3px',
+                        opacity: !isSbhzmOpen && (otherFormOpenForThisText || isCbOpen) ? 0.55 : 1,
+                      }}
+                      title={
+                        isCbOpen
+                          ? `当前正在贡献到 chatterbox-cloud。点击改为上传到 ${memeSource.name}（一次只能开一个表单）`
+                          : otherFormOpenForAnotherText
+                            ? '另一条候选的表单正打开；点这里会切换到本条'
+                            : `选标签后上传到 ${memeSource.name}（API：POST /api/admin/memes）`
+                      }
+                      onClick={() => {
+                        submittingFor.value = isSbhzmOpen ? null : { text, target: 'sbhzm' }
+                      }}
+                    >
+                      {isSbhzmOpen ? '收起' : `↑ 上传到 ${memeSource.name.replace('烂梗库', '')}`}
+                    </button>
+                  )}
+                  {cbBackendEnabled.value && (
+                    <button
+                      type='button'
+                      style={{
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        padding: '.1em .4em',
+                        flexShrink: 0,
+                        background: isCbOpen ? '#3b82f6' : 'transparent',
+                        color: isCbOpen ? '#fff' : '#3b82f6',
+                        border: '1px solid #3b82f6',
+                        borderRadius: '3px',
+                        opacity: !isCbOpen && (otherFormOpenForThisText || isSbhzmOpen) ? 0.55 : 1,
+                      }}
+                      title={
+                        isSbhzmOpen
+                          ? '当前正在上传到 SBHZM。点击改为贡献到 chatterbox-cloud（一次只能开一个表单）'
+                          : otherFormOpenForAnotherText
+                            ? '另一条候选的表单正打开；点这里会切换到本条'
+                            : '选标签后提交到 chatterbox-cloud(进 pending 队列等管理员审核)'
+                      }
+                      onClick={() => {
+                        submittingFor.value = isCbOpen ? null : { text, target: 'cb' }
+                      }}
+                    >
+                      {isCbOpen ? '收起' : '↑ 贡献到 cb'}
+                    </button>
+                  )}
+                  <button
+                    type='button'
+                    style={{ fontSize: '11px', cursor: 'pointer', padding: '.1em .4em', flexShrink: 0 }}
+                    onClick={() => {
+                      const id = cachedRoomId.peek()
+                      if (id !== null) ignoreMemeCandidate(text, id)
+                      if (submittingFor.value?.text === text) submittingFor.value = null
+                    }}
+                  >
+                    忽略
+                  </button>
+                </div>
+                {isSbhzmOpen && memeSource && (
+                  <SbhzmSubmitRow
+                    content={text}
+                    source={memeSource}
+                    onDone={() => {
+                      const id = cachedRoomId.peek()
+                      if (id !== null) ignoreMemeCandidate(text, id)
+                      submittingFor.value = null
+                    }}
+                    onCancel={() => {
+                      submittingFor.value = null
+                    }}
+                  />
+                )}
+                {isCbOpen && (
+                  <CbSubmitRow
+                    content={text}
+                    source={memeSource}
+                    onDone={() => {
+                      const id = cachedRoomId.peek()
+                      if (id !== null) ignoreMemeCandidate(text, id)
+                      submittingFor.value = null
+                    }}
+                    onCancel={() => {
+                      submittingFor.value = null
+                    }}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
+
+      {memes.value.length > 0 && (
+        <input
+          type='text'
+          placeholder='筛选烂梗…'
+          value={filterText.value}
+          onInput={e => {
+            filterText.value = e.currentTarget.value
+          }}
+          style={{ boxSizing: 'border-box', width: '100%', marginBottom: '.5em' }}
+        />
+      )}
+
+      {/* 双源直播间：来源过滤药丸 */}
+      {memeSource && memes.value.length > 0 && (
+        <div style={{ display: 'flex', gap: '.3em', marginBottom: '.4em', fontSize: '11px' }}>
+          {(['all', 'laplace', 'sbhzm'] as const).map(s => (
+            <button
+              key={s}
+              type='button'
+              onClick={() => {
+                sourceFilter.value = s
+              }}
+              style={{
+                padding: '.1em .5em',
+                borderRadius: '999px',
+                border: '1px solid var(--Ga2, #ccc)',
+                background: sourceFilter.value === s ? 'var(--Ga2, #eee)' : 'transparent',
+                fontWeight: sourceFilter.value === s ? 'bold' : 'normal',
+                cursor: 'pointer',
+              }}
+            >
+              {s === 'all' ? '全部' : s === 'laplace' ? 'LAPLACE' : memeSource.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 顶部 tag 标签栏：根据当前梗列表聚合可点击 */}
+      {memes.value.length > 0 && <MemeTagsBar memes={memes.value} filterText={filterText} />}
+
+      <div
+        ref={containerRef}
+        style={{
+          overflowY: 'auto',
+          marginLeft: '-10px',
+          marginRight: '-10px',
+          paddingInline: '10px',
+          maxHeight: optimizeLayout.value ? '180px' : '240px',
+        }}
+      >
+        {memes.value
+          .filter(m => {
+            if (sourceFilter.value === 'laplace' && m._source === 'sbhzm') return false
+            if (sourceFilter.value === 'sbhzm' && m._source !== 'sbhzm') return false
+            const q = filterText.value.trim().toLowerCase()
+            if (!q) return true
+            if (m.content.toLowerCase().includes(q)) return true
+            return m.tags.some(t => t.name.toLowerCase().includes(q))
+          })
+          .map(meme => (
+            <MemeItem key={meme.id} meme={meme} onUpdateCount={updateCount} onTagClick={handleTagClick} />
+          ))}
+      </div>
     </>
   )
 }

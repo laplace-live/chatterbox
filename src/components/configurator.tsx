@@ -1,7 +1,7 @@
 import { useRef } from 'preact/hooks'
 
 import { cn } from '../lib/cn'
-import { activeTab, dialogOpen, hzmPanelOpen, memesPanelOpen } from '../lib/store'
+import { activeTab, dialogOpen, hzmPanelOpen } from '../lib/store'
 import { AboutTab } from './about-tab'
 import { AiCandidateSection } from './ai-candidate-section'
 import { AutoBlendControls } from './auto-blend-controls'
@@ -83,35 +83,16 @@ export function Configurator() {
       <div className={panelClass(tab === 'fasong')}>
         {visited.current.has('fasong') && (
           <>
-            {/* 核心 1：独轮车（循环发送）+ 烂梗库（其素材来源）
+            {/* 核心 1:独轮车(循环发送)。
              *
-             * The outer <details> binds to `memesPanelOpen` rather than
-             * relying on browser default state — preserves the persisted
-             * "I had this open last session" preference. Previously the
-             * MemesList component had its own nested <details>烂梗库</details>
-             * for the same toggle, which was both redundant ("📚 从烂梗库
-             * 挑模板" already names the action) and animation-broken
-             * (content was rendered as sibling of the inner details, so
-             * its ::details-content had nothing to animate). Removing the
-             * inner toggle made this outer one the single source of truth.
+             * 之前这里折着烂梗库 supporting feature,在产品上是错误归属 ——
+             * 烂梗库实际服务于独轮车 + 自动跟车 + 智驾 三者(独轮车填模板、
+             * 跟车匹配 trending、智驾的候选池),折在独轮车下面暗示"只为独轮
+             * 车准备"。Jobs 审计后把烂梗库升到下面的顶级 cb-library-section,
+             * 这个 cb-core-group 只剩独轮车本体。
              */}
-            <section className='cb-core-group' aria-label='独轮车与烂梗库'>
+            <section className='cb-core-group' aria-label='独轮车'>
               <AutoSendControls />
-              <details
-                className='cb-supporting-feature'
-                open={memesPanelOpen.value}
-                onToggle={e => {
-                  memesPanelOpen.value = e.currentTarget.open
-                }}
-              >
-                <summary>
-                  <span className='cb-supporting-feature-icon' aria-hidden='true'>
-                    <Icon name='book' />
-                  </span>
-                  从烂梗库挑模板
-                </summary>
-                <MemesList />
-              </details>
             </section>
 
             {/* 核心 2：自动跟车（被动跟热门）+ 智驾（LLM 加强版）
@@ -134,7 +115,7 @@ export function Configurator() {
                   <span className='cb-supporting-feature-icon' aria-hidden='true'>
                     <Icon name='robot' />
                   </span>
-                  用 LLM 选梗（智驾，仅特定房间）
+                  智能辅助驾驶 · LLM 自动选梗
                 </summary>
                 <HzmDrivePanelMount />
               </details>
@@ -169,6 +150,36 @@ export function Configurator() {
                 </summary>
                 <AiCandidateSection />
               </details>
+            </section>
+
+            {/* 烂梗库 — 顶级"名词区"。
+             *
+             * 不同于上面三个"动词卡"(独轮车 / 跟车 / 手动发送)。烂梗库是供
+             * 三者共享的素材池(LAPLACE + sbhzm + chatterbox-cloud 聚合,见
+             * meme-fetch.ts:fetchAllMemes)。Jobs 审计后从独轮车 supporting
+             * 升到顶级,标题就写 feature 而不是动作("从烂梗库挑模板"是错误的
+             * 单向归因)。**不**用 details 折叠 —— 顶级名词区默认常驻可见,
+             * 否则又退化成 Tier 2 supporting 心智。
+             */}
+            <section className='cb-library-section' aria-label='烂梗库'>
+              <div
+                className='cb-heading'
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '.5em',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span className='cb-supporting-feature-icon' aria-hidden='true'>
+                  <Icon name='book' />
+                </span>
+                <span>烂梗库</span>
+                <span className='cb-soft' style={{ fontSize: '.85em' }}>
+                  LAPLACE + sbhzm + 自建后端 聚合
+                </span>
+              </div>
+              <MemesList />
             </section>
 
             {/*

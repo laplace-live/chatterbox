@@ -12,7 +12,10 @@ export const logPanelOpen = gmSignal('logPanelOpen', false)
 export const logPanelFocusRequest = signal(0)
 export const autoSendPanelOpen = gmSignal('autoSendPanelOpen', true)
 export const autoBlendPanelOpen = gmSignal('autoBlendPanelOpen', true)
-export const memesPanelOpen = gmSignal('memesPanelOpen', false)
+// 旧字段:`memesPanelOpen`(早期烂梗库是独轮车下面的折叠 supporting feature 时
+// 用来记忆展开状态)。Jobs 审计后烂梗库升到顶级 cb-library-section、常驻可见,
+// 这个 signal 没有 reader 了。GM 里的持久化旧值留着不动(无害,后续启动不读)。
+// 保留在 backup.ts allowlist 让导入/导出不报"未知键"。
 /**
  * 主面板「我的状态」(粉丝牌禁言巡检的紧凑视图) 折叠状态。默认折叠 —— 没有
  * 巡检过的新用户看到的是一行 summary("尚未巡检 · 点这里在设置里巡检"),不

@@ -120,6 +120,32 @@ const CB_MERGED_TTL_MS = 30_000
 
 const mergedCache = new FetchCache<CbMergedResult>()
 
+// 失败日志节流
+// ----------
+// 后端持续抖动时(典型:wrangler dev 没起 / 网络不通)30s polling 会让 6 行
+// 相同错误每分钟反复爬上日志面板,把用户真正想看的信息淹没。改成:连续失败
+// **3 次内**才打第一条(避免偶发抖动),之后每分钟最多 1 条。
+let consecutiveCbFailures = 0
+let lastCbFailureLogAt = 0
+const CB_FAILURE_LOG_COOLDOWN_MS = 60_000
+const CB_FAILURE_LOG_THRESHOLD = 3
+function maybeLogCbFailure(message: string): void {
+  consecutiveCbFailures++
+  const now = Date.now()
+  if (consecutiveCbFailures >= CB_FAILURE_LOG_THRESHOLD && now - lastCbFailureLogAt >= CB_FAILURE_LOG_COOLDOWN_MS) {
+    lastCbFailureLogAt = now
+    appendLog(message)
+  }
+}
+function resetCbFailureStreak(): void {
+  consecutiveCbFailures = 0
+}
+/** @internal 测试用。重置失败计数器,让 log 节流回到初始状态。 */
+export function _resetCbFailureLogForTests(): void {
+  consecutiveCbFailures = 0
+  lastCbFailureLogAt = 0
+}
+
 /**
  * 从后端拉取已合并的梗列表(Phase C:聚合 cb+LAPLACE+SBHZM)。
  *
@@ -131,6 +157,13 @@ const mergedCache = new FetchCache<CbMergedResult>()
  * 失败结果**不会被缓存**——抛进 fetch-cache 的 reject 分支,下次调用立刻重试。
  */
 export async function fetchCbMergedMemes(opts: FetchCbOptions = {}): Promise<CbMergedResult> {
+  // Defense-in-depth: 用户关闭 cb 后端时,即使有 caller 绕过外层 guard 误调到这里,
+  // 也立刻返回非-fatal 空结果 —— 上层会把它当"cb 没贡献内容"处理,**不会**走
+  // "降级到本地直拉"的 fatal log 分支,从而避免在 disabled 状态下打扰用户。
+  if (!cbBackendEnabled.value) {
+    return { items: [], sources: { laplace: false, sbhzm: false, cb: false }, fatal: false }
+  }
+
   const base = getCbBackendBaseUrl()
   if (!base) {
     return { items: [], sources: { laplace: false, sbhzm: false, cb: false }, fatal: true }
@@ -160,23 +193,25 @@ export async function fetchCbMergedMemes(opts: FetchCbOptions = {}): Promise<CbM
             timeoutMs: 10_000,
           })
         } catch (err) {
-          appendLog(`⚠️ chatterbox-cloud 网络错误:${err instanceof Error ? err.message : String(err)}`)
+          maybeLogCbFailure(`⚠️ chatterbox-cloud 网络错误:${err instanceof Error ? err.message : String(err)}`)
           throw err
         }
         if (!resp.ok) {
-          appendLog(`⚠️ chatterbox-cloud HTTP ${resp.status}`)
+          maybeLogCbFailure(`⚠️ chatterbox-cloud HTTP ${resp.status}`)
           throw new Error(`HTTP ${resp.status}`)
         }
         let body: CbMemeListResponse
         try {
           body = resp.json<CbMemeListResponse>()
         } catch (err) {
-          appendLog(`⚠️ chatterbox-cloud JSON 解析失败:${err instanceof Error ? err.message : String(err)}`)
+          maybeLogCbFailure(`⚠️ chatterbox-cloud JSON 解析失败:${err instanceof Error ? err.message : String(err)}`)
           throw err
         }
         if (!Array.isArray(body.items)) {
           throw new Error('chatterbox-cloud 响应缺少 items')
         }
+        // 一次成功 → 失败计数清零,下次失败重新走"连续 3 次才 log"的判断
+        resetCbFailureStreak()
 
         const items = body.items
           .filter(

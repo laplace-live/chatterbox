@@ -23,6 +23,7 @@ import { effect } from '@preact/signals'
 import type { MemeSource } from './meme-sources'
 import type { LaplaceMemeWithSource } from './sbhzm-client'
 
+import { enqueueExternalCandidate } from './ai-candidate'
 import { ensureRoomId, getCsrfToken } from './api'
 import { detectTrend } from './auto-blend-trend'
 import { subscribeDanmaku } from './danmaku-stream'
@@ -41,6 +42,7 @@ import {
   hzmDriveEnabled,
   hzmDriveIntervalSec,
   hzmDriveMode,
+  hzmDriveSendMode,
   hzmDriveStatusText,
   hzmDryRun,
   hzmLlmRatio,
@@ -107,7 +109,10 @@ function updateHzmStatusText(): void {
   hzmDriveStatusText.value = formatHzmDriveStatus({
     enabled: hzmDriveEnabled.value,
     mode: hzmDriveMode.value,
-    dryRun: hzmDryRun.value,
+    // formatHzmDriveStatus 现仍按 boolean 接 dryRun;'dry' 和 'candidate' 都视作
+    // 不会真发(状态文案显示"试运行/观察中"语义即可,候选档的 review 提示由
+    // AI 陪聊面板自己显示)。'live' 才是真发。
+    dryRun: hzmDriveSendMode.value !== 'live',
     lastActionAt,
     now: Date.now(),
     gateOpen: isActivityGateOpen(Date.now()),
@@ -139,7 +144,7 @@ effect(() => {
   // touch all deps to subscribe
   void hzmDriveEnabled.value
   void hzmDriveMode.value
-  void hzmDryRun.value
+  void hzmDriveSendMode.value
   updateHzmStatusText()
 })
 
@@ -399,8 +404,25 @@ export async function pickByLLM(
 }
 
 async function sendOne(roomId: number, meme: LaplaceMemeWithSource): Promise<void> {
-  if (hzmDryRun.value) {
+  const sendMode = hzmDriveSendMode.value
+
+  if (sendMode === 'dry') {
     appendLog(`🚗[试运行] 智驾候选：${meme.content}`)
+    pushRecentSent(roomId, meme.content)
+    lastActionAt = Date.now()
+    updateHzmStatusText()
+    return
+  }
+
+  if (sendMode === 'candidate') {
+    // Push 到 AI 陪聊 review 队列;不真发、不计入限速、不增加日发送计数。
+    // 但仍要 pushRecentSent,否则同一条会在下一 tick 又被选中,把队列灌满。
+    enqueueExternalCandidate({
+      source: 'hzm-drive',
+      content: meme.content,
+      reason: `智驾(${hzmDriveMode.value})选中`,
+    })
+    appendLog(`🚗 智驾候选已入审:${meme.content}`)
     pushRecentSent(roomId, meme.content)
     lastActionAt = Date.now()
     updateHzmStatusText()
@@ -553,6 +575,9 @@ export async function startHzmAutoDrive(opts: {
     return
   }
   if (roomId !== opts.source.roomId) {
+    // 调用方应该已经构造了匹配的 source(注册的灰泽满源走 getMemeSourceForRoom;
+    // 其他房间走 makeSyntheticSource(roomId))。能走到这里说明上游传错了 —— 这是
+    // bug,弹 warning 让我们看到。
     notifyUser('warning', `当前房间 (${roomId}) 与梗源配置 (${opts.source.roomId}) 不匹配，智驾未启动`)
     return
   }

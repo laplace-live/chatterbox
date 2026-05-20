@@ -653,6 +653,29 @@ const PANEL_STYLE = `
       }
 
       /*
+       * Library section: top-level "noun area" parallel with the three verb
+       * cb-core-groups (独轮车 / 跟车 / 手动发送). Visually distinct from
+       * cb-core-group on purpose — three verbs have controls + buttons; this
+       * is a browse-only data shelf. Slightly recessed background + smaller
+       * top margin signals "lookup, not action".
+       */
+      #laplace-chatterbox-dialog .cb-library-section {
+        margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.02);
+      }
+      @media (prefers-color-scheme: dark) {
+        #laplace-chatterbox-dialog .cb-library-section {
+          background: rgba(255, 255, 255, 0.03);
+        }
+      }
+      #laplace-chatterbox-dialog .cb-library-section > .cb-heading {
+        font-size: 0.95em;
+        font-weight: 600;
+      }
+
+      /*
        * Supporting feature: a <details>/<summary> below a core card, indented
        * to look hierarchically subordinate. Smaller font, dimmer surface so
        * it doesn't compete with the main card visually.

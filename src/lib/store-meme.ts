@@ -45,6 +45,24 @@ export const cbBackendHealthDetail = signal<string>('')
  */
 export const currentMemesList = signal<LaplaceMemeWithSource[]>([])
 
+/**
+ * `currentMemesList` 对应的 roomId —— 用来识别"列表是哪个房间的"。
+ *
+ * 为什么需要:B 站 live 支持在同一 tab 内 SPA 切房间(`ensureRoomId()` 注释 line 161-162
+ * 有说明)。切房间到新房间 `loadMemes()` 完成是个 1–10s 的异步窗口,期间 `currentMemesList`
+ * 里仍然是**前一个房间**的梗。任何按这个 list 做决策的兄弟组件(智能辅助驾驶的
+ * 挂载 gate 是典型受害者:用旧梗 count ≥10 通过 gate,新房间数据空了又显示
+ * "有 N 条梗,开车")必须先校验 roomId 匹配,否则就会跨房间使用陈旧素材。
+ *
+ * 写入方:`MemesList.loadMemes()` —— 永远和 `currentMemesList` 一起更新(同步 tick,
+ * 利用 signal 同步语义保持原子)。
+ *
+ * 读取方:智驾 `decideHzmMount` 的 `memesRoomId` 参数(见 hzm-drive-panel.tsx)。
+ *
+ * 初始 `null` = 还从来没成功 load 过任何房间(MemesList 还没挂载完 / 第一次 load 还没回)。
+ */
+export const currentMemesListRoomId = signal<number | null>(null)
+
 // ---------------------------------------------------------------------------
 // 用户自配梗源(GM-persisted)
 //
