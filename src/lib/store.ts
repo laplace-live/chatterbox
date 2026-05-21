@@ -68,13 +68,15 @@ export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
 export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 
 // Info button: an "i" icon next to the audio-only / 弹幕助手 buttons that
-// opens a read-only popover with streamer metadata sourced from Laplace
-// workers (魔法期 / 公会 / MCN). Each data category is independently
-// gated below so a user can opt into, say, guild lookups without ever
-// hitting the fertility endpoint. All three default OFF because the
-// data is opinionated (especially fertility) and the user should
-// consciously opt in. When ALL three are off the button hides itself
-// entirely — see `InfoButton`.
+// opens a popover with streamer metadata sourced from Laplace workers
+// (魔法期 / 公会 / MCN) plus a local 用户备注 editor. Each remote data
+// category is independently gated below so a user can opt into, say,
+// guild lookups without ever hitting the fertility endpoint. All three
+// default OFF because the data is opinionated (especially fertility)
+// and the user should consciously opt in. The toggles only gate which
+// SECTIONS render inside the popover — the button itself is always
+// visible because the 用户备注 editor needs a permanent entry point
+// (see `InfoButton`).
 export const infoFertilityEnabled = gmSignal('infoFertilityEnabled', false)
 export const infoGuildEnabled = gmSignal('infoGuildEnabled', false)
 export const infoMcnEnabled = gmSignal('infoMcnEnabled', false)

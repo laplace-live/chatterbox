@@ -46,6 +46,13 @@ import {
   unlockLiveBlock,
   unlockSpaceBlock,
 } from '../lib/store'
+import {
+  applyUserNotesFile,
+  exportUserNotes,
+  parseUserNotesFile,
+  type UserNotesImportMode,
+  userNotes,
+} from '../lib/user-notes'
 import { PromptManager } from './prompt-manager'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -587,6 +594,10 @@ export function SettingsTab() {
   // it mounted (rather than constructing one ad-hoc) so the picker stays
   // anchored inside the dialog and we can reset .value after each pick.
   const importFileInputRef = useRef<HTMLInputElement>(null)
+  // Separate input for the notes-only import. Sharing one input across
+  // both flows would force us to multiplex on the file content shape;
+  // a second hidden input keeps each handler single-purpose.
+  const importNotesInputRef = useRef<HTMLInputElement>(null)
 
   const handleExport = () => {
     try {
@@ -623,6 +634,71 @@ export function SettingsTab() {
       const msg = err instanceof Error ? err.message : String(err)
       alert(`导入设置失败：${msg}`)
       appendLog(`❌ 导入设置失败：${msg}`)
+    }
+  }
+
+  // === User notes import / export ======================================
+  //
+  // Notes round-trip through their own JSON file so a viewer can share a
+  // curated set without leaking unrelated settings (LLM keys, etc.). The
+  // export emits a fresh download immediately; import opens a confirm
+  // with two modes (merge vs replace) so the destructive path is opt-in.
+
+  const handleNotesExport = () => {
+    try {
+      const count = exportUserNotes()
+      if (count === 0) {
+        appendLog('📝 暂无备注可导出（已生成空文件）')
+      } else {
+        appendLog(`📝 已导出 ${count} 条用户备注`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      appendLog(`❌ 导出备注失败：${msg}`)
+    }
+  }
+
+  const handleNotesImportClick = () => {
+    importNotesInputRef.current?.click()
+  }
+
+  const handleNotesImportFile = async (file: File) => {
+    try {
+      const text = await file.text()
+      const parsed = parseUserNotesFile(text)
+      const count = Object.keys(parsed.notes).length
+      const exportedAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('zh-CN') : '未知时间'
+      const existing = Object.keys(userNotes.value).length
+      // Three-way prompt: 合并 keeps the user's local notes and applies
+      // the file on top using newest-`updatedAt` precedence; 覆盖 wipes
+      // local notes first. `confirm` only has two buttons, so we use a
+      // staged prompt — first confirm import, then pick mode.
+      const ok = confirm(
+        `即将导入备注文件\n\n文件包含 ${count} 条备注（导出于 ${exportedAt}），本地现有 ${existing} 条。\n\n点击「确定」继续选择导入方式。`
+      )
+      if (!ok) return
+      let mode: UserNotesImportMode = 'merge'
+      if (existing > 0) {
+        // Two staged confirms because the browser `confirm` API only
+        // exposes two buttons. The user already opted into importing;
+        // this second prompt only picks the additive vs destructive
+        // mode. 确定 maps to the safe additive merge (the default
+        // recommendation); 取消 escalates to the destructive overwrite.
+        const merge = confirm(
+          `请选择导入方式：\n\n确定 = 合并（同 UID 取较新版本，本地独有备注会保留）\n取消 = 覆盖（删除现有 ${existing} 条本地备注，仅保留文件中的备注）`
+        )
+        mode = merge ? 'merge' : 'replace'
+      }
+      const result = applyUserNotesFile(parsed, mode)
+      const summary =
+        mode === 'replace'
+          ? `覆盖完成：导入 ${result.added} 条，删除 ${result.removed} 条`
+          : `合并完成：新增 ${result.added} 条，更新 ${result.updated} 条，跳过 ${result.skipped} 条（本地更新）`
+      appendLog(`📝 ${summary}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert(`导入备注失败：${msg}`)
+      appendLog(`❌ 导入备注失败：${msg}`)
     }
   }
 
@@ -1311,6 +1387,36 @@ export function SettingsTab() {
               infoMcnEnabled.value = e.currentTarget.checked
             }}
             label='显示 MCN 信息'
+          />
+        </div>
+      </div>
+
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>用户备注</div>
+        <div class={HINT_CLASS}>
+          为 UID 添加本地备注，可在主播信息面板中查看与编辑。当前 UID
+          存在备注时，按钮上会显示备注图标作为提示。直播间页面以主播 UID 为索引、个人空间页面以页面 UID
+          为索引。备注仅保存在本地，可单独导入导出便于分享或备份
+        </div>
+        <div class='mb-2 text-ga6'>本地已保存 {Object.keys(userNotes.value).length} 条备注</div>
+        <div class={ROW_CLASS}>
+          <Button variant='outline' size='sm' onClick={handleNotesExport}>
+            导出备注
+          </Button>
+          <Button variant='outline' size='sm' onClick={handleNotesImportClick}>
+            导入备注
+          </Button>
+          <input
+            ref={importNotesInputRef}
+            type='file'
+            accept='application/json,.json'
+            class='hidden'
+            onChange={e => {
+              const input = e.currentTarget
+              const file = input.files?.[0]
+              input.value = ''
+              if (file) void handleNotesImportFile(file)
+            }}
           />
         </div>
       </div>

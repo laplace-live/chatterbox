@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals'
-import { IconInfoCircle } from '@tabler/icons-preact'
+import { IconInfoCircle, IconNotes } from '@tabler/icons-preact'
 import { useEffect } from 'preact/hooks'
 
 import { cn } from '../lib/cn'
@@ -14,23 +14,37 @@ import {
   getFertilityDisplay,
   infoCurrentUid,
 } from '../lib/info-status'
+import { appendLog } from '../lib/log'
 import { cachedStreamerUid, infoFertilityEnabled, infoGuildEnabled, infoMcnEnabled } from '../lib/store'
+import { deleteUserNote, getUserNote, hasUserNote, setUserNote, userNotes } from '../lib/user-notes'
+import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Textarea } from './ui/textarea'
 
 /**
  * Read-only metadata popover, mounted in the bottom-right toggle cluster
- * next to the audio-only and 弹幕助手 buttons. Shows up to three data
- * categories — 魔法期 (fertility), 公会 (guild), MCN — each gated by
- * an independent settings toggle so the user can opt into exactly what
- * they want and never trigger the other endpoints.
+ * next to the audio-only and 弹幕助手 buttons. Shows up to three remote
+ * data categories — 魔法期 (fertility), 公会 (guild), MCN — each gated
+ * by an independent settings toggle so the user can opt into exactly
+ * what they want and never trigger the other endpoints. Plus a local
+ * "用户备注" (user note) editor that's purely client-side and always
+ * available (no enable toggle — it's local-only with zero network
+ * cost, so there's nothing to opt into).
  *
- * The button itself is hidden entirely when ALL three categories are
- * off. This keeps the toggle cluster from sprouting a meaningless icon
- * for users who don't want this feature at all, and means "enable from
- * the settings tab" is the canonical activation path. Once any category
- * is on, the button surfaces a one-glance indicator on its face — the
- * fertility emoji when that's the highest-priority category with data,
- * or a generic info icon otherwise.
+ * The button is ALWAYS visible. Even with every remote info toggle off,
+ * the user note editor needs a permanent entry point — otherwise there'd
+ * be no way to add a first note to a uid with no existing note. The
+ * per-category toggles only gate which SECTIONS render inside the
+ * popover, not the popover's existence.
+ *
+ * The button face composes two layers:
+ *   1. Primary icon: the fertility emoji when that category is on and
+ *      data has loaded; otherwise a generic info icon.
+ *   2. Note badge: rendered alongside (right of) the primary icon when
+ *      the current uid has a stored note — so a viewer instantly sees
+ *      "I've already written something about this person" without
+ *      opening the popover. Tinted amber so it doesn't blend into the
+ *      primary icon.
  *
  * Data resolution is uid-driven, with the uid coming from whichever
  * mount surface owns identity:
@@ -45,10 +59,8 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 export function InfoButton() {
   const open = useSignal(false)
 
-  // Hide the button when the user hasn't opted into any category.
-  // Reading `.value` on all three so the surrounding signal context
-  // re-renders on toggle changes.
-  const anyEnabled = infoFertilityEnabled.value || infoGuildEnabled.value || infoMcnEnabled.value
+  // Re-read on every render so toggle / note edits trigger re-paints.
+  const anyRemoteEnabled = infoFertilityEnabled.value || infoGuildEnabled.value || infoMcnEnabled.value
 
   // Live-page identity bridge: when `cachedStreamerUid` resolves, fan it
   // into `infoCurrentUid`. On the space page main.tsx populates
@@ -61,21 +73,29 @@ export function InfoButton() {
     }
   }, [cachedStreamerUid.value])
 
-  // Kick off data fetches whenever the uid OR any enabled toggle
+  // Kick off remote data fetches whenever the uid OR any remote toggle
   // changes. `ensureInfoData` dedupes via its internal cache + in-flight
   // map, so flipping a toggle on after the uid already resolved still
-  // fires exactly one request per endpoint.
+  // fires exactly one request per endpoint. User notes are intentionally
+  // NOT a dep here — they live in GM storage, no fetch needed.
   useEffect(() => {
-    if (!anyEnabled) return
+    if (!anyRemoteEnabled) return
     ensureInfoData(infoCurrentUid.value)
   }, [infoCurrentUid.value, infoFertilityEnabled.value, infoGuildEnabled.value, infoMcnEnabled.value])
 
-  if (!anyEnabled) return null
+  // Touch `userNotes.value` so the note badge re-paints when the user
+  // saves / deletes a note. `hasUserNote` reads the same signal but
+  // referencing `.value` here is what registers the dep with the
+  // surrounding signal context.
+  void userNotes.value
+  const noteExists = hasUserNote(infoCurrentUid.value)
 
-  // Button face: prefer the fertility emoji when that category is on and
-  // data has loaded; otherwise show the neutral info icon. Loading and
-  // error states fall back to the icon too — the popover surfaces
-  // status text, the button itself stays calm.
+  // Button face composition: the main icon (fertility emoji when on +
+  // has data, otherwise the generic info icon) PLUS a note badge
+  // appended on the right when this uid has a stored note. The badge
+  // lives alongside the main icon (rather than replacing it) so a
+  // glance still tells the viewer what info categories are configured
+  // — the note is additional context, not the whole story.
   const fertilityEmoji =
     infoFertilityEnabled.value && fertilityData.value ? getFertilityDisplay(fertilityData.value.status).emoji : null
 
@@ -85,7 +105,7 @@ export function InfoButton() {
         <button
           type='button'
           id='laplace-info-toggle'
-          title='主播额外信息'
+          title={noteExists ? '主播额外信息（已有备注）' : '主播额外信息'}
           class={cn(
             'appearance-none border-none outline-none',
             'cursor-pointer select-none',
@@ -98,6 +118,13 @@ export function InfoButton() {
             <span class='text-base leading-none'>{fertilityEmoji}</span>
           ) : (
             <IconInfoCircle size={16} stroke={2} />
+          )}
+          {noteExists && (
+            // Note badge sits to the right of the primary icon. Tinted
+            // amber (#ffd84d) so it's visually distinct from the white
+            // info / colored fertility icon and reads as "annotation"
+            // rather than another status category.
+            <IconNotes size={14} stroke={2.2} color='#ffd84d' aria-label='已有备注' />
           )}
         </button>
       </PopoverTrigger>
@@ -126,7 +153,108 @@ function InfoPopoverBody() {
       {infoFertilityEnabled.value && <FertilitySection />}
       {infoGuildEnabled.value && <GuildSection />}
       {infoMcnEnabled.value && <McnSection />}
+      {/* 用户备注 always renders — it's local-only with no network cost
+          and ungated by any toggle. */}
+      <UserNoteSection uid={uid} />
     </div>
+  )
+}
+
+/**
+ * Local-only, multi-line note editor keyed by the popover's current
+ * uid. Draft state is local to this component — we hydrate from
+ * `getUserNote(uid)` whenever the uid changes, and only commit to GM
+ * storage on the explicit 保存 button. This avoids per-keystroke writes
+ * and lets the user 取消 in flight by closing the popover (the draft is
+ * thrown away on unmount).
+ *
+ * Delete is a hard action (no soft "clear field then save" workflow) so
+ * the indicator on the button face flips off instantly without an
+ * intermediate "empty saved note" state. We rely on `setUserNote`'s
+ * trim-to-delete semantic for the "user cleared the field and clicked
+ * 保存" path, so empty saves also delete cleanly.
+ */
+function UserNoteSection({ uid }: { uid: number }) {
+  // Re-read on every render so external mutations (settings import,
+  // notes import, another popover instance) reflect here too.
+  const stored = getUserNote(uid)
+  const draft = useSignal(stored?.note ?? '')
+  const lastLoadedUid = useSignal<number | null>(null)
+  const lastLoadedUpdatedAt = useSignal<number | null>(null)
+
+  // Re-hydrate the draft whenever the uid changes (e.g. SPA navigation
+  // on the space page) OR the stored note's `updatedAt` shifts (e.g.
+  // an import happened while the popover was open). Without the
+  // updatedAt check, importing notes wouldn't refresh an open editor.
+  useEffect(() => {
+    const incomingUpdatedAt = stored?.updatedAt ?? null
+    if (lastLoadedUid.value === uid && lastLoadedUpdatedAt.value === incomingUpdatedAt) return
+    draft.value = stored?.note ?? ''
+    lastLoadedUid.value = uid
+    lastLoadedUpdatedAt.value = incomingUpdatedAt
+  }, [uid, stored?.updatedAt])
+
+  const handleSave = () => {
+    const next = draft.value
+    if (next.trim().length === 0 && !stored) {
+      // Nothing to save and nothing to delete — silent no-op rather
+      // than a confusing "saved" toast.
+      return
+    }
+    setUserNote(uid, next)
+    if (next.trim().length === 0) {
+      appendLog(`📝 已删除 UID ${uid} 的备注`)
+    } else {
+      appendLog(`📝 已保存 UID ${uid} 的备注`)
+    }
+  }
+
+  const handleDelete = () => {
+    if (!stored) return
+    if (!confirm(`确定删除 UID ${uid} 的备注？此操作无法撤销。`)) return
+    deleteUserNote(uid)
+    draft.value = ''
+    appendLog(`📝 已删除 UID ${uid} 的备注`)
+  }
+
+  const dirty = draft.value !== (stored?.note ?? '')
+
+  return (
+    <section class='flex flex-col gap-1'>
+      <SectionHeading>用户备注</SectionHeading>
+      <Textarea
+        value={draft.value}
+        onInput={e => {
+          draft.value = e.currentTarget.value
+        }}
+        placeholder='给这位用户添加备注，支持多行文本，仅本地保存…'
+        className='min-h-24 text-[13px]'
+        rows={4}
+      />
+      <div class='flex items-center justify-between gap-2'>
+        <span class='text-[11px] text-ga6'>
+          {stored
+            ? `上次编辑：${new Date(stored.updatedAt).toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}`
+            : '尚未添加备注'}
+        </span>
+        <div class='flex items-center gap-1'>
+          {stored && (
+            <Button variant='ghost' size='sm' className='text-[red]' onClick={handleDelete}>
+              删除
+            </Button>
+          )}
+          <Button variant='default' size='sm' disabled={!dirty} onClick={handleSave}>
+            保存
+          </Button>
+        </div>
+      </div>
+    </section>
   )
 }
 
