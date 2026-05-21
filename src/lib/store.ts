@@ -90,6 +90,18 @@ export const autoBlendPanelOpen = gmSignal('autoBlendPanelOpen', true)
 export const normalSendPanelOpen = gmSignal('normalSendPanelOpen', true)
 export const memesPanelOpen = gmSignal('memesPanelOpen', true)
 export const dialogOpen = gmSignal('dialogOpen', false)
+
+// Per-section open state for the Settings tab accordions. All default closed
+// so the tab loads compact; user-toggled state is persisted per-section so
+// users only have to open the panels they care about once.
+export const settingsRulesOpen = gmSignal('settingsRulesOpen', false)
+export const settingsBlacklistOpen = gmSignal('settingsBlacklistOpen', false)
+export const settingsLlmOpen = gmSignal('settingsLlmOpen', false)
+export const settingsAutoSeekOpen = gmSignal('settingsAutoSeekOpen', false)
+export const settingsFeaturesOpen = gmSignal('settingsFeaturesOpen', false)
+export const settingsUserNotesOpen = gmSignal('settingsUserNotesOpen', false)
+export const settingsLogOpen = gmSignal('settingsLogOpen', false)
+export const settingsImportExportOpen = gmSignal('settingsImportExportOpen', false)
 // Persisted width (in CSS px) of the floating panel. Default 300 matches the
 // pre-resize hard-coded `w-[300px]`. The resize handle clamps writes to
 // [DIALOG_MIN_WIDTH, viewport-aware max] so a corrupted GM value can't render
