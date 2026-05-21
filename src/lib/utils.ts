@@ -275,3 +275,25 @@ export function processMessages(text: string, maxLength: number, addRandomChar =
     })
     .filter(line => line?.trim())
 }
+
+/**
+ * Detect whether a CDN `host` value points at a raw IP address rather
+ * than a hostname. Accepts the full `host` field as returned by the
+ * bilibili app endpoint — which is `https://<host>` with no path —
+ * and inspects the authority portion.
+ *
+ * Matches both IPv4 (`https://1.2.3.4`, `https://1.2.3.4:8080`) and
+ * bracketed IPv6 (`https://[2001:db8::1]`). Hostnames containing dots
+ * but at least one non-numeric label (the normal CDN case like
+ * `cn-jsnt-fx-01-12.bilivideo.com`) return false.
+ */
+export function isIpHost(host: string): boolean {
+  // Strip scheme + port + path so we're left with just the authority.
+  let authority = host.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  // Bracketed IPv6 literal.
+  if (authority.startsWith('[') && authority.includes(']')) return true
+  // Drop trailing `:port` for IPv4 / hostname comparison.
+  authority = authority.replace(/:\d+$/, '')
+  // Bare IPv4: four dot-separated decimal octets and nothing else.
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(authority)
+}

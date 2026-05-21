@@ -80,6 +80,7 @@ import { MPEGTS_CDN_URL } from './const'
 import { loadScript } from './load-script'
 import { appendLog } from './log'
 import { audioOnlyEnabled } from './store'
+import { isIpHost } from './utils'
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
@@ -157,6 +158,143 @@ function getLivePlayer(): LivePlayerLike | null {
   return candidate ?? null
 }
 
+/** Selector for bilibili's player `<video>` element. Mounting of this
+ *  node is our proxy for "the player bundle has initialised far enough
+ *  that `window.livePlayer` should be available". Same selector +
+ *  rationale as `lib/auto-quality.ts` — kept in sync intentionally. */
+const PLAYER_VIDEO_SELECTOR = '#live-player video'
+
+/**
+ * Wait for bilibili's player to be ready, returning the `livePlayer`
+ * global once `stopPlayback` is callable (or null on timeout). Closes
+ * the cold-start race where the userscript runs at `document-start`
+ * (per the `run-at` directive) and `engageAudioOnly()` finishes its
+ * async preflight (`ensureRoomId` + `fetchAudioOnlyStreamUrl` +
+ * `loadMpegts`) before bilibili's own player bundle has installed the
+ * global. The watchdog would catch this case eventually (1.5 s after
+ * the player mounts), but waiting up front means:
+ *
+ *   1. The user's first disengage click works reliably — we actually
+ *      called `stopPlayback()` and set `nativePlayerStopped = true`,
+ *      so the corresponding `reload()` runs instead of being skipped.
+ *   2. No 1.5-second window of doubled streams where bilibili's HLS
+ *      pull starts up alongside our audio-only FLV.
+ *
+ * Dev mode (`bun run dev`) doesn't honour `run-at: document-start` —
+ * the script is injected later via vite-plugin-monkey's dev hook, so
+ * `livePlayer` is typically already present when our engage runs and
+ * the race doesn't reproduce. This wait resolves synchronously on the
+ * first check in that case and is load-bearing in prod.
+ *
+ * Implementation mirrors `lib/auto-quality.ts`: a `MutationObserver`
+ * watches `document.documentElement` for the `<video>` mount (the
+ * cheap "player is ready" proxy), and a small handful of short
+ * setTimeout retries cover the rare "wait-state" race where `<video>`
+ * is in the DOM but `livePlayer` JS state lags by a frame or two.
+ *
+ * Event-driven rather than poll-driven because it matches the project
+ * convention and avoids wasted wakeups on idle pages — most mutations
+ * on bilibili don't touch `#live-player video` so the observer's
+ * `querySelector` filter returns null fast and we no-op.
+ *
+ * Caps at ~3 s to avoid blocking forever on rooms that never mount a
+ * player (deleted room, no permission, etc.) — the caller proceeds
+ * without stopping the native player in that case, mpegts attaches its
+ * audio pipeline, and the watchdog stays the safety net for any later
+ * player engagement.
+ */
+function waitForLivePlayer(maxWaitMs = 3000): Promise<LivePlayerLike | null> {
+  /** Short retry delay for the rare race where `<video>` is in the DOM
+   *  but `livePlayer.stopPlayback` hasn't been installed yet. The JS
+   *  state usually catches up within a frame or two; 100ms × 5 = 500ms
+   *  of grace before we give up on the wait-state race and trust the
+   *  observer alone for any later remount. */
+  const STATE_LAG_RETRY_MS = 100
+  const MAX_STATE_LAG_RETRIES = 5
+
+  return new Promise(resolve => {
+    // Fast path: player is already there, no need to install anything.
+    const ready = getLivePlayer()
+    if (ready?.stopPlayback) {
+      resolve(ready)
+      return
+    }
+
+    let observer: MutationObserver | null = null
+    let stateLagTimer: ReturnType<typeof setTimeout> | null = null
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null
+    let stateLagRetries = 0
+    let settled = false
+
+    const cleanup = (): void => {
+      observer?.disconnect()
+      observer = null
+      if (stateLagTimer !== null) {
+        clearTimeout(stateLagTimer)
+        stateLagTimer = null
+      }
+      if (timeoutTimer !== null) {
+        clearTimeout(timeoutTimer)
+        timeoutTimer = null
+      }
+    }
+
+    const finish = (value: LivePlayerLike | null): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(value)
+    }
+
+    const attempt = (): void => {
+      if (settled) return
+      // The `<video>` mount is what triggers us via the observer; if
+      // it's gone the player isn't ready in any sense and there's
+      // nothing to do — let the observer keep waiting.
+      if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return
+      const player = getLivePlayer()
+      if (player?.stopPlayback) {
+        finish(player)
+        return
+      }
+      // `<video>` is in the DOM but `livePlayer` JS state lags — same
+      // race auto-quality handles. Short retry rather than waiting for
+      // the next unrelated mutation, which might never come in this
+      // transient window.
+      if (stateLagTimer !== null) return // already scheduled
+      if (stateLagRetries >= MAX_STATE_LAG_RETRIES) return
+      stateLagRetries++
+      stateLagTimer = setTimeout(() => {
+        stateLagTimer = null
+        attempt()
+      }, STATE_LAG_RETRY_MS)
+    }
+
+    observer = new MutationObserver(() => {
+      // Cheap query: most mutations on bilibili pages don't touch
+      // `#live-player video`, so this returns null fast and we no-op.
+      if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return
+      // Reset retry counter on each fresh mount — a new `<video>`
+      // appearing means a new state-lag window is acceptable.
+      stateLagRetries = 0
+      attempt()
+    })
+    // `childList + subtree` on documentElement is the cheapest tier
+    // that catches added nodes anywhere in the SPA's render tree —
+    // same setup auto-quality uses.
+    observer.observe(document.documentElement, { childList: true, subtree: true })
+
+    // Cold-start probe: in case `<video>` is already in the DOM by
+    // the time we get here (e.g. SPA navigation within the same tab,
+    // or our engage racing the player by just a beat), run one
+    // attempt immediately rather than waiting for the next unrelated
+    // mutation to fire the callback.
+    attempt()
+
+    timeoutTimer = setTimeout(() => finish(getLivePlayer()), maxWaitMs)
+  })
+}
+
 function getMpegtsFromWindow(): typeof Mpegts | null {
   const candidate = (unsafeWindow as unknown as { mpegts?: typeof Mpegts }).mpegts
   return candidate ?? null
@@ -216,7 +354,20 @@ async function fetchAudioOnlyStreamUrl(roomId: number): Promise<AudioStreamInfo>
     platform: 'android',
     play_type: '0',
     protocol: '0,1',
-    qn: '10000',
+    // Request a transcoded variant (`qn=250` = 720P) rather than the
+    // raw `qn=10000` original passthrough. Bilibili's encoder farm
+    // strips the video track only on transcoded outputs — the original
+    // passthrough is the streamer's raw RTMP feed served as-is, so
+    // `only_audio=1` is silently ignored on it and we'd end up with
+    // either a video+audio FLV or, worse, a non-pushed stub URL whose
+    // CDN edge returns nothing (the `is_pushing: false` case we saw
+    // in the wild — see `accept_qn: [10000]`-only rooms).
+    //
+    // Asking for `qn=250` makes bilibili pick the audio-only transcode
+    // when one exists; rooms that only have the original variant fall
+    // through to the `accept_qn`/`is_pushing` checks below and surface
+    // a clear "unavailable" rather than streaming silence.
+    qn: '250',
     s_locale: 'zh_CN',
     statistics: '{"appId":1,"platform":3,"version":"6.21.5","abtest":""}',
     ts: String(Math.floor(Date.now() / 1000)),
@@ -237,6 +388,9 @@ async function fetchAudioOnlyStreamUrl(roomId: number): Promise<AudioStreamInfo>
             format?: Array<{
               format_name?: string
               codec?: Array<{
+                current_qn?: number
+                accept_qn?: number[]
+                is_pushing?: boolean
                 base_url?: string
                 url_info?: Array<{ host?: string; extra?: string }>
               }>
@@ -267,8 +421,45 @@ async function fetchAudioOnlyStreamUrl(roomId: number): Promise<AudioStreamInfo>
     for (const format of stream.format ?? []) {
       if (format.format_name !== 'flv') continue
       const codec = format.codec?.[0]
-      const urlInfo = codec?.url_info?.[0]
-      if (!codec?.base_url || !urlInfo?.host) continue
+      if (!codec?.base_url || !codec.url_info?.length) continue
+
+      // Reject responses where the returned variant is the raw original
+      // passthrough (`qn=10000` only, no transcodes available) — even
+      // though we asked for `qn=250`, bilibili falls back to whatever
+      // the streamer offers, and `accept_qn: [10000]` rooms produce a
+      // FLV URL whose edge doesn't actually serve audio-only bytes.
+      // `is_pushing: false` is the corroborating signal: the CDN slot
+      // exists in the response but no live data is being relayed
+      // through it (verified against a known-broken room sample whose
+      // `video_codecs` / `audio_codecs` came back as empty `{}`).
+      //
+      // Surfacing this as "unavailable" rather than silently attaching
+      // mpegts to a dead URL means the user gets a clear log line and
+      // the native player is left intact (no `stopPlayback()` call
+      // happens for the unavailable path).
+      const acceptQn = codec.accept_qn ?? []
+      const hasTranscode = acceptQn.some(q => q !== 10000)
+      if (!hasTranscode || codec.is_pushing === false) {
+        return { url: '', unavailable: true }
+      }
+      // Skip raw-IP hosts and prefer hostname-based CDN entries.
+      //
+      // For users inside mainland China the app endpoint frequently
+      // returns the IP-address variant as the FIRST `url_info` entry
+      // (e.g. `https://203.0.113.5/...`). The Android app accepts that
+      // because it ships with the bilibili CDN's cert pinned and
+      // doesn't enforce hostname matching the same way browsers do.
+      // The web page is HTTPS, so the browser refuses the connection
+      // because the cert is issued for `*.bilivideo.com` (or similar)
+      // and the SAN doesn't include the bare IP — TLS handshake fails
+      // and the audio stream never starts. Hostname-based entries from
+      // the SAME response work fine because their cert matches.
+      //
+      // Strategy: prefer the first non-IP host; only fall back to an
+      // IP host if no hostname entry exists at all (better to try and
+      // fail loudly than to return nothing).
+      const urlInfo = codec.url_info.find(u => u.host && !isIpHost(u.host)) ?? codec.url_info[0]
+      if (!urlInfo?.host) continue
       const full = `${urlInfo.host}${codec.base_url}${urlInfo.extra ?? ''}`
       // Many app-endpoint responses come back as `http://` — the live
       // page itself is HTTPS, so mixed-content blocking kills the
@@ -351,6 +542,21 @@ function startWatchdog(): void {
       const player = getLivePlayer()
       try {
         player?.stopPlayback?.()
+        // Critical: mark the native player as stopped here too. The
+        // initial `engageAudioOnly()` `stopPlayback()` call is the
+        // common path that sets this flag — but in the cold-start race
+        // (audio-only persisted ON at `document-start`, our engage
+        // runs before bilibili's player bundle has installed
+        // `window.livePlayer`) the engage-time call is a silent no-op
+        // (`getLivePlayer()` returns null), so `nativePlayerStopped`
+        // stays false. The watchdog is what *actually* halts the
+        // player a moment later once bilibili finishes loading, and if
+        // we don't record that here the very first disengage skips
+        // `livePlayer.reload()` — leaving the user staring at a frozen
+        // poster until they toggle off→on→off again. Setting the flag
+        // here closes that gap for both the cold-start race and the
+        // mid-session "BLTH re-engaged the player" case.
+        nativePlayerStopped = true
       } catch (err) {
         console.warn('[audio-only] watchdog stopPlayback failed:', err)
       }
@@ -534,19 +740,38 @@ async function engageAudioOnly(): Promise<void> {
   if (gen !== engagementGen) return
 
   if (info.unavailable || !info.url) {
-    throw new Error('该直播间未提供仅音频流（可能未开播）')
+    // Two distinct unavailability modes share this branch:
+    //   1. Room is not actively broadcasting (`live_status !== 1`).
+    //   2. Room only offers the original (`qn=10000`) passthrough
+    //      variant, which bilibili's encoder farm never strips video
+    //      from — so audio-only isn't truly served and the CDN slot
+    //      is a dead URL (`is_pushing: false`).
+    // The user-visible message covers both: either the streamer is
+    // offline, or their room doesn't expose a transcoded variant
+    // (typically because no one's watching at a non-original quality
+    // for bilibili's encoder farm to spin up a transcode).
+    throw new Error('该直播间未提供仅音频流（未开播或主播未启用转码）')
   }
+
+  // Wait briefly for bilibili's player bundle to install
+  // `window.livePlayer` if it hasn't already — see `waitForLivePlayer`
+  // for the cold-start race this guards against. In dev mode this is
+  // a near-instant single check; in prod with audio-only persisted
+  // on, this is where we hold for ~hundreds of ms while bilibili's
+  // bundle finishes loading.
+  const player = await waitForLivePlayer()
+  if (gen !== engagementGen) return
 
   // Snapshot the volume/mute BEFORE we tear down the native player —
   // `getPlayerInfo()` returns null after `stopPlayback()` so any later
-  // read would be useless.
+  // read would be useless. Done after the wait so `getPlayerInfo()`
+  // actually has data to return.
   captureNativeVolume()
 
   // Halt the native HLS pull before we start ours so the user isn't
   // streaming both pipes at once. Order matters: stopPlayback first,
   // then attach our pipeline. If we attached first, there'd be a
   // window where both streams are flowing.
-  const player = getLivePlayer()
   if (player?.stopPlayback) {
     try {
       player.stopPlayback()
@@ -558,6 +783,12 @@ async function engageAudioOnly(): Promise<void> {
       console.warn('[audio-only] stopPlayback failed:', err)
     }
   }
+  // If `player` is still null after the wait (deleted room / no
+  // permission / extreme cold-start), we skip stopPlayback entirely —
+  // there's no native pipe to halt. The watchdog stays installed as
+  // the safety net in case the player mounts later, and it'll set
+  // `nativePlayerStopped = true` the moment it stops the player so
+  // disengage→reload still works correctly.
 
   activeRoomId = roomId
   await attachMpegtsPlayer(info.url, mpegts)
