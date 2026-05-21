@@ -12,5 +12,9 @@ import type { ComponentChildren } from 'preact'
  * being smuggled through a boolean flag on a shared component.
  */
 export function CornerCluster({ children }: { children: ComponentChildren }) {
-  return <div class='fixed right-1 bottom-1 z-2147483647 flex items-center gap-1'>{children}</div>
+  return (
+    <div data-slot={'corner-cluster'} class='fixed right-1 bottom-1 z-2147483647 flex items-center gap-1'>
+      {children}
+    </div>
+  )
 }

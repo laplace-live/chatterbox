@@ -101,7 +101,7 @@ export function InfoButton() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent side='top' align='end' className='w-100 p-3'>
+      <PopoverContent side='top' align='end' className='w-100 p-3 text-[13px]'>
         <InfoPopoverBody />
       </PopoverContent>
     </Popover>
