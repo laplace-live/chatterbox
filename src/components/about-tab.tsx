@@ -1,4 +1,5 @@
 import { DOCUMENT_URL, PROJECT_URL, VERSION } from '../lib/const'
+import { Separator } from './ui/separator'
 
 interface ExternalService {
   name: string
@@ -79,7 +80,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
 export function AboutTab() {
   return (
     <>
-      <div class={'my-2 border-b border-b-ga2 border-b-solid pb-4'}>
+      <div class={'my-2 pb-4'}>
         <div class={'mb-2 font-bold'}>LAPLACE Chatterbox 弹幕助手</div>
         <div class='flex flex-col text-ga6'>
           <span>版本: {VERSION}</span>
@@ -105,7 +106,8 @@ export function AboutTab() {
         </div>
       </div>
 
-      {/* Same section spacing as above but without the divider on the last block. */}
+      <Separator />
+
       <div class='my-2 pb-4'>
         <div class={'mb-2 font-bold'}>隐私说明</div>
         <div class='mb-3 text-ga6'>本脚本在运行时可能会与以下外部服务通信。不同功能触发的请求不同，请按需启用。</div>

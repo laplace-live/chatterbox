@@ -29,13 +29,10 @@ import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
+import { Separator } from './ui/separator'
 
 const SONIOX_FLUSH_DELAY_MS = 5000
 
-// Each visible block in this tab is wrapped in this section shape (vertical
-// rhythm + bottom divider). Repeated across API key / recognition / translation
-// settings.
-const SECTION_CLASS = 'my-2 border-b border-b-solid border-b-ga2'
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
@@ -429,7 +426,7 @@ export function SttTab() {
 
   return (
     <>
-      <div class={SECTION_CLASS}>
+      <div class={'my-2'}>
         <div class={HEADING_CLASS}>Soniox API 设置</div>
         <div class={ROW_CLASS}>
           <Input
@@ -460,7 +457,9 @@ export function SttTab() {
         </div>
       </div>
 
-      <div class={SECTION_CLASS}>
+      <Separator />
+
+      <div class={'my-2'}>
         <div class={HEADING_CLASS}>语音识别设置</div>
         <div class={ROW_CLASS}>
           <Label htmlFor='sonioxAudioDevice'>设备</Label>
@@ -541,7 +540,9 @@ export function SttTab() {
         </div>
       </div>
 
-      <div class={SECTION_CLASS}>
+      <Separator />
+
+      <div class={'my-2'}>
         <div class={HEADING_CLASS}>实时翻译设置</div>
         <div class={ROW_CLASS}>
           <Checkbox
@@ -571,6 +572,8 @@ export function SttTab() {
         <div class='text-ga6'>启用后将发送翻译结果而非原始识别文字</div>
       </div>
 
+      <Separator />
+
       <div class='my-2'>
         <div class={ROW_CLASS}>
           <Button
@@ -594,6 +597,8 @@ export function SttTab() {
           </div>
         </div>
       </div>
+
+      <Separator />
 
       {/* AI Chat lives downstream of STT — it consumes the same final
           transcript stream that the captions above render — so we mount

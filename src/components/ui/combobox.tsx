@@ -4,6 +4,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { cn } from '../../lib/cn'
+import { Separator } from './separator'
 
 /**
  * Minimal contract every Combobox option must satisfy. Consumers can
@@ -292,7 +293,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
             'overflow-hidden'
           )}
         >
-          <div class='border-b border-b-ga2 border-b-solid p-1'>
+          <div class='p-1'>
             <input
               ref={inputRef}
               type='text'
@@ -312,6 +313,8 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
               )}
             />
           </div>
+
+          <Separator />
 
           <div ref={listRef} role='listbox' class='max-h-50 overflow-y-auto'>
             {options.length === 0 && !showMissing ? (
@@ -381,26 +384,27 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
             )}
 
             {showMissing && (
-              // Static informational row — not a real listbox option.
-              // We deliberately drop role='option' so screen readers
-              // don't announce it as selectable; the user can't pick it
-              // (it's already what's selected) and clicking does
-              // nothing.
-              <div
-                title={value}
-                class={cn(
-                  'box-border w-full',
-                  'flex items-start gap-2',
-                  'px-2 py-1',
-                  // Pin the sentinel below the live list with a top
-                  // divider so it reads as a separate cluster.
-                  'border-t border-t-ga2 border-t-solid',
-                  'text-left text-ga6 leading-tight'
-                )}
-              >
-                <span class='flex-1 break-all'>{missingLabel(value)}</span>
-                <IconCheck size={12} aria-hidden='true' class='mt-0.5 shrink-0' />
-              </div>
+              <>
+                {/* Pin the sentinel below the live list with a divider
+                    so it reads as a separate cluster. Static informational
+                    row — not a real listbox option. We deliberately drop
+                    role='option' so screen readers don't announce it as
+                    selectable; the user can't pick it (it's already what's
+                    selected) and clicking does nothing. */}
+                <Separator />
+                <div
+                  title={value}
+                  class={cn(
+                    'box-border w-full',
+                    'flex items-start gap-2',
+                    'px-2 py-1',
+                    'text-left text-ga6 leading-tight'
+                  )}
+                >
+                  <span class='flex-1 break-all'>{missingLabel(value)}</span>
+                  <IconCheck size={12} aria-hidden='true' class='mt-0.5 shrink-0' />
+                </div>
+              </>
             )}
           </div>
         </div>

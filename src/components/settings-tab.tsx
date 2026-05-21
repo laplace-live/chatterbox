@@ -1,4 +1,5 @@
 import { useSignal } from '@preact/signals'
+import { Fragment } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../lib/api'
@@ -69,14 +70,15 @@ import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
+import { Separator } from './ui/separator'
 
 const SYNC_INTERVAL = 10 * 60 * 1000
 
 // Visual rhythm for sub-sections inside merged accordions (cloud / global /
-// room rules under 替换规则, etc.). The first/last overrides keep the
-// divider stack tidy — no top margin on the first child, no trailing border
-// on the last so it doesn't peek out into the accordion's own padding.
-const SUB_SECTION_CLASS = 'my-2 pb-4 border-b border-b-solid border-b-ga2 first:mt-0 last:pb-0 last:border-b-0'
+// room rules under 替换规则, etc.). Visible dividers between siblings
+// are rendered as <Separator /> elements between the blocks, not as a
+// trailing border on each block, so the rule is centralised in one place.
+const SUB_SECTION_CLASS = 'my-2 first:mt-0 last:pb-0'
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 const HINT_CLASS = 'my-2 text-ga6'
@@ -89,8 +91,10 @@ const LINK_CLASS = 'text-link no-underline'
 const ACCORDION_ITEM_CLASS = 'mb-1'
 const ACCORDION_CONTENT_CLASS = 'pt-2 pb-2'
 
-// Each rule / blacklist row shares the same divider-separated layout.
-const LIST_ROW_CLASS = 'flex items-center gap-2 py-[.2em] border-b border-b-solid border-b-ga2'
+// Each rule / blacklist row shares the same layout. Visible dividers
+// between rows are rendered as <Separator /> siblings between the rows
+// (see the .map() call sites) instead of a trailing border on the row.
+const LIST_ROW_CLASS = 'flex items-center gap-2 py-[.2em]'
 const LIST_ROW_TEXT = 'flex-1 break-all font-mono'
 const ADD_ROW_CLASS = 'flex gap-1 items-center flex-wrap'
 const FILL_INPUT_CLASS = 'flex-1 min-w-[80px]'
@@ -798,7 +802,7 @@ export function SettingsTab() {
             />
           </div>
 
-          <hr class='my-3 border-0 border-t border-t-ga2 border-t-solid' />
+          <Separator className='my-3' />
 
           <div class={HEADING_CLASS}>主播额外信息</div>
           <div class={HINT_CLASS}>
@@ -872,6 +876,8 @@ export function SettingsTab() {
             </div>
           </div>
 
+          <Separator />
+
           <div class={SUB_SECTION_CLASS}>
             <div class={ROW_CLASS}>
               <div class='font-bold'>本地全局规则</div>
@@ -931,6 +937,8 @@ export function SettingsTab() {
               </Button>
             </div>
           </div>
+
+          <Separator />
 
           <div class={SUB_SECTION_CLASS}>
             <div class={HEADING_CLASS}>本地直播间规则</div>
@@ -1099,6 +1107,8 @@ export function SettingsTab() {
             )}
           </div>
 
+          <Separator />
+
           <div class={SUB_SECTION_CLASS}>
             <div class={HEADING_CLASS}>
               消息黑名单
@@ -1166,7 +1176,7 @@ export function SettingsTab() {
         }}
         className={ACCORDION_ITEM_CLASS}
       >
-        <AccordionTrigger>LLM (大语言模型)</AccordionTrigger>
+        <AccordionTrigger>LLM 大语言模型</AccordionTrigger>
         <AccordionContent className={ACCORDION_CONTENT_CLASS}>
           <div class={SUB_SECTION_CLASS}>
             <div class={HEADING_CLASS}>LLM 设置</div>
@@ -1277,6 +1287,8 @@ export function SettingsTab() {
             )}
           </div>
 
+          <Separator />
+
           <div class={SUB_SECTION_CLASS}>
             <div class={HEADING_CLASS}>LLM 提示词</div>
             <div class={HINT_CLASS}>
@@ -1287,10 +1299,10 @@ export function SettingsTab() {
             {/* Global subsection: pinned to the top because its contents
                 apply to every feature below. Visual order matches "global
                 first, then specifics" so the user reads the chain in the
-                same order the LLM ultimately does. The bottom divider
+                same order the LLM ultimately does. The trailing <Separator />
                 visually splits "shared baseline" from "per-feature
                 instructions" so the hierarchy is obvious at a glance. */}
-            <div class='mb-3 border-b border-b-ga2 border-b-solid pb-3'>
+            <div class='mb-3'>
               <Label htmlFor='llmPromptGlobal' className='mb-1 block font-bold'>
                 全局提示词
               </Label>
@@ -1310,6 +1322,8 @@ export function SettingsTab() {
                 placeholder='例如：你是一个哔哩哔哩弹幕助手，回复需保持简短、自然、避免敏感词，并不要使用表情符号…'
               />
             </div>
+
+            <Separator className='mb-3' />
 
             {/* Per-feature subsection layout. The triple repeats the same
                 shape (label + hint + PromptManager) so the user can scan

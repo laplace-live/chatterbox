@@ -13,6 +13,7 @@ import { AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
+import { Separator } from './ui/separator'
 
 type MemeSortBy = NonNullable<LaplaceInternal.HTTPS.Workers.MemeListQuery['sortBy']>
 
@@ -126,7 +127,8 @@ function MemeItem({
   }
 
   return (
-    <div data-meme-id={meme.id} class='flex items-start gap-[.4em] border-b border-b-ga2 border-b-solid py-[.4em]'>
+    <div data-meme-id={meme.id} class='relative flex items-start gap-[.4em] py-[.4em]'>
+      <Separator className='absolute bottom-0 left-0' />
       <div class='min-w-0 flex-1'>
         {meme.tags.length > 0 && (
           <div class='mb-[.2em] flex flex-wrap gap-[.2em]'>
