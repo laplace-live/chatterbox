@@ -9,11 +9,14 @@ import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
 import { aiChatEnabled, autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
+import { AudioOnlyButton } from './audio-only-button'
 import { Configurator } from './configurator'
-import { ToggleButton } from './toggle-button'
+import { ConfiguratorButton } from './configurator-button'
+import { CornerCluster } from './corner-cluster'
+import { InfoButton } from './info-button'
 import { AlertDialog } from './ui/alert-dialog'
 
-export function App() {
+export function AppRoom() {
   useEffect(() => {
     void loop()
   }, [])
@@ -111,7 +114,11 @@ export function App() {
 
   return (
     <>
-      <ToggleButton />
+      <CornerCluster>
+        <InfoButton />
+        <AudioOnlyButton />
+        <ConfiguratorButton />
+      </CornerCluster>
       <Configurator />
       <AlertDialog />
     </>

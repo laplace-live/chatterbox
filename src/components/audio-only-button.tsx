@@ -39,7 +39,7 @@ export function AudioOnlyButton() {
       class={cn(
         'appearance-none border-none outline-none',
         'cursor-pointer select-none',
-        'rounded px-2 py-1 text-white',
+        'h-8 rounded px-2 text-white',
         // Pink in audio-only mode (matches bilibili's brand accent and
         // the icon-fill we use elsewhere); muted gray otherwise so the
         // primary `弹幕助手` button keeps visual priority.

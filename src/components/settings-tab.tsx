@@ -21,6 +21,9 @@ import {
   danmakuDirectConfirm,
   danmakuDirectMode,
   forceScrollDanmaku,
+  infoFertilityEnabled,
+  infoGuildEnabled,
+  infoMcnEnabled,
   llmActivePromptAiChat,
   llmActivePromptAutoBlend,
   llmActivePromptAutoSend,
@@ -1274,6 +1277,40 @@ export function SettingsTab() {
               optimizeLayout.value = e.currentTarget.checked
             }}
             label='优化布局'
+          />
+        </div>
+      </div>
+
+      <div class={SECTION_CLASS}>
+        <div class={HEADING_CLASS}>主播额外信息</div>
+        <div class={HINT_CLASS}>
+          在右下角按钮组中显示一个「ⓘ」按钮，点开可查看当前主播的额外信息。数据来自 LAPLACE Live!
+          的公开聚合接口，按需启用所需类目，未启用的类目不会发起任何请求
+        </div>
+        <div class='flex flex-col gap-1'>
+          <Checkbox
+            id='infoFertilityEnabled'
+            checked={infoFertilityEnabled.value}
+            onInput={e => {
+              infoFertilityEnabled.value = e.currentTarget.checked
+            }}
+            label='显示魔法期'
+          />
+          <Checkbox
+            id='infoGuildEnabled'
+            checked={infoGuildEnabled.value}
+            onInput={e => {
+              infoGuildEnabled.value = e.currentTarget.checked
+            }}
+            label='显示公会信息'
+          />
+          <Checkbox
+            id='infoMcnEnabled'
+            checked={infoMcnEnabled.value}
+            onInput={e => {
+              infoMcnEnabled.value = e.currentTarget.checked
+            }}
+            label='显示 MCN 信息'
           />
         </div>
       </div>

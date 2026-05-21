@@ -71,4 +71,25 @@ export const BASE_URL = {
 
   LAPLACE_MEMES: 'https://workers.vrp.moe/laplace/memes',
   LAPLACE_MEME_COPY: 'https://workers.vrp.moe/laplace/meme-copy',
+
+  /**
+   * 主播信息聚合查询 (Laplace fertility / guild / MCN database).
+   *
+   * GET `${LAPLACE_BILIBILI_USER}/${uid}` — returns
+   * `LaplaceInternal.HTTPS.Workers.BilibiliUser`. Used by the info button
+   * popover to surface guild / MCN history when those toggles are on.
+   * Separate from `LAPLACE_FERTILITY` so a user opting out of fertility
+   * data doesn't accidentally trigger that endpoint via this URL.
+   */
+  LAPLACE_BILIBILI_USER: 'https://workers.vrp.moe/laplace/bilibili-user',
+
+  /**
+   * 魔法期查询 (Laplace fertility cycle).
+   *
+   * GET `${LAPLACE_FERTILITY}/${uid}` — returns
+   * `LaplaceInternal.HTTPS.Workers.FertilityUserResponse`. 404 means the
+   * uid isn't in the dataset (a normal "no data" outcome we render as a
+   * gray pill, not an error).
+   */
+  LAPLACE_FERTILITY: 'https://workers.vrp.moe/laplace/fertility',
 } as const

@@ -66,6 +66,19 @@ export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
 // silently increases bandwidth usage on metered connections. See
 // `lib/auto-quality.ts`.
 export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
+
+// Info button: an "i" icon next to the audio-only / 弹幕助手 buttons that
+// opens a read-only popover with streamer metadata sourced from Laplace
+// workers (魔法期 / 公会 / MCN). Each data category is independently
+// gated below so a user can opt into, say, guild lookups without ever
+// hitting the fertility endpoint. All three default OFF because the
+// data is opinionated (especially fertility) and the user should
+// consciously opt in. When ALL three are off the button hides itself
+// entirely — see `InfoButton`.
+export const infoFertilityEnabled = gmSignal('infoFertilityEnabled', false)
+export const infoGuildEnabled = gmSignal('infoGuildEnabled', false)
+export const infoMcnEnabled = gmSignal('infoMcnEnabled', false)
+
 export const activeTab = gmSignal('activeTab', 'fasong')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
 export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)

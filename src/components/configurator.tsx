@@ -68,8 +68,15 @@ export function Configurator() {
       //    (children opt back into scroll where appropriate).
       // 3. Visible + non-optimized: legacy block layout that grows to its
       //    content up to the viewport height.
+      // z-index sits ONE BELOW the corner cluster (z-2147483647) so the
+      // InfoButton's popover — which is `absolute` inside the cluster
+      // and therefore trapped by its stacking context — can render on
+      // top of this dialog when both are open. See `corner-cluster.tsx`
+      // for the full reasoning. 2147483646 is still well above
+      // bilibili's own chrome (which lives in the low thousands), so we
+      // lose nothing by ceding one tick.
       className={cn(
-        'fixed right-1 bottom-[calc(34px)] z-2147483647 text-[13px]',
+        'fixed right-1 bottom-[calc(34px)] z-2147483646 text-[13px]',
         'min-w-12.5 rounded border border-ga3 border-solid bg-bg1',
         // 'shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
         !visible && 'hidden',
