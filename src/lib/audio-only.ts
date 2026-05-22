@@ -56,7 +56,7 @@
  *    rather than a silent broken state.
  *
  * The toggle button itself lives in `components/audio-only-button.tsx`,
- * rendered as a sibling of `弹幕助手` in the bottom-right corner of the
+ * rendered as a sibling of `直播助手` in the bottom-right corner of the
  * page. We previously tried injecting it into bilibili's own player
  * controls (cloning the 小窗模式 tip-wrap), but `stopPlayback()`
  * destroys that whole subtree — and other userscripts in the wild stomp

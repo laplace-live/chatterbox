@@ -67,7 +67,7 @@ export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
 // `lib/auto-quality.ts`.
 export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 
-// Info button: an "i" icon next to the audio-only / 弹幕助手 buttons that
+// Info button: an "i" icon next to the audio-only / 直播助手 buttons that
 // opens a popover with streamer metadata sourced from Laplace workers
 // (魔法期 / 公会 / MCN) plus a local 用户备注 editor. Each remote data
 // category is independently gated below so a user can opt into, say,

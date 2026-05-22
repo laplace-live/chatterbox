@@ -23,7 +23,7 @@ import { Textarea } from './ui/textarea'
 
 /**
  * Read-only metadata popover, mounted in the bottom-right toggle cluster
- * next to the audio-only and 弹幕助手 buttons. Shows up to three remote
+ * next to the audio-only and 直播助手 buttons. Shows up to three remote
  * data categories — 魔法期 (fertility), 公会 (guild), MCN — each gated
  * by an independent settings toggle so the user can opt into exactly
  * what they want and never trigger the other endpoints. Plus a local

@@ -81,7 +81,7 @@ export function AboutTab() {
   return (
     <>
       <div class={'my-2 pb-4'}>
-        <div class={'mb-2 font-bold'}>LAPLACE Chatterbox 弹幕助手</div>
+        <div class={'mb-2 font-bold'}>LAPLACE Chatterbox 直播助手</div>
         <div class='flex flex-col text-ga6'>
           <span>版本: {VERSION}</span>
           <span>

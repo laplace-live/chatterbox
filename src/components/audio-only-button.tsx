@@ -2,7 +2,7 @@ import { cn } from '../lib/cn'
 import { audioOnlyEnabled } from '../lib/store'
 
 /**
- * Audio-only toggle, rendered as a sibling of `弹幕助手` in the bottom-
+ * Audio-only toggle, rendered as a sibling of `直播助手` in the bottom-
  * right corner of the page rather than inside bilibili's own player
  * controls.
  *
@@ -42,7 +42,7 @@ export function AudioOnlyButton() {
         'h-8 rounded px-2 text-white',
         // Pink in audio-only mode (matches bilibili's brand accent and
         // the icon-fill we use elsewhere); muted gray otherwise so the
-        // primary `弹幕助手` button keeps visual priority.
+        // primary `直播助手` button keeps visual priority.
         active ? 'bg-[#FF6699]' : 'bg-ga6'
       )}
     >
