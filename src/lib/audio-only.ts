@@ -113,14 +113,14 @@ html.${HTML_FLAG_CLASS} #live-player {
 html.${HTML_FLAG_CLASS} #live-player::after {
   content: '🎧 LAPLACE Chatterbox - 仅音频模式';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: rgba(255, 255, 255, 0.55);
+  top: 10px;
+  right: 10px;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
   font-size: 16px;
   letter-spacing: 0.5px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 11;
 }
 
 /* Bilibili overlays a streamer-uploaded cover image (.web-player-video-
