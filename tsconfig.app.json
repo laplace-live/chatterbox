@@ -8,7 +8,13 @@
     "skipLibCheck": true,
     "paths": {
       "react": ["./node_modules/preact/compat/"],
-      "react-dom": ["./node_modules/preact/compat/"]
+      "react-dom": ["./node_modules/preact/compat/"],
+      /* onnxruntime-web ships types but its `exports` map omits
+         a `types` condition for the bundler entry, so TS can't
+         find them via standard resolution. Point at the top-level
+         types.d.ts directly — this is the same file the package
+         declares via top-level `"types"`. */
+      "onnxruntime-web": ["./node_modules/onnxruntime-web/types.d.ts"]
     },
 
     /* Bundler mode */
@@ -19,6 +25,17 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
+
+    /* Allow type-checking JSDoc-annotated `.js` files. We use this
+       for `whisper-worker.js` and `whisper-worklet.js`, both of
+       which are imported as `?raw` strings (their bytes ship
+       verbatim to a Worker / AudioWorklet). They MUST be plain
+       JavaScript at runtime, but with `allowJs` + `checkJs`
+       TypeScript still validates their JSDoc-typed surface — same
+       contract as if they were `.ts` files, no `@ts-nocheck`
+       required. */
+    "allowJs": true,
+    "checkJs": true,
 
     /* Linting */
     "strict": true,

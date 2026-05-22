@@ -50,8 +50,46 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     name: 'Soniox SDK',
     host: 'unpkg.com',
     url: 'https://github.com/soniox/soniox-js',
-    trigger: '首次启动同传时',
-    description: '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/client)，仅在首次点击「开始同传」时下载。',
+    trigger: '首次启动 Soniox 同传时',
+    description:
+      '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/client)，仅在首次点击「开始同传」（云端引擎）时下载。',
+  },
+  {
+    name: 'Transformers.js SDK',
+    host: 'cdn.jsdelivr.net',
+    url: 'https://github.com/huggingface/transformers.js',
+    trigger: '首次启动本地 Whisper 时',
+    description:
+      '从 jsdelivr CDN 按需加载 Hugging Face Transformers.js (@huggingface/transformers)，' +
+      '用于在浏览器内运行 Whisper ONNX 模型。仅在首次点击「开始同传」（本地引擎）时下载，约 2 MB ESM 包。',
+  },
+  {
+    name: 'Whisper 模型权重',
+    host: 'huggingface.co',
+    url: 'https://huggingface.co/onnx-community/whisper-large-v3-turbo',
+    trigger: '首次启动本地 Whisper 或切换模型精度时',
+    description:
+      '从 Hugging Face 下载 Whisper-large-v3-turbo 的 ONNX 权重。' +
+      '下载后由浏览器 Cache API 永久缓存，后续启动直接命中本地缓存，不再访问网络。',
+  },
+  {
+    name: 'ONNX Runtime Web',
+    host: 'cdn.jsdelivr.net',
+    url: 'https://github.com/microsoft/onnxruntime',
+    trigger: '首次启用「过滤背景音乐 (Silero VAD)」时',
+    description:
+      '从 jsdelivr CDN 按需加载 onnxruntime-web 的 WASM 后端（约 700 KB，已内联 WASM 二进制），' +
+      '用于在 Worker 内运行 Silero VAD。仅当本地 Whisper + VAD 开关同时启用时才会下载。',
+  },
+  {
+    name: 'Silero VAD 模型',
+    host: 'huggingface.co',
+    url: 'https://huggingface.co/onnx-community/silero-vad',
+    trigger: '首次启用「过滤背景音乐 (Silero VAD)」时',
+    description:
+      '从 Hugging Face 下载 Silero VAD 的 fp16 ONNX 权重（约 1.15 MB）。' +
+      '在 Whisper 推理前对每段音频做人声/非人声判定，过滤 BGM 与噪声，避免 Whisper 凭空生成歌词。' +
+      '下载后由浏览器 Cache API 永久缓存。',
   },
   {
     name: 'mpegts.js',
@@ -64,6 +102,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '主播公会 / MCN 信息',
     host: 'workers.vrp.moe',
+    url: 'https://subspace.institute/docs/laplace-chatterbox/streamer-info',
     trigger: '在设置中开启「显示公会」或「显示 MCN」后，打开主播信息面板时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID，获取该主播在 bilibili 的历史公会与 MCN 归属记录。两个开关共享同一个接口，开启其中任意一个即会触发请求。数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
@@ -71,6 +110,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '主播魔法期数据',
     host: 'workers.vrp.moe',
+    url: 'https://subspace.institute/docs/laplace-chatterbox/streamer-info',
     trigger: '在设置中开启「显示魔法期」后，打开主播信息面板时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID（直播间页面为主播 UID，个人空间页面为页面 UID），获取该主播的魔法期记录与预测。仅在开启对应开关后才会请求，数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',

@@ -18,6 +18,7 @@ import {
   sonioxTranslationTarget,
   sonioxWrapBrackets,
   sttEndpointReached,
+  sttProvider,
   sttRunning,
   sttTranscriptBuffer,
 } from '../lib/store'
@@ -30,13 +31,65 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
+import { WhisperPanel } from './whisper-panel'
 
 const SONIOX_FLUSH_DELAY_MS = 5000
 
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
+/**
+ * Top-level entry for the 同传 tab. Owns the engine provider
+ * selector and downstream AI Chat mount; delegates the actual STT
+ * panel to the engine-specific component (`SonioxPanel` or
+ * `WhisperPanel`). Both panels feed into the same global signals
+ * (`sttTranscriptBuffer`, `sttRunning`, `sttEndpointReached`) so
+ * AI Chat works uniformly regardless of which engine is active.
+ *
+ * Switching engines is intentionally only safe while neither is
+ * running — the provider <select> is enabled unconditionally, but
+ * each panel internally treats its own "isActive" as authoritative,
+ * and the previous panel unmounts cleanly via its useEffect cleanup
+ * (which stops the recorder + tears down the mic stream).
+ */
 export function SttTab() {
+  const provider = sttProvider.value
+  return (
+    <>
+      <div class='my-2'>
+        <div class={HEADING_CLASS}>识别引擎</div>
+        <div class={ROW_CLASS}>
+          <Label htmlFor='sttProvider'>引擎</Label>
+          <NativeSelect
+            id='sttProvider'
+            className='min-w-37.5 flex-1 pr-5'
+            value={provider}
+            onChange={e => {
+              const v = e.currentTarget.value
+              if (v === 'soniox' || v === 'whisper') sttProvider.value = v
+            }}
+          >
+            <option value='soniox'>Soniox 云端 — 付费 / 低延迟 / 支持翻译</option>
+            <option value='whisper'>本地 Whisper — 免费 / WebGPU / 仅识别</option>
+          </NativeSelect>
+        </div>
+      </div>
+
+      <Separator />
+
+      {provider === 'whisper' ? <WhisperPanel /> : <SonioxPanel />}
+
+      <Separator />
+
+      {/* AI Chat lives downstream of STT — it consumes the same final
+          transcript stream both engines render — so we mount it here
+          rather than burning a top-level tab slot. */}
+      <AiChatSection />
+    </>
+  )
+}
+
+function SonioxPanel() {
   const apiKeyVisible = useSignal(false)
   const state = useSignal<'stopped' | 'starting' | 'running' | 'stopping'>('stopped')
   const statusText = useSignal('未启动')
@@ -597,15 +650,6 @@ export function SttTab() {
           </div>
         </div>
       </div>
-
-      <Separator />
-
-      {/* AI Chat lives downstream of STT — it consumes the same final
-          transcript stream that the captions above render — so we mount
-          it inside this tab rather than burning a top-level tab slot.
-          The component owns its own enable / mode toggles; this tab
-          just hosts it. */}
-      <AiChatSection />
     </>
   )
 }

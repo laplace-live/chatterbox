@@ -277,6 +277,68 @@ export const sonioxTranslationTarget = gmSignal('sonioxTranslationTarget', 'en')
 // sessions) silently falls back to default instead of erroring out.
 export const sonioxAudioDeviceId = gmSignal('sonioxAudioDeviceId', '')
 
+// STT engine selector. 'soniox' is the cloud streaming service
+// (paid, ~300 ms latency, translation support). 'whisper' is the
+// in-browser ONNX/WebGPU engine (free, ~1-2 s latency, transcription
+// only, requires WebGPU and a one-time ~200 MB model download).
+// Default 'soniox' to preserve the historical behaviour for existing
+// users — they have to consciously opt in to local STT.
+export const sttProvider = gmSignal<'soniox' | 'whisper'>('sttProvider', 'soniox')
+// Whisper transcription language. Single value (not an array of
+// hints like Soniox) because Whisper conditions decoding on exactly
+// one language token per generate pass. Defaults to Chinese to
+// match the typical bilibili streamer audience; users can switch in
+// the UI. Limited to the four languages we surface elsewhere in the
+// STT tab to keep the picker tight; Whisper itself supports 99.
+export const whisperLanguage = gmSignal<'zh' | 'en' | 'ja' | 'ko'>('whisperLanguage', 'zh')
+// Which Whisper model to load. Defaults to `turbo-hq` — matches
+// wide.video's production config (fp16 weights, ~1.6 GB) for the
+// best in-browser Chinese accuracy on M-series WebGPU. Users on
+// bandwidth- or storage-constrained machines can switch to
+// `turbo` (q4f16, ~560 MB) and accept a 1-2% WER hit. Changing
+// this value terminates and respawns the worker on the next
+// start (weights stay cached in IndexedDB, so only the pipeline
+// compile repeats, not the download).
+//
+// String literal type — kept in sync with `WhisperModelKey` in
+// const.ts, not imported to avoid pulling transformers-related
+// code into the store module.
+//
+// One-shot migration: an earlier release shipped `'base'` and
+// `'small'` tiers that dogfooding showed weren't good enough for
+// Chinese streams. Users who picked one of those should land on
+// `'turbo'` (the smaller of the two surviving tiers — we don't
+// silently push them into a 1.6 GB download without their consent;
+// they can opt up to `'turbo-hq'` in the settings tab) instead of
+// seeing the picker render an unknown value. Sentinel check so
+// we only ever migrate once per stored value.
+;(() => {
+  const current = GM_getValue<string>('whisperModel', 'turbo-hq')
+  if (current === 'base' || current === 'small') {
+    GM_setValue('whisperModel', 'turbo')
+  }
+})()
+export const whisperModel = gmSignal<'turbo' | 'turbo-hq'>('whisperModel', 'turbo-hq')
+
+// Silero VAD gate. When enabled, each rolling audio chunk runs
+// through Silero (tiny LSTM, ~3 ms on CPU) before being handed
+// to Whisper. Chunks that score below `whisperVadThreshold` are
+// dropped — this filters out background music, silence, and
+// crowd noise that would otherwise produce confident-but-wrong
+// transcriptions (Whisper hallucinates aggressively on non-speech).
+//
+// Default ON because the cost is negligible and the false-positive
+// reduction on Bilibili streams (which often have BGM under the
+// host's voice) is large.
+export const whisperVadEnabled = gmSignal<boolean>('whisperVadEnabled', true)
+// Silero outputs a per-window probability ∈ [0, 1]. The chunk
+// average is compared against this threshold. 0.3 is the value
+// Silero's own demo uses and matches what Hugging Face's
+// `transformers-js` examples ship. Lower = more permissive (more
+// false transcriptions slip through), higher = more aggressive
+// (risk of cutting off whispered or quiet speech).
+export const whisperVadThreshold = gmSignal<number>('whisperVadThreshold', 0.3)
+
 // Migrate legacy flat replacementRules → localGlobalRules (one-time, then delete old key)
 ;(() => {
   const old = GM_getValue<Array<{ from?: string; to?: string }>>('replacementRules', [])
