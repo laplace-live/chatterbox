@@ -6,6 +6,7 @@ import './lib/fetch-hijack'
 import { AppRoom } from './components/app-room'
 import { AppSpace } from './components/app-space'
 import { infoCurrentUid } from './lib/info-status'
+import { extractRoomNumber } from './lib/utils'
 
 function mount(tree: ComponentChild) {
   // Shadow DOM PoC: attach a shadow root on a host element appended to <body>.
@@ -59,7 +60,18 @@ function waitForBody(cb: () => void): void {
 const isLiveHost = location.hostname === 'live.bilibili.com'
 const isSpaceHost = location.hostname === 'space.bilibili.com'
 
-if (isLiveHost) {
+// Campaign / activity pages like `/blackboard/era/<id>.html` embed the
+// actual live room in a same-origin `/blanc/<roomid>` iframe. Both the
+// outer wrapper and the inner iframe match `*://live.bilibili.com/*`, so
+// the userscript runs in both frames and mounts twice. The wrapper frame
+// has no room number in its path (`extractRoomNumber` returns undefined),
+// so room-id resolution and every room feature fail there anyway — it's
+// dead UI. Gating the mount on a resolvable room number keeps a single
+// functional instance: the iframe on campaign pages, the top frame on
+// normal `/<roomid>` rooms.
+const hasResolvableRoom = extractRoomNumber(location.href) !== undefined
+
+if (isLiveHost && hasResolvableRoom) {
   waitForBody(() => mount(<AppRoom />))
 } else if (isSpaceHost) {
   // Pre-seed the info uid from the URL so the popover has an identity
