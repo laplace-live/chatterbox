@@ -167,6 +167,16 @@ export function extractRoomNumber(url: string): string | undefined {
 }
 
 /**
+ * Runs `cb` once the DOM is parsed — immediately if parsing already finished,
+ * otherwise on `DOMContentLoaded`. Used when a check needs the document's
+ * inline scripts to have run (e.g. reading a server-rendered global).
+ */
+export function whenDomReady(cb: () => void): void {
+  if (document.readyState !== 'loading') cb()
+  else document.addEventListener('DOMContentLoaded', () => cb(), { once: true })
+}
+
+/**
  * Inserts a random soft hyphen (U+00AD) in the text for dedup-bypass /
  * evasion. Insertion is grapheme-safe (no splitting inside a combining
  * sequence or emoji ZWJ cluster) and bmote-safe: positions strictly

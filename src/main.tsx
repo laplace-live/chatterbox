@@ -1,12 +1,21 @@
 import { type ComponentChild, render } from 'preact'
 
+import { unsafeWindow } from '$'
 import css from './styles.css?inline'
 import './lib/fetch-hijack'
 
 import { AppRoom } from './components/app-room'
 import { AppSpace } from './components/app-space'
 import { infoCurrentUid } from './lib/info-status'
-import { extractRoomNumber } from './lib/utils'
+import { extractRoomNumber, whenDomReady } from './lib/utils'
+
+// `__NEPTUNE_IS_MY_WAIFU__` is B站's standard live-room SSR data global. We
+// only probe for its presence, so the value type is irrelevant.
+declare global {
+  interface Window {
+    __NEPTUNE_IS_MY_WAIFU__?: unknown
+  }
+}
 
 function mount(tree: ComponentChild) {
   // Shadow DOM PoC: attach a shadow root on a host element appended to <body>.
@@ -60,19 +69,35 @@ function waitForBody(cb: () => void): void {
 const isLiveHost = location.hostname === 'live.bilibili.com'
 const isSpaceHost = location.hostname === 'space.bilibili.com'
 
-// Campaign / activity pages like `/blackboard/era/<id>.html` embed the
-// actual live room in a same-origin `/blanc/<roomid>` iframe. Both the
-// outer wrapper and the inner iframe match `*://live.bilibili.com/*`, so
-// the userscript runs in both frames and mounts twice. The wrapper frame
-// has no room number in its path (`extractRoomNumber` returns undefined),
-// so room-id resolution and every room feature fail there anyway — it's
-// dead UI. Gating the mount on a resolvable room number keeps a single
-// functional instance: the iframe on campaign pages, the top frame on
-// normal `/<roomid>` rooms.
+// Campaign / activity / promotion pages embed the actual live room in a
+// same-origin `/blanc/<roomid>` iframe, and the userscript matches (and so
+// runs in) both the outer shell and that iframe. Mounting in both gives two
+// send loops, two danmaku hijacks and two corner clusters, so we pick the one
+// functional frame:
+//
+//   - `/blackboard/era/<id>.html` campaign shells have no room number in their
+//     path, so `extractRoomNumber` already excludes them here.
+//   - `/<roomid>` promotion rooms like `/510` look exactly like a normal room
+//     (`/999`) by URL, yet the real room lives in their `/blanc/<id>` iframe.
+//     The number-only gate used to mount the shell on top of its iframe — the
+//     reported double-mount on `/510`.
+//
+// The discriminator is `__NEPTUNE_IS_MY_WAIFU__`, B站's standard live-room SSR
+// data global: real rooms define it (via an inline script, before
+// DOMContentLoaded), decorated shells never do. The `/blanc/<id>` embed is the
+// functional frame on those pages but omits the global, so it mounts on its
+// own path. We check at DOMContentLoaded so the inline script has run.
 const hasResolvableRoom = extractRoomNumber(location.href) !== undefined
+const isBlancEmbed = /^\/blanc\/\d+/.test(location.pathname)
 
 if (isLiveHost && hasResolvableRoom) {
-  waitForBody(() => mount(<AppRoom />))
+  if (isBlancEmbed) {
+    waitForBody(() => mount(<AppRoom />))
+  } else {
+    whenDomReady(() => {
+      if (unsafeWindow.__NEPTUNE_IS_MY_WAIFU__) waitForBody(() => mount(<AppRoom />))
+    })
+  }
 } else if (isSpaceHost) {
   // Pre-seed the info uid from the URL so the popover has an identity
   // ready before render. Space URLs always start with `/${uid}` (e.g.
