@@ -1,0 +1,11 @@
+{
+  // Test files are app code that runs under Bun, so inherit the app config
+  // and only add Bun's ambient types (`bun:test`, the `Bun` global).
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  // Reset the parent's exclude, which filters out exactly these test files.
+  "exclude": []
+}

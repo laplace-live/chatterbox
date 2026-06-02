@@ -2,7 +2,7 @@
  * Pure rate-decision core for auto-seek (自动追帧), split out from the
  * DOM/GM-coupled orchestration in `auto-seek.ts` so the speed ladder and
  * the round-play guard can be unit-tested without a browser (see
- * `scripts/test-auto-seek-rate.ts`).
+ * `auto-seek-rate.test.ts`).
  */
 
 // Speed ladders — `[delta, rate]` for speedup (delta = bufferLen - threshold)
