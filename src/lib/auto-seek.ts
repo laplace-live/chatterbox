@@ -31,6 +31,15 @@
  *   entries are `[bufferLenAbsolute, rate]`, used to back off as the
  *   buffer drains to avoid stalls.
  *
+ * - **Round-play / 轮播 is left alone**: when the streamer is offline and
+ *   bilibili plays a recording (`live_status === 2`), the player serves a
+ *   finite-duration VOD that pre-buffers ~20s ahead — there's no live edge
+ *   to chase, so the ladder would otherwise peg playback at 1.3x forever.
+ *   The decision core (`auto-seek-rate.ts`) treats a finite `duration` as
+ *   "not live" and holds 1x. A genuine live stream reports a non-finite
+ *   duration (Infinity on the native player, NaN on mpegts.js audio-only),
+ *   so this guard never touches real live playback.
+ *
  * - **Audio-only mode works the same way**: when `audioOnlyEnabled` is
  *   true we target the hidden `<audio id='lc-audio-only-stream'>`
  *   element instead of `#live-player video`. `HTMLAudioElement` shares
@@ -59,6 +68,7 @@
 import { effect } from '@preact/signals'
 
 import { AUDIO_EL_ID } from './audio-only'
+import { decidePlaybackRate } from './auto-seek-rate'
 import {
   audioOnlyEnabled,
   autoSeekBufferThreshold,
@@ -66,20 +76,6 @@ import {
   autoSeekCurrentRate,
   autoSeekEnabled,
 } from './store'
-
-// Speed ladders — `[delta, rate]` for speedup (delta = bufferLen - threshold)
-// and `[absBufferLen, rate]` for slowdown (compared against bufferLen
-// directly, no threshold offset).
-const SPEEDUP_LADDER: ReadonlyArray<readonly [number, number]> = [
-  [2, 1.3],
-  [1, 1.2],
-  [0, 1.1],
-]
-const SLOWDOWN_LADDER: ReadonlyArray<readonly [number, number]> = [
-  [0.2, 0.1],
-  [0.3, 0.3],
-  [0.6, 0.6],
-]
 
 // Throttle adjacent ticks so a burst of `progress` + `timeupdate` events
 // on the same animation frame doesn't translate into multiple
@@ -160,10 +156,6 @@ function setRate(m: HTMLMediaElement, rate: number): void {
   autoSeekCurrentRate.value = rate
 }
 
-function resetRate(m: HTMLMediaElement): void {
-  setRate(m, 1.0)
-}
-
 // === Core tick logic ====================================================
 
 /**
@@ -198,39 +190,22 @@ function tick(): void {
   if (bufferLen === null) return
   autoSeekCurrentBufferLen.value = bufferLen
 
-  const threshold = autoSeekBufferThreshold.value
-  if (!Number.isFinite(threshold) || threshold <= 0) {
-    // Misconfigured threshold — keep playing at 1x and surface the
-    // current rate in metrics, but don't make seeking decisions.
+  // Delegate the speed decision to the pure core (`auto-seek-rate.ts`). It
+  // returns the target rate, or `null` when it declines (misconfigured
+  // threshold) — in which case we leave the rate alone and just surface it.
+  // The round-play guard lives in there too: when the streamer is offline
+  // and bilibili serves a recording (live_status === 2, finite `duration`),
+  // it resolves to 1x instead of the catch-up ladder, so a VOD's ~20s
+  // prebuffer no longer pins playback at 1.3x.
+  const target = decidePlaybackRate(bufferLen, autoSeekBufferThreshold.value, m.duration)
+  if (target === null) {
     autoSeekCurrentRate.value = m.playbackRate
     return
   }
-
-  // Slowdown takes priority: a draining buffer is more user-visible
-  // (imminent stall) than a slightly over-target buffer (slightly
-  // higher latency).
-  for (const [bufThres, rate] of SLOWDOWN_LADDER) {
-    if (bufferLen < bufThres) {
-      setRate(m, rate)
-      return
-    }
-  }
-
-  const over = bufferLen - threshold
-  for (const [delta, rate] of SPEEDUP_LADDER) {
-    if (over > delta) {
-      setRate(m, rate)
-      return
-    }
-  }
-
-  // In the "comfortable" zone — restore 1x if we're currently
-  // speeding up or slowing down.
-  if (Math.abs(m.playbackRate - 1) > RATE_EPSILON) {
-    resetRate(m)
-  } else {
-    autoSeekCurrentRate.value = m.playbackRate
-  }
+  // `setRate` is a no-op write when already within epsilon of `target` (it
+  // just re-syncs the metric signal), so calling it for the comfortable /
+  // recording 1x case restores normal speed only when we'd nudged it.
+  setRate(m, target)
 }
 
 function scheduleTick(): void {
