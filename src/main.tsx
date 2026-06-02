@@ -7,6 +7,7 @@ import './lib/fetch-hijack'
 import { AppRoom } from './components/app-room'
 import { AppSpace } from './components/app-space'
 import { infoCurrentUid } from './lib/info-status'
+import { installShadowKeyboardGuard } from './lib/shadow-keyboard-guard'
 import { extractRoomNumber, whenDomReady } from './lib/utils'
 
 // `__NEPTUNE_IS_MY_WAIFU__` is B站's standard live-room SSR data global. We
@@ -31,6 +32,11 @@ function mount(tree: ComponentChild) {
   const host = document.createElement('div')
   host.id = 'laplace-chatterbox-host'
   const root = host.attachShadow({ mode: 'open' })
+  // Stop page/extension keyboard shortcuts (e.g. Video Speed Controller)
+  // from hijacking keystrokes while the user types in our shadow-DOM
+  // fields — the shadow boundary hides our <textarea>/<input> focus from
+  // their document-level handlers. See shadow-keyboard-guard.ts.
+  installShadowKeyboardGuard(root)
 
   const style = document.createElement('style')
   style.textContent = css
