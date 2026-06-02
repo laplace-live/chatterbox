@@ -1,6 +1,6 @@
 import { useSignal } from '@preact/signals'
 import { IconInfoCircle, IconNotes } from '@tabler/icons-preact'
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 
 import { cn } from '../lib/cn'
 import {
@@ -163,16 +163,27 @@ function InfoPopoverBody() {
 /**
  * Local-only, multi-line note editor keyed by the popover's current
  * uid. Draft state is local to this component — we hydrate from
- * `getUserNote(uid)` whenever the uid changes, and only commit to GM
- * storage on the explicit 保存 button. This avoids per-keystroke writes
- * and lets the user 取消 in flight by closing the popover (the draft is
- * thrown away on unmount).
+ * `getUserNote(uid)` whenever the uid changes.
+ *
+ * Auto-save model
+ * ---------------
+ * There is no 保存 button. Edits commit to GM storage on a 1.5s debounce
+ * after the last keystroke, and are flushed immediately on textarea blur
+ * and on popover close (the `[uid]` effect's cleanup, which also runs on
+ * unmount). The cleanup captures the uid it ran for, so a draft is always
+ * written under the correct uid even if the popover navigates between
+ * uids while open. A flush is a no-op when the draft matches what's
+ * stored, so focusing out without changes never bumps `updatedAt`.
+ *
+ * Inline status (正在保存… / 已保存) replaces the old button's feedback;
+ * we intentionally drop the per-save log line that would otherwise fire
+ * on every typing pause (delete still logs).
  *
  * Delete is a hard action (no soft "clear field then save" workflow) so
  * the indicator on the button face flips off instantly without an
  * intermediate "empty saved note" state. We rely on `setUserNote`'s
- * trim-to-delete semantic for the "user cleared the field and clicked
- * 保存" path, so empty saves also delete cleanly.
+ * trim-to-delete semantic, so clearing the field and letting it auto-save
+ * also deletes cleanly.
  */
 function UserNoteSection({ uid }: { uid: number }) {
   // Re-read on every render so external mutations (settings import,
@@ -181,6 +192,14 @@ function UserNoteSection({ uid }: { uid: number }) {
   const draft = useSignal(stored?.note ?? '')
   const lastLoadedUid = useSignal<number | null>(null)
   const lastLoadedUpdatedAt = useSignal<number | null>(null)
+  const saveStatus = useSignal<'idle' | 'saving' | 'saved'>('idle')
+
+  // Debounce timer for the auto-save; `savedTimer` clears the transient
+  // "已保存" label back to idle. Both are window timer ids (or null when
+  // not pending). Refs (not signals) because they're imperative timer
+  // handles, not rendered state.
+  const debounceTimer = useRef<number | null>(null)
+  const savedTimer = useRef<number | null>(null)
 
   // Re-hydrate the draft whenever the uid changes (e.g. SPA navigation
   // on the space page) OR the stored note's `updatedAt` shifts (e.g.
@@ -194,65 +213,109 @@ function UserNoteSection({ uid }: { uid: number }) {
     lastLoadedUpdatedAt.value = incomingUpdatedAt
   }, [uid, stored?.updatedAt])
 
-  const handleSave = () => {
-    const next = draft.value
-    if (next.trim().length === 0 && !stored) {
-      // Nothing to save and nothing to delete — silent no-op rather
-      // than a confusing "saved" toast.
+  // Flush-on-close / flush-on-uid-change. The cleanup runs when `uid`
+  // changes (before the new uid's effect) AND on unmount (popover close),
+  // and it captures the uid it ran for — so the draft always lands under
+  // the right uid even if the popover navigates between uids while open.
+  // We re-read `getUserNote(uid)` here (rather than closing over `stored`)
+  // so the dirty check uses live storage, and we cancel any pending
+  // timers to avoid them firing against a torn-down / switched editor.
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current !== null) {
+        clearTimeout(debounceTimer.current)
+        debounceTimer.current = null
+      }
+      if (savedTimer.current !== null) {
+        clearTimeout(savedTimer.current)
+        savedTimer.current = null
+      }
+      const storedNow = getUserNote(uid)?.note ?? ''
+      if (draft.value !== storedNow) setUserNote(uid, draft.value)
+    }
+  }, [uid])
+
+  // Commit the draft for the CURRENT uid (debounce fire + textarea blur).
+  // No-op when unchanged so a focus-out without edits never bumps
+  // `updatedAt`. `setUserNote` trim-deletes on empty, so clearing the
+  // field auto-saves as a delete.
+  const commit = () => {
+    if (debounceTimer.current !== null) {
+      clearTimeout(debounceTimer.current)
+      debounceTimer.current = null
+    }
+    if (draft.value === (stored?.note ?? '')) {
+      saveStatus.value = 'idle'
       return
     }
-    setUserNote(uid, next)
-    if (next.trim().length === 0) {
-      appendLog(`📝 已删除 UID ${uid} 的备注`)
-    } else {
-      appendLog(`📝 已保存 UID ${uid} 的备注`)
+    setUserNote(uid, draft.value)
+    saveStatus.value = 'saved'
+    if (savedTimer.current !== null) clearTimeout(savedTimer.current)
+    savedTimer.current = window.setTimeout(() => {
+      savedTimer.current = null
+      saveStatus.value = 'idle'
+    }, 2000)
+  }
+
+  const handleInput = (value: string) => {
+    draft.value = value
+    if (savedTimer.current !== null) {
+      clearTimeout(savedTimer.current)
+      savedTimer.current = null
     }
+    if (debounceTimer.current !== null) clearTimeout(debounceTimer.current)
+    saveStatus.value = value === (stored?.note ?? '') ? 'idle' : 'saving'
+    debounceTimer.current = window.setTimeout(() => {
+      debounceTimer.current = null
+      commit()
+    }, 1500)
   }
 
   const handleDelete = () => {
     if (!stored) return
     if (!confirm(`确定删除 UID ${uid} 的备注？此操作无法撤销。`)) return
+    if (debounceTimer.current !== null) {
+      clearTimeout(debounceTimer.current)
+      debounceTimer.current = null
+    }
     deleteUserNote(uid)
     draft.value = ''
+    saveStatus.value = 'idle'
     appendLog(`📝 已删除 UID ${uid} 的备注`)
   }
-
-  const dirty = draft.value !== (stored?.note ?? '')
 
   return (
     <section class='flex flex-col gap-1'>
       <SectionHeading>用户备注</SectionHeading>
       <Textarea
         value={draft.value}
-        onInput={e => {
-          draft.value = e.currentTarget.value
-        }}
-        placeholder='给这位用户添加备注，支持多行文本，仅本地保存…'
+        onInput={e => handleInput(e.currentTarget.value)}
+        onBlur={commit}
+        placeholder='给这位用户添加备注，支持多行文本，自动保存且仅本地…'
         className='min-h-24 text-[13px]'
         rows={4}
       />
       <div class='flex items-center justify-between gap-2'>
-        <span class='text-[11px] text-ga6'>
-          {stored
-            ? `上次编辑：${new Date(stored.updatedAt).toLocaleString('zh-CN', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}`
-            : '尚未添加备注'}
-        </span>
-        <div class='flex items-center gap-1'>
-          {stored && (
-            <Button variant='ghost' size='sm' className='text-[red]' onClick={handleDelete}>
-              删除
-            </Button>
-          )}
-          <Button variant='default' size='sm' disabled={!dirty} onClick={handleSave}>
-            保存
-          </Button>
+        <div class='flex items-center gap-2'>
+          <span class='text-[11px] text-ga6'>
+            {stored
+              ? `上次编辑：${new Date(stored.updatedAt).toLocaleString('zh-CN', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}`
+              : '尚未添加备注'}
+          </span>
+          {saveStatus.value === 'saving' && <span class='text-[11px] text-ga6'>正在保存…</span>}
+          {saveStatus.value === 'saved' && <span class='text-[11px] text-brand'>已保存</span>}
         </div>
+        {stored && (
+          <Button variant='ghost' size='sm' className='text-[red]' onClick={handleDelete}>
+            删除
+          </Button>
+        )}
       </div>
     </section>
   )
