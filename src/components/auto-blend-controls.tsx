@@ -44,7 +44,7 @@ function NumberInput({
       autocomplete='off'
       min={String(min)}
       max={max !== undefined ? String(max) : undefined}
-      className={'w-12.5'}
+      className={'w-14'}
       value={value}
       disabled={disabled}
       onInput={e => {

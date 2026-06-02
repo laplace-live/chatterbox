@@ -200,7 +200,7 @@ export function NormalSendTab() {
                 ? 'YOLO 模式：输入后 Enter 会自动 AI 润色并发送'
                 : '输入弹幕内容… (Enter 发送)'
             }
-            className='h-12.5'
+            className='h-14'
           />
           <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>{fasongText.value.length}</div>
         </div>

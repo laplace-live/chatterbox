@@ -177,7 +177,7 @@ export function AutoSendControls() {
               type='number'
               min='0'
               autocomplete='off'
-              className='w-12.5'
+              className='w-16'
               value={msgSendInterval.value}
               onInput={e => {
                 const v = parseInt(e.currentTarget.value, 10)
@@ -190,7 +190,7 @@ export function AutoSendControls() {
               type='number'
               min='1'
               autocomplete='off'
-              className='w-12.5'
+              className='w-16'
               value={maxLength.value}
               onInput={e => {
                 const v = parseInt(e.currentTarget.value, 10)
