@@ -106,7 +106,7 @@ function AutoBlendStatus() {
         <div class='text-ga6'>{cooldownRemainingSec > 0 ? '冷却中，暂停统计' : '暂无统计'}</div>
       ) : (
         candidates.map((entry, i) => (
-          <div key={entry.text} class='flex items-center gap-2 leading-tight' title={entry.text}>
+          <div key={entry.text} class='flex items-center gap-2 leading-tight'>
             <span class='w-3 shrink-0 text-right text-ga6'>{i + 1}</span>
             <span class='min-w-0 flex-1 truncate'>{entry.text}</span>
             <span class='shrink-0 font-mono text-[11px] text-ga6'>
