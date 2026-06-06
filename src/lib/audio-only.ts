@@ -614,6 +614,62 @@ function syncVolumeToAudioEl(): void {
 }
 
 /**
+ * Carry the user's audio-only volume / mute back onto bilibili's native
+ * player after disengage — the symmetric counterpart of
+ * `captureNativeVolume` (which seeds the other direction at engage time).
+ * Without this, the level set while listening in audio-only is silently
+ * dropped on the way back to video: `livePlayer.reload()` restores the
+ * native player at ITS own pre-stopPlayback volume, which bilibili
+ * remembers independently of our hidden <audio> element.
+ *
+ * We write `volume` / `muted` onto the `<video>` element (a standard HTML5
+ * media property — assigning `.volume` fires `volumechange`, which
+ * bilibili's player observes to update its own slider UI), but only AFTER
+ * the reloaded player is actually streaming again, detected by the same
+ * `blob:` src signal the watchdog uses. Applying post-playback lands us
+ * after the player's own init-time volume application, so our value wins
+ * instead of being clobbered a beat later. After `stopPlayback()` the src
+ * is a static poster `.mp4`; it flips back to `blob:` once `reload()`
+ * re-attaches a MediaSource, which is our "ready" edge.
+ *
+ * Bounded poll (~5s) so a room that never comes back (reload failed,
+ * user navigated away) doesn't leak a pending loop. `gen` is captured at
+ * disengage time: if the user flips audio-only back on while we're
+ * waiting, `engagementGen` moves and we abort rather than writing a stale
+ * volume onto a player the new engage is about to stop again.
+ */
+async function restoreVolumeToNativePlayer(volume: number, muted: boolean, gen: number): Promise<void> {
+  const target = Math.max(0, Math.min(1, volume))
+  const POLL_MS = 200
+  const MAX_POLLS = 25 // ~5s ceiling
+
+  const apply = (): boolean => {
+    const v = document.querySelector<HTMLVideoElement>('#live-player video')
+    if (!v) return false
+    v.volume = target
+    v.muted = muted
+    return true
+  }
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    if (gen !== engagementGen) return // re-engaged audio-only — leave it alone
+    const v = document.querySelector<HTMLVideoElement>('#live-player video')
+    // `blob:` src means the reloaded player has re-attached a MediaSource
+    // and is streaming — apply now so we land after its init volume.
+    if (v?.src.startsWith('blob:')) {
+      apply()
+      return
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, POLL_MS))
+  }
+
+  // Fallback: no `blob:` src within the window (slow CDN / odd room).
+  // Apply to whatever <video> exists so the user isn't left at the wrong
+  // level — a possibly-early write beats no write.
+  if (gen === engagementGen) apply()
+}
+
+/**
  * Tear down whatever audio pipeline is currently running. Idempotent so
  * the disable path doesn't have to know whether enable ever finished.
  * Errors from each step are swallowed individually so a transient failure
@@ -857,11 +913,23 @@ function disengageAudioOnly(): void {
   // signal for "we need to reload to restore video".
   if (nativePlayerStopped) {
     nativePlayerStopped = false
+    // Snapshot the user's audio-only level BEFORE the async reload so a
+    // later signal change can't shift what we carry back. `engagementGen`
+    // was already bumped at the top of this function; capture it so the
+    // restore aborts if the user re-engages audio-only mid-reload.
+    const carryVolume = audioOnlyVolume.value
+    const carryMuted = audioOnlyMuted.value
+    const gen = engagementGen
     const player = getLivePlayer()
     if (player?.reload) {
       try {
         player.reload()
         appendLog('🎬 已关闭仅音频模式，正在恢复直播')
+        // Carry the audio-only volume/mute onto the resumed video so the
+        // level set while listening survives the switch back. Fire-and-
+        // forget: it waits for playback to actually resume and aborts via
+        // the gen guard if the user toggles audio-only on again.
+        void restoreVolumeToNativePlayer(carryVolume, carryMuted, gen)
         return
       } catch (err) {
         console.warn('[audio-only] reload failed:', err)
