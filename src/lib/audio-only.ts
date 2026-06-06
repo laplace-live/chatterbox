@@ -79,7 +79,7 @@ import { ensureRoomId } from './api'
 import { MPEGTS_CDN_URL } from './const'
 import { loadScript } from './load-script'
 import { appendLog } from './log'
-import { audioOnlyEnabled } from './store'
+import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost } from './utils'
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
@@ -564,40 +564,53 @@ function startWatchdog(): void {
   }, 1500)
 }
 
-/** Volume captured at engage time, then re-applied to the hidden audio
- *  element on every (re)attach. Persists across stream URL refreshes. */
-let preservedVolume = 1
-let preservedMuted = false
-
 /**
- * Snapshot the native player's current volume / mute state. Called
- * BEFORE we hand off to mpegts so we don't depend on the native player
- * still being interrogable after `stopPlayback()` — at that point
- * `getPlayerInfo()` returns null because the player module tore down
- * its state machine, so any "live" volume sync would be reading
- * garbage anyway.
+ * Snapshot the native player's current volume / mute state into the
+ * `audioOnlyVolume` / `audioOnlyMuted` signals. Called BEFORE we hand off
+ * to mpegts so we don't depend on the native player still being
+ * interrogable after `stopPlayback()` — at that point `getPlayerInfo()`
+ * returns null because the player module tore down its state machine, so
+ * any "live" read would be garbage anyway.
+ *
+ * Seeding the signals here is what makes the level carry over seamlessly:
+ * the controls component (`components/audio-only-controls.tsx`) renders
+ * straight from these signals, so the slider opens at whatever the native
+ * player was at. From here on the user owns the value via the slider, and
+ * the live-apply effect in `startAudioOnly` pushes every change onto the
+ * hidden <audio> element.
  */
 function captureNativeVolume(): void {
   const info = getLivePlayer()?.getPlayerInfo?.()
   const v = info?.volume?.value
   if (typeof v === 'number' && Number.isFinite(v)) {
-    preservedVolume = Math.max(0, Math.min(1, v / 100))
+    audioOnlyVolume.value = Math.max(0, Math.min(1, v / 100))
   } else {
     // Fall back to reading the bare `<video>` element. Useful when the
     // player module is loaded but `getPlayerInfo()` hasn't been wired
     // up yet (cold start with persisted audio-only).
     const ve = document.querySelector<HTMLVideoElement>('#live-player video')
-    if (ve && Number.isFinite(ve.volume)) preservedVolume = ve.volume
+    if (ve && Number.isFinite(ve.volume)) audioOnlyVolume.value = ve.volume
   }
   const muted = info?.volume?.disabled
-  if (typeof muted === 'boolean') preservedMuted = muted
+  if (typeof muted === 'boolean') audioOnlyMuted.value = muted
 }
 
-/** Apply the captured volume / mute to the audio element. */
+/**
+ * Push the current `audioOnlyVolume` / `audioOnlyMuted` signal values onto
+ * the hidden <audio> element. Reads both signals UP FRONT, before the
+ * `audioEl` null-guard, so that when this runs inside the live-apply
+ * effect it subscribes to both even on the early passes where no pipeline
+ * is attached yet — otherwise a slider move made before the stream
+ * attaches wouldn't re-trigger the effect once it does. Also called
+ * directly from `attachMpegtsPlayer` to apply the seeded value the moment
+ * a fresh element exists (first engage + every stream refresh).
+ */
 function syncVolumeToAudioEl(): void {
+  const volume = audioOnlyVolume.value
+  const muted = audioOnlyMuted.value
   if (!audioEl) return
-  if (Math.abs(audioEl.volume - preservedVolume) > 0.005) audioEl.volume = preservedVolume
-  if (audioEl.muted !== preservedMuted) audioEl.muted = preservedMuted
+  if (Math.abs(audioEl.volume - volume) > 0.005) audioEl.volume = volume
+  if (audioEl.muted !== muted) audioEl.muted = muted
 }
 
 /**
@@ -948,6 +961,7 @@ function removeStyleEl(): void {
 }
 
 let stateEffectDispose: (() => void) | null = null
+let volumeEffectDispose: (() => void) | null = null
 
 /**
  * Public entrypoint. Wired up exactly once from `app.tsx` — re-calling
@@ -960,11 +974,16 @@ let stateEffectDispose: (() => void) | null = null
 export function startAudioOnly(): void {
   if (stateEffectDispose) return
   ensureStyleEl()
-  // Single effect drives the entire feature: every toggle of the signal
-  // re-applies the player state. `signal.value` is read inside, so
-  // @preact/signals tracks the dependency automatically.
+  // Two effects drive the feature. The first re-applies player state on
+  // every toggle of `audioOnlyEnabled`. The second mirrors the live
+  // volume/mute controls onto the hidden <audio> element whenever the
+  // user moves the slider or toggles mute. The `signal.value` reads
+  // inside each let @preact/signals track the dependencies automatically.
   stateEffectDispose = effect(() => {
     applyAudioOnlyMode(audioOnlyEnabled.value)
+  })
+  volumeEffectDispose = effect(() => {
+    syncVolumeToAudioEl()
   })
 }
 
@@ -972,6 +991,10 @@ export function stopAudioOnly(): void {
   if (stateEffectDispose) {
     stateEffectDispose()
     stateEffectDispose = null
+  }
+  if (volumeEffectDispose) {
+    volumeEffectDispose()
+    volumeEffectDispose = null
   }
   clearPendingApply()
   destroyAudioPipeline()

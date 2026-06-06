@@ -10,6 +10,7 @@ import { loop } from '../lib/loop'
 import { aiChatEnabled, autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
 import { AudioOnlyButton } from './audio-only-button'
+import { AudioOnlyControls } from './audio-only-controls'
 import { Configurator } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
 import { CornerCluster } from './corner-cluster'
@@ -116,6 +117,7 @@ export function AppRoom() {
     <>
       <CornerCluster>
         <InfoButton />
+        <AudioOnlyControls />
         <AudioOnlyButton />
         <ConfiguratorButton />
       </CornerCluster>

@@ -47,6 +47,16 @@ export const unlockSpaceBlock = gmSignal('unlockSpaceBlock', true)
 // the headphones button injected next to 小窗模式 (or the floating
 // overlay button while audio-only is engaged). See `lib/audio-only.ts`.
 export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
+// Live playback controls for audio-only mode. Runtime signals (NOT
+// GM-persisted): `lib/audio-only.ts` seeds them from the native player's
+// volume/mute at engage time (so the level carries over seamlessly when
+// you switch to audio-only), then pushes any change onto the hidden
+// <audio> element via an effect. `components/audio-only-controls.tsx`
+// reads/writes them to render the speaker + slider. Persisting them would
+// fight the "inherit from the native player" seed, so we deliberately
+// don't — re-seeded fresh each engage. `audioOnlyVolume` is 0–1.
+export const audioOnlyVolume = signal(1)
+export const audioOnlyMuted = signal(false)
 // Auto-seek (自动追帧): nudges `video.playbackRate` to minimize live-stream
 // latency. Event-driven (listens to <video> `progress`/`timeupdate`/etc.,
 // no setInterval polling) so it costs ~0 while idle. Inert while
