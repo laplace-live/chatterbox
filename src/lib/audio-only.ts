@@ -750,7 +750,7 @@ async function engageAudioOnly(): Promise<void> {
     // offline, or their room doesn't expose a transcoded variant
     // (typically because no one's watching at a non-original quality
     // for bilibili's encoder farm to spin up a transcode).
-    throw new Error('该直播间未提供仅音频流（未开播或主播未启用转码）')
+    throw new Error('该直播间未提供仅音频流（未开播、刚开播、或观众太少平台未启用转码）')
   }
 
   // Wait briefly for bilibili's player bundle to install
