@@ -50,6 +50,7 @@
 
 import { unsafeWindow } from '$'
 import { appendLog } from './log'
+import { getPlayerVideo } from './player-dom'
 import { audioOnlyEnabled, autoQualityEnabled } from './store'
 
 /** Short retry delay for the rare race where `<video>` is in the DOM
@@ -63,14 +64,6 @@ const STATE_LAG_RETRY_MS = 200
  *  is off-air / private) and stop nudging. The observer stays
  *  installed in case a fresh mount fires later. */
 const MAX_STATE_LAG_RETRIES = 10
-
-/** CSS selector for the live player's `<video>` element. Used as both
- *  the player-ready proxy (this mounting means bilibili's player bundle
- *  has initialised far enough that `window.livePlayer` should be
- *  available) and as the cheap filter inside our MutationObserver
- *  callback. Hoisted to a single constant so a future bilibili DOM
- *  shake-up only needs to be updated here. */
-const PLAYER_VIDEO_SELECTOR = '#live-player video'
 
 /**
  * Minimal shape of `window.livePlayer` we depend on. We deliberately
@@ -135,7 +128,7 @@ function tryApply(): ApplyResult {
 
   // The `<video>` mount is what triggers us via the observer; if it's
   // gone the player isn't ready in any sense and there's nothing to do.
-  if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return 'wait-mount'
+  if (!getPlayerVideo()) return 'wait-mount'
 
   const player = getLivePlayer()
   if (!player?.getPlayerInfo || !player.switchQuality) {
@@ -255,7 +248,7 @@ function ensureMountObserver(): void {
     }
     // Cheap query: most mutations on bilibili pages don't touch
     // `#live-player video`, so this returns null fast and we no-op.
-    const v = document.querySelector(PLAYER_VIDEO_SELECTOR)
+    const v = getPlayerVideo()
     if (!v) return
     // Reset retry counter on each fresh mount — a new `<video>`
     // appearing means a new state-lag window is acceptable.

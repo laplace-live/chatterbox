@@ -69,6 +69,7 @@ import { effect } from '@preact/signals'
 
 import { AUDIO_EL_ID } from './audio-only'
 import { decidePlaybackRate } from './auto-seek-rate'
+import { getPlayerVideo } from './player-dom'
 import {
   audioOnlyEnabled,
   autoSeekBufferThreshold,
@@ -128,7 +129,7 @@ function getMediaTarget(): HTMLMediaElement | null {
     const el = document.getElementById(AUDIO_EL_ID)
     return el instanceof HTMLAudioElement ? el : null
   }
-  return document.querySelector<HTMLVideoElement>('#live-player video')
+  return getPlayerVideo()
 }
 
 function getBufferLen(m: HTMLMediaElement): number | null {
@@ -373,7 +374,7 @@ export function startAutoSeek(): void {
       // resume, not to inherit whatever last rate we wrote. Reset both
       // possible targets (video AND audio) because either could be
       // sitting at a non-1x rate when the user toggles off.
-      const v = document.querySelector<HTMLVideoElement>('#live-player video')
+      const v = getPlayerVideo()
       if (v && Math.abs(v.playbackRate - 1) > RATE_EPSILON) {
         v.playbackRate = 1
       }

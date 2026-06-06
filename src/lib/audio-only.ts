@@ -79,7 +79,8 @@ import { ensureRoomId } from './api'
 import { MPEGTS_CDN_URL } from './const'
 import { loadScript } from './load-script'
 import { appendLog } from './log'
-import { audioOnlyEnabled } from './store'
+import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR } from './player-dom'
+import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost } from './utils'
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
@@ -100,17 +101,17 @@ const STYLE = `
  * MP4 poster that bilibili's player shows after stopPlayback() also
  * lives inside #live-player, so this rule covers the "stopped" state
  * too without revealing a frozen frame. */
-html.${HTML_FLAG_CLASS} #live-player video {
+html.${HTML_FLAG_CLASS} ${PLAYER_CONTAINER_SELECTOR} video {
   visibility: hidden;
 }
 
 /* Visual hint that the player frame is intentionally blank rather than
  * broken: a centered "🎧 仅音频模式" label fades in while the flag is
  * set. Anchored to #live-player so it tracks the player size on resize. */
-html.${HTML_FLAG_CLASS} #live-player {
+html.${HTML_FLAG_CLASS} ${PLAYER_CONTAINER_SELECTOR} {
   position: relative;
 }
-html.${HTML_FLAG_CLASS} #live-player::after {
+html.${HTML_FLAG_CLASS} ${PLAYER_CONTAINER_SELECTOR}::after {
   content: '🎧 LAPLACE Chatterbox - 仅音频模式';
   position: absolute;
   top: 10px;
@@ -157,12 +158,6 @@ function getLivePlayer(): LivePlayerLike | null {
   const candidate = (unsafeWindow as unknown as { livePlayer?: LivePlayerLike }).livePlayer
   return candidate ?? null
 }
-
-/** Selector for bilibili's player `<video>` element. Mounting of this
- *  node is our proxy for "the player bundle has initialised far enough
- *  that `window.livePlayer` should be available". Same selector +
- *  rationale as `lib/auto-quality.ts` — kept in sync intentionally. */
-const PLAYER_VIDEO_SELECTOR = '#live-player video'
 
 /**
  * Wait for bilibili's player to be ready, returning the `livePlayer`
@@ -251,7 +246,7 @@ function waitForLivePlayer(maxWaitMs = 3000): Promise<LivePlayerLike | null> {
       // The `<video>` mount is what triggers us via the observer; if
       // it's gone the player isn't ready in any sense and there's
       // nothing to do — let the observer keep waiting.
-      if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return
+      if (!getPlayerVideo()) return
       const player = getLivePlayer()
       if (player?.stopPlayback) {
         finish(player)
@@ -273,7 +268,7 @@ function waitForLivePlayer(maxWaitMs = 3000): Promise<LivePlayerLike | null> {
     observer = new MutationObserver(() => {
       // Cheap query: most mutations on bilibili pages don't touch
       // `#live-player video`, so this returns null fast and we no-op.
-      if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return
+      if (!getPlayerVideo()) return
       // Reset retry counter on each fresh mount — a new `<video>`
       // appearing means a new state-lag window is acceptable.
       stateLagRetries = 0
@@ -534,11 +529,11 @@ function startWatchdog(): void {
   clearWatchdog()
   watchdogTimer = setInterval(() => {
     if (!audioOnlyEnabled.value) return
-    const v = document.querySelector<HTMLVideoElement>('#live-player video')
+    const v = getPlayerVideo()
     if (!v) return
     // `blob:` src means the player has an active MediaSource attached
     // i.e. somebody re-engaged it after we stopped. Re-stop.
-    if (v.src.startsWith('blob:')) {
+    if (isNativePlayerStreaming(v)) {
       const player = getLivePlayer()
       try {
         player?.stopPlayback?.()
@@ -564,40 +559,118 @@ function startWatchdog(): void {
   }, 1500)
 }
 
-/** Volume captured at engage time, then re-applied to the hidden audio
- *  element on every (re)attach. Persists across stream URL refreshes. */
-let preservedVolume = 1
-let preservedMuted = false
-
 /**
- * Snapshot the native player's current volume / mute state. Called
- * BEFORE we hand off to mpegts so we don't depend on the native player
- * still being interrogable after `stopPlayback()` — at that point
- * `getPlayerInfo()` returns null because the player module tore down
- * its state machine, so any "live" volume sync would be reading
- * garbage anyway.
+ * Snapshot the native player's current volume / mute state into the
+ * `audioOnlyVolume` / `audioOnlyMuted` signals. Called BEFORE we hand off
+ * to mpegts so we don't depend on the native player still being
+ * interrogable after `stopPlayback()` — at that point `getPlayerInfo()`
+ * returns null because the player module tore down its state machine, so
+ * any "live" read would be garbage anyway.
+ *
+ * Seeding the signals here is what makes the level carry over seamlessly:
+ * the controls component (`components/audio-only-controls.tsx`) renders
+ * straight from these signals, so the slider opens at whatever the native
+ * player was at. From here on the user owns the value via the slider, and
+ * the live-apply effect in `startAudioOnly` pushes every change onto the
+ * hidden <audio> element.
  */
 function captureNativeVolume(): void {
   const info = getLivePlayer()?.getPlayerInfo?.()
   const v = info?.volume?.value
   if (typeof v === 'number' && Number.isFinite(v)) {
-    preservedVolume = Math.max(0, Math.min(1, v / 100))
+    audioOnlyVolume.value = Math.max(0, Math.min(1, v / 100))
   } else {
     // Fall back to reading the bare `<video>` element. Useful when the
     // player module is loaded but `getPlayerInfo()` hasn't been wired
     // up yet (cold start with persisted audio-only).
-    const ve = document.querySelector<HTMLVideoElement>('#live-player video')
-    if (ve && Number.isFinite(ve.volume)) preservedVolume = ve.volume
+    const ve = getPlayerVideo()
+    if (ve) {
+      if (Number.isFinite(ve.volume)) audioOnlyVolume.value = ve.volume
+      // Capture mute here too: the `info?.volume?.disabled` read below
+      // only fires when getPlayerInfo() returned data, i.e. never on this
+      // fallback branch. Without this, `audioOnlyMuted` keeps its stale
+      // default (false), so a natively-muted player would come back
+      // UNMUTED in audio-only and the slider would show the raw level
+      // instead of 0.
+      audioOnlyMuted.value = ve.muted
+    }
   }
   const muted = info?.volume?.disabled
-  if (typeof muted === 'boolean') preservedMuted = muted
+  if (typeof muted === 'boolean') audioOnlyMuted.value = muted
 }
 
-/** Apply the captured volume / mute to the audio element. */
+/**
+ * Push the current `audioOnlyVolume` / `audioOnlyMuted` signal values onto
+ * the hidden <audio> element. Reads both signals UP FRONT, before the
+ * `audioEl` null-guard, so that when this runs inside the live-apply
+ * effect it subscribes to both even on the early passes where no pipeline
+ * is attached yet — otherwise a slider move made before the stream
+ * attaches wouldn't re-trigger the effect once it does. Also called
+ * directly from `attachMpegtsPlayer` to apply the seeded value the moment
+ * a fresh element exists (first engage + every stream refresh).
+ */
 function syncVolumeToAudioEl(): void {
+  const volume = audioOnlyVolume.value
+  const muted = audioOnlyMuted.value
   if (!audioEl) return
-  if (Math.abs(audioEl.volume - preservedVolume) > 0.005) audioEl.volume = preservedVolume
-  if (audioEl.muted !== preservedMuted) audioEl.muted = preservedMuted
+  if (Math.abs(audioEl.volume - volume) > 0.005) audioEl.volume = volume
+  if (audioEl.muted !== muted) audioEl.muted = muted
+}
+
+/**
+ * Carry the user's audio-only volume / mute back onto bilibili's native
+ * player after disengage — the symmetric counterpart of
+ * `captureNativeVolume` (which seeds the other direction at engage time).
+ * Without this, the level set while listening in audio-only is silently
+ * dropped on the way back to video: `livePlayer.reload()` restores the
+ * native player at ITS own pre-stopPlayback volume, which bilibili
+ * remembers independently of our hidden <audio> element.
+ *
+ * We write `volume` / `muted` onto the `<video>` element (a standard HTML5
+ * media property — assigning `.volume` fires `volumechange`, which
+ * bilibili's player observes to update its own slider UI), but only AFTER
+ * the reloaded player is actually streaming again, detected by the same
+ * `blob:` src signal the watchdog uses. Applying post-playback lands us
+ * after the player's own init-time volume application, so our value wins
+ * instead of being clobbered a beat later. After `stopPlayback()` the src
+ * is a static poster `.mp4`; it flips back to `blob:` once `reload()`
+ * re-attaches a MediaSource, which is our "ready" edge.
+ *
+ * Bounded poll (~5s) so a room that never comes back (reload failed,
+ * user navigated away) doesn't leak a pending loop. `gen` is captured at
+ * disengage time: if the user flips audio-only back on while we're
+ * waiting, `engagementGen` moves and we abort rather than writing a stale
+ * volume onto a player the new engage is about to stop again.
+ */
+async function restoreVolumeToNativePlayer(volume: number, muted: boolean, gen: number): Promise<void> {
+  const target = Math.max(0, Math.min(1, volume))
+  const POLL_MS = 200
+  const MAX_POLLS = 25 // ~5s ceiling
+
+  const apply = (): boolean => {
+    const v = getPlayerVideo()
+    if (!v) return false
+    v.volume = target
+    v.muted = muted
+    return true
+  }
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    if (gen !== engagementGen) return // re-engaged audio-only — leave it alone
+    const v = getPlayerVideo()
+    // `blob:` src means the reloaded player has re-attached a MediaSource
+    // and is streaming — apply now so we land after its init volume.
+    if (v && isNativePlayerStreaming(v)) {
+      apply()
+      return
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, POLL_MS))
+  }
+
+  // Fallback: no `blob:` src within the window (slow CDN / odd room).
+  // Apply to whatever <video> exists so the user isn't left at the wrong
+  // level — a possibly-early write beats no write.
+  if (gen === engagementGen) apply()
 }
 
 /**
@@ -844,11 +917,23 @@ function disengageAudioOnly(): void {
   // signal for "we need to reload to restore video".
   if (nativePlayerStopped) {
     nativePlayerStopped = false
+    // Snapshot the user's audio-only level BEFORE the async reload so a
+    // later signal change can't shift what we carry back. `engagementGen`
+    // was already bumped at the top of this function; capture it so the
+    // restore aborts if the user re-engages audio-only mid-reload.
+    const carryVolume = audioOnlyVolume.value
+    const carryMuted = audioOnlyMuted.value
+    const gen = engagementGen
     const player = getLivePlayer()
     if (player?.reload) {
       try {
         player.reload()
         appendLog('🎬 已关闭仅音频模式，正在恢复直播')
+        // Carry the audio-only volume/mute onto the resumed video so the
+        // level set while listening survives the switch back. Fire-and-
+        // forget: it waits for playback to actually resume and aborts via
+        // the gen guard if the user toggles audio-only on again.
+        void restoreVolumeToNativePlayer(carryVolume, carryMuted, gen)
         return
       } catch (err) {
         console.warn('[audio-only] reload failed:', err)
@@ -948,6 +1033,7 @@ function removeStyleEl(): void {
 }
 
 let stateEffectDispose: (() => void) | null = null
+let volumeEffectDispose: (() => void) | null = null
 
 /**
  * Public entrypoint. Wired up exactly once from `app.tsx` — re-calling
@@ -960,11 +1046,16 @@ let stateEffectDispose: (() => void) | null = null
 export function startAudioOnly(): void {
   if (stateEffectDispose) return
   ensureStyleEl()
-  // Single effect drives the entire feature: every toggle of the signal
-  // re-applies the player state. `signal.value` is read inside, so
-  // @preact/signals tracks the dependency automatically.
+  // Two effects drive the feature. The first re-applies player state on
+  // every toggle of `audioOnlyEnabled`. The second mirrors the live
+  // volume/mute controls onto the hidden <audio> element whenever the
+  // user moves the slider or toggles mute. The `signal.value` reads
+  // inside each let @preact/signals track the dependencies automatically.
   stateEffectDispose = effect(() => {
     applyAudioOnlyMode(audioOnlyEnabled.value)
+  })
+  volumeEffectDispose = effect(() => {
+    syncVolumeToAudioEl()
   })
 }
 
@@ -972,6 +1063,10 @@ export function stopAudioOnly(): void {
   if (stateEffectDispose) {
     stateEffectDispose()
     stateEffectDispose = null
+  }
+  if (volumeEffectDispose) {
+    volumeEffectDispose()
+    volumeEffectDispose = null
   }
   clearPendingApply()
   destroyAudioPipeline()
