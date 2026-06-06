@@ -79,6 +79,7 @@ import { ensureRoomId } from './api'
 import { MPEGTS_CDN_URL } from './const'
 import { loadScript } from './load-script'
 import { appendLog } from './log'
+import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR } from './player-dom'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost } from './utils'
 
@@ -100,17 +101,17 @@ const STYLE = `
  * MP4 poster that bilibili's player shows after stopPlayback() also
  * lives inside #live-player, so this rule covers the "stopped" state
  * too without revealing a frozen frame. */
-html.${HTML_FLAG_CLASS} #live-player video {
+html.${HTML_FLAG_CLASS} ${PLAYER_CONTAINER_SELECTOR} video {
   visibility: hidden;
 }
 
 /* Visual hint that the player frame is intentionally blank rather than
  * broken: a centered "🎧 仅音频模式" label fades in while the flag is
  * set. Anchored to #live-player so it tracks the player size on resize. */
-html.${HTML_FLAG_CLASS} #live-player {
+html.${HTML_FLAG_CLASS} ${PLAYER_CONTAINER_SELECTOR} {
   position: relative;
 }
-html.${HTML_FLAG_CLASS} #live-player::after {
+html.${HTML_FLAG_CLASS} ${PLAYER_CONTAINER_SELECTOR}::after {
   content: '🎧 LAPLACE Chatterbox - 仅音频模式';
   position: absolute;
   top: 10px;
@@ -157,12 +158,6 @@ function getLivePlayer(): LivePlayerLike | null {
   const candidate = (unsafeWindow as unknown as { livePlayer?: LivePlayerLike }).livePlayer
   return candidate ?? null
 }
-
-/** Selector for bilibili's player `<video>` element. Mounting of this
- *  node is our proxy for "the player bundle has initialised far enough
- *  that `window.livePlayer` should be available". Same selector +
- *  rationale as `lib/auto-quality.ts` — kept in sync intentionally. */
-const PLAYER_VIDEO_SELECTOR = '#live-player video'
 
 /**
  * Wait for bilibili's player to be ready, returning the `livePlayer`
@@ -251,7 +246,7 @@ function waitForLivePlayer(maxWaitMs = 3000): Promise<LivePlayerLike | null> {
       // The `<video>` mount is what triggers us via the observer; if
       // it's gone the player isn't ready in any sense and there's
       // nothing to do — let the observer keep waiting.
-      if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return
+      if (!getPlayerVideo()) return
       const player = getLivePlayer()
       if (player?.stopPlayback) {
         finish(player)
@@ -273,7 +268,7 @@ function waitForLivePlayer(maxWaitMs = 3000): Promise<LivePlayerLike | null> {
     observer = new MutationObserver(() => {
       // Cheap query: most mutations on bilibili pages don't touch
       // `#live-player video`, so this returns null fast and we no-op.
-      if (!document.querySelector(PLAYER_VIDEO_SELECTOR)) return
+      if (!getPlayerVideo()) return
       // Reset retry counter on each fresh mount — a new `<video>`
       // appearing means a new state-lag window is acceptable.
       stateLagRetries = 0
@@ -534,11 +529,11 @@ function startWatchdog(): void {
   clearWatchdog()
   watchdogTimer = setInterval(() => {
     if (!audioOnlyEnabled.value) return
-    const v = document.querySelector<HTMLVideoElement>('#live-player video')
+    const v = getPlayerVideo()
     if (!v) return
     // `blob:` src means the player has an active MediaSource attached
     // i.e. somebody re-engaged it after we stopped. Re-stop.
-    if (v.src.startsWith('blob:')) {
+    if (isNativePlayerStreaming(v)) {
       const player = getLivePlayer()
       try {
         player?.stopPlayback?.()
@@ -588,7 +583,7 @@ function captureNativeVolume(): void {
     // Fall back to reading the bare `<video>` element. Useful when the
     // player module is loaded but `getPlayerInfo()` hasn't been wired
     // up yet (cold start with persisted audio-only).
-    const ve = document.querySelector<HTMLVideoElement>('#live-player video')
+    const ve = getPlayerVideo()
     if (ve && Number.isFinite(ve.volume)) audioOnlyVolume.value = ve.volume
   }
   const muted = info?.volume?.disabled
@@ -644,7 +639,7 @@ async function restoreVolumeToNativePlayer(volume: number, muted: boolean, gen: 
   const MAX_POLLS = 25 // ~5s ceiling
 
   const apply = (): boolean => {
-    const v = document.querySelector<HTMLVideoElement>('#live-player video')
+    const v = getPlayerVideo()
     if (!v) return false
     v.volume = target
     v.muted = muted
@@ -653,10 +648,10 @@ async function restoreVolumeToNativePlayer(volume: number, muted: boolean, gen: 
 
   for (let i = 0; i < MAX_POLLS; i++) {
     if (gen !== engagementGen) return // re-engaged audio-only — leave it alone
-    const v = document.querySelector<HTMLVideoElement>('#live-player video')
+    const v = getPlayerVideo()
     // `blob:` src means the reloaded player has re-attached a MediaSource
     // and is streaming — apply now so we land after its init volume.
-    if (v?.src.startsWith('blob:')) {
+    if (v && isNativePlayerStreaming(v)) {
       apply()
       return
     }
