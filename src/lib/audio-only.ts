@@ -584,7 +584,16 @@ function captureNativeVolume(): void {
     // player module is loaded but `getPlayerInfo()` hasn't been wired
     // up yet (cold start with persisted audio-only).
     const ve = getPlayerVideo()
-    if (ve && Number.isFinite(ve.volume)) audioOnlyVolume.value = ve.volume
+    if (ve) {
+      if (Number.isFinite(ve.volume)) audioOnlyVolume.value = ve.volume
+      // Capture mute here too: the `info?.volume?.disabled` read below
+      // only fires when getPlayerInfo() returned data, i.e. never on this
+      // fallback branch. Without this, `audioOnlyMuted` keeps its stale
+      // default (false), so a natively-muted player would come back
+      // UNMUTED in audio-only and the slider would show the raw level
+      // instead of 0.
+      audioOnlyMuted.value = ve.muted
+    }
   }
   const muted = info?.volume?.disabled
   if (typeof muted === 'boolean') audioOnlyMuted.value = muted
