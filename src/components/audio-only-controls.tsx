@@ -72,8 +72,8 @@ export function AudioOnlyControls() {
           range even though it's visually hidden at rest. */}
       <div
         class={cn(
-          'overflow-hidden',
-          'w-0 group-focus-within:w-24 group-hover:w-24',
+          'flex items-center overflow-hidden',
+          'w-0 group-focus-within:w-34 group-hover:w-34',
           'transition-[width] duration-200 ease-out'
         )}
       >
@@ -85,7 +85,7 @@ export function AudioOnlyControls() {
           value={sliderValue}
           onInput={e => onSlide(Number(e.currentTarget.value))}
           aria-label='音量'
-          class={cn('mr-2 ml-1 h-8 w-20 cursor-pointer accent-[#FF6699]')}
+          class={cn('mr-2 ml-1 w-30 cursor-pointer rounded-full accent-[#eee]')}
         />
       </div>
     </div>
