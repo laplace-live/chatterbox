@@ -167,6 +167,22 @@ export function extractRoomNumber(url: string): string | undefined {
 }
 
 /**
+ * Extracts the BV id from a Bilibili video URL (`www.bilibili.com/video/...`).
+ *
+ * The id is the first path segment shaped like a BV id — `BV` followed by a
+ * run of base58 characters, e.g. `/video/BV1NbE866EK7` or
+ * `/video/BV1NbE866EK7/?p=2`. Returns `undefined` when the path carries no BV
+ * id (e.g. legacy `/video/av170001` short links), so callers can skip mounting
+ * rather than build a broken archive URL. Case-sensitive: BV ids are base58, so
+ * the canonical `BV` prefix is matched as-is.
+ */
+export function extractBvid(url: string): string | undefined {
+  const urlObj = new URL(url)
+  const pathSegments = urlObj.pathname.split('/').filter(segment => segment !== '')
+  return pathSegments.find(segment => /^BV[0-9A-Za-z]+$/.test(segment))
+}
+
+/**
  * Runs `cb` once the DOM is parsed — immediately if parsing already finished,
  * otherwise on `DOMContentLoaded`. Used when a check needs the document's
  * inline scripts to have run (e.g. reading a server-rendered global).

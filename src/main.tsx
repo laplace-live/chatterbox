@@ -6,9 +6,10 @@ import './lib/fetch-hijack'
 
 import { AppRoom } from './components/app-room'
 import { AppSpace } from './components/app-space'
+import { AppVideo } from './components/app-video'
 import { infoCurrentUid } from './lib/info-status'
 import { installShadowKeyboardGuard } from './lib/shadow-keyboard-guard'
-import { extractRoomNumber, whenDomReady } from './lib/utils'
+import { extractBvid, extractRoomNumber, whenDomReady } from './lib/utils'
 
 // `__NEPTUNE_IS_MY_WAIFU__` is B站's standard live-room SSR data global. We
 // only probe for its presence, so the value type is irrelevant.
@@ -66,14 +67,15 @@ function waitForBody(cb: () => void): void {
   observer.observe(document.documentElement, { childList: true })
 }
 
-// The userscript matches both live.bilibili.com (full danmaku helper UI)
-// and space.bilibili.com (originally fetch-hijack only, now also the
-// minimal AppSpace for the info button). Each host gets a different
-// tree so live-page features like the send loop, room-id resolution,
-// and DOM hijacks don't run against pages they were never designed for,
-// and so the space-page mount stays a tiny read-only surface.
+// The userscript matches three bilibili surfaces, each getting a different
+// tree so live-page features (send loop, room-id resolution, DOM hijacks)
+// never run against pages they were never designed for:
+//   - live.bilibili.com  → full danmaku helper UI (AppRoom)
+//   - space.bilibili.com → tiny read-only info surface (AppSpace)
+//   - www.bilibili.com/video/* → minimal LAPLACE ICU archive button (AppVideo)
 const isLiveHost = location.hostname === 'live.bilibili.com'
 const isSpaceHost = location.hostname === 'space.bilibili.com'
+const isVideoHost = location.hostname === 'www.bilibili.com'
 
 // Campaign / activity / promotion pages embed the actual live room in a
 // same-origin `/blanc/<roomid>` iframe, and the userscript matches (and so
@@ -116,4 +118,10 @@ if (isLiveHost && hasResolvableRoom) {
     if (Number.isFinite(uid)) infoCurrentUid.value = uid
   }
   waitForBody(() => mount(<AppSpace />))
+} else if (isVideoHost) {
+  // Video watch pages (`/video/BVxxxx`). Mount only when the URL carries a
+  // BV id — legacy `av` short links and non-video paths under www.bilibili.com
+  // have nothing to archive, so we skip them rather than render a dead button.
+  const bvid = extractBvid(location.href)
+  if (bvid) waitForBody(() => mount(<AppVideo bvid={bvid} />))
 }

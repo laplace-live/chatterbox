@@ -22,7 +22,7 @@ export default defineConfig({
         author: 'laplace-live',
         license: 'AGPL-3.0',
         icon: 'https://laplace.live/favicon.ico',
-        match: ['*://live.bilibili.com/*', '*://space.bilibili.com/*'],
+        match: ['*://live.bilibili.com/*', '*://space.bilibili.com/*', '*://www.bilibili.com/video/*'],
         'run-at': 'document-start',
       },
       build: {
