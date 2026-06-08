@@ -44,6 +44,7 @@ import {
   optimizeLayout,
   remoteKeywords,
   remoteKeywordsLastSync,
+  remoteRulesEnabled,
   settingsAutoSeekOpen,
   settingsBlacklistOpen,
   settingsFeaturesOpen,
@@ -214,6 +215,11 @@ export function SettingsTab() {
   }
 
   const updateRemoteStatus = () => {
+    if (!remoteRulesEnabled.value) {
+      syncStatus.value = '已禁用'
+      syncStatusColor.value = '#666'
+      return
+    }
     const rk = remoteKeywords.value
     const ls = remoteKeywordsLastSync.value
     if (!rk || !ls) {
@@ -522,13 +528,23 @@ export function SettingsTab() {
   useEffect(() => {
     if (didInit.current) return
     didInit.current = true
-    const ls = remoteKeywordsLastSync.value
-    if (!ls || Date.now() - ls > SYNC_INTERVAL) {
-      void syncRemote()
+    // Skip the initial fetch and pause the periodic one while the cloud layer
+    // is off — no point hitting the network for rules we won't apply. The
+    // interval re-checks the signal each tick, so re-enabling resumes it
+    // without remounting.
+    if (remoteRulesEnabled.value) {
+      const ls = remoteKeywordsLastSync.value
+      if (!ls || Date.now() - ls > SYNC_INTERVAL) {
+        void syncRemote()
+      } else {
+        updateRemoteStatus()
+      }
     } else {
       updateRemoteStatus()
     }
-    const timer = setInterval(() => void syncRemote(), SYNC_INTERVAL)
+    const timer = setInterval(() => {
+      if (remoteRulesEnabled.value) void syncRemote()
+    }, SYNC_INTERVAL)
     return () => clearInterval(timer)
   }, [])
 
@@ -862,8 +878,38 @@ export function SettingsTab() {
               </a>
             </div>
             <div class={HINT_CLASS}>每10分钟会自动同步云端替换规则</div>
+            <Checkbox
+              id='remoteRulesEnabled'
+              checked={remoteRulesEnabled.value}
+              onInput={e => {
+                const enabled = e.currentTarget.checked
+                remoteRulesEnabled.value = enabled
+                // Rebuild the map right away so the change takes effect without
+                // a reload. When re-enabling after the auto-sync was paused,
+                // pull fresh rules if the cache is missing or stale (syncRemote
+                // rebuilds the map + status itself).
+                if (enabled) {
+                  const ls = remoteKeywordsLastSync.value
+                  if (!ls || Date.now() - ls > SYNC_INTERVAL) {
+                    void syncRemote()
+                  } else {
+                    buildReplacementMap()
+                    updateRemoteStatus()
+                  }
+                } else {
+                  buildReplacementMap()
+                  updateRemoteStatus()
+                }
+              }}
+              label='启用云端规则替换'
+            />
             <div class={ROW_CLASS}>
-              <Button variant='outline' size='sm' disabled={syncing.value} onClick={() => void syncRemote()}>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={syncing.value || !remoteRulesEnabled.value}
+                onClick={() => void syncRemote()}
+              >
                 {syncing.value ? '同步中…' : '同步'}
               </Button>
               <Button variant='outline' size='sm' disabled={testingRemote.value} onClick={() => void testRemote()}>

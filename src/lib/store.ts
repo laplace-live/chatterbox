@@ -312,6 +312,12 @@ export const sonioxAudioDeviceId = gmSignal('sonioxAudioDeviceId', '')
 })()
 
 // Replacement rules
+// Master switch for the cloud-synced replacement rules. Off by default — the
+// shared 云端词库 is opinionated, so users opt in consciously. When off,
+// `buildReplacementMap` skips the remote layer and the periodic auto-sync is
+// paused (local global / room rules are unaffected). "刷新生效" doesn't apply —
+// the map is rebuilt immediately on toggle.
+export const remoteRulesEnabled = gmSignal('remoteRulesEnabled', false)
 export const localGlobalRules = gmSignal<Array<{ from?: string; to?: string }>>('localGlobalRules', [])
 export const localRoomRules = gmSignal<Record<string, Array<{ from?: string; to?: string }>>>('localRoomRules', {})
 export const remoteKeywords = gmSignal<{
