@@ -13,43 +13,22 @@ const GET_INFO_BY_USER_PATTERN = '/xlive/web-room/v1/index/getInfoByUser'
 const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
 const ACC_INFO_PATTERN = '/x/space/wbi/acc/info'
 
-// Observer references live at module scope so the toggle-off path
-// (`effect(...)` below) can cancel a pending injection. Without this, a
-// MutationObserver waiting for B站's late-mounted header could fire after
-// the user disables the feature and inject the indicator anyway — the
-// `remove*()` calls find nothing in the DOM yet, so they can't undo it.
+// `liveBlockObserver` lives at module scope so the toggle-off path
+// (`effect(...)` below) can cancel a pending injection: a MutationObserver
+// waiting for B站's late-mounted header could otherwise fire after the user
+// disables the feature and inject the pill anyway — the `remove*()` call finds
+// nothing in the DOM yet, so it can't undo it. The space-page banners keep
+// their observers inside `createSpaceBanner`'s closure for the same reason.
 let liveBlockObserver: MutationObserver | null = null
-let spaceBlockObserver: MutationObserver | null = null
-let deletedSpaceObserver: MutationObserver | null = null
 
 function disconnectLiveBlockObserver(): void {
   liveBlockObserver?.disconnect()
   liveBlockObserver = null
 }
 
-function disconnectSpaceBlockObserver(): void {
-  spaceBlockObserver?.disconnect()
-  spaceBlockObserver = null
-}
-
-function disconnectDeletedSpaceObserver(): void {
-  deletedSpaceObserver?.disconnect()
-  deletedSpaceObserver = null
-}
-
 function removeLiveBlockIndicator(): void {
   disconnectLiveBlockObserver()
   document.getElementById(LIVE_BLOCK_INDICATOR_ID)?.remove()
-}
-
-function removeSpaceBlockBanner(): void {
-  disconnectSpaceBlockObserver()
-  document.getElementById(SPACE_BLOCK_BANNER_ID)?.remove()
-}
-
-function removeDeletedSpaceBanner(): void {
-  disconnectDeletedSpaceObserver()
-  document.getElementById(DELETED_SPACE_BANNER_ID)?.remove()
 }
 
 /**
@@ -114,19 +93,32 @@ function ensureLiveBlockIndicator(): void {
 }
 
 /**
- * Full-width banner inserted as a sibling immediately after B站's top
- * header on user space pages. Same self-healing observer pattern as the
- * livestream pill for the (common) case where our userscript runs before
- * B站 has rendered the header.
+ * Factory for a full-width banner inserted as a sibling immediately after B站's
+ * top header on user space pages. Both space-page banners — the 拉黑 unlock and
+ * the 注销/封禁 revival — share this; they differ only in element id, copy, and
+ * whether a live signal can cancel a pending injection.
+ *
+ * Self-healing: B站 mounts `.header.space-header` after our document-start run,
+ * so when it isn't in the DOM yet we wait with a one-shot MutationObserver. The
+ * observer is kept in this closure (not at module scope) so `remove()` — called
+ * from the toggle-off `effect(...)` or on SPA navigation — can cancel a
+ * still-pending injection that would otherwise fire after the feature is
+ * disabled / the user has moved to another profile.
  */
-function ensureSpaceBlockBanner(): void {
-  if (document.getElementById(SPACE_BLOCK_BANNER_ID)) return
+function createSpaceBanner(id: string) {
   const headerSelector = '.header.space-header'
-  const inject = (header: HTMLElement): void => {
-    if (document.getElementById(SPACE_BLOCK_BANNER_ID)) return
+  let observer: MutationObserver | null = null
+
+  const disconnect = (): void => {
+    observer?.disconnect()
+    observer = null
+  }
+
+  const inject = (header: HTMLElement, text: string): void => {
+    if (document.getElementById(id)) return
     const el = document.createElement('div')
-    el.id = SPACE_BLOCK_BANNER_ID
-    el.textContent = '✽ LAPLACE 直播助手已解除该用户的部分拉黑限制'
+    el.id = id
+    el.textContent = text
     el.style.cssText = [
       'background: rgb(228 243 240)',
       'color: rgb(0 82 63)',
@@ -139,68 +131,42 @@ function ensureSpaceBlockBanner(): void {
     ].join(';')
     header.insertAdjacentElement('afterend', el)
   }
-  const header = document.querySelector<HTMLElement>(headerSelector)
-  if (header) {
-    inject(header)
-    return
+
+  return {
+    remove(): void {
+      disconnect()
+      document.getElementById(id)?.remove()
+    },
+    /**
+     * Inject the banner now, or once B站 mounts the header. `shouldInject` is
+     * re-checked inside the observer so a feature toggled off while we were
+     * waiting doesn't inject behind the user's back; always-on banners omit it.
+     */
+    ensure(text: string, shouldInject: () => boolean = () => true): void {
+      if (document.getElementById(id)) return
+      const header = document.querySelector<HTMLElement>(headerSelector)
+      if (header) {
+        inject(header, text)
+        return
+      }
+      disconnect()
+      observer = new MutationObserver(() => {
+        if (!shouldInject()) {
+          disconnect()
+          return
+        }
+        const h = document.querySelector<HTMLElement>(headerSelector)
+        if (!h) return
+        disconnect()
+        inject(h, text)
+      })
+      observer.observe(document.documentElement, { childList: true, subtree: true })
+    },
   }
-  disconnectSpaceBlockObserver()
-  spaceBlockObserver = new MutationObserver(() => {
-    // Same toggle-off race as `ensureLiveBlockIndicator`: re-check the
-    // signal before injecting in case the user disabled the feature
-    // while we were waiting for B站 to mount `.header.space-header`.
-    if (!unlockSpaceBlock.value) {
-      disconnectSpaceBlockObserver()
-      return
-    }
-    const h = document.querySelector<HTMLElement>(headerSelector)
-    if (!h) return
-    disconnectSpaceBlockObserver()
-    inject(h)
-  })
-  spaceBlockObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
-/**
- * Full-width banner for the revived-注销-account case. Same self-healing
- * observer / sibling-after-header pattern as `ensureSpaceBlockBanner`, minus
- * the toggle re-check: this feature is always-on (no configurator switch), so
- * there's no "disabled while we waited" race to guard against.
- */
-function ensureDeletedSpaceBanner(): void {
-  if (document.getElementById(DELETED_SPACE_BANNER_ID)) return
-  const headerSelector = '.header.space-header'
-  const inject = (header: HTMLElement): void => {
-    if (document.getElementById(DELETED_SPACE_BANNER_ID)) return
-    const el = document.createElement('div')
-    el.id = DELETED_SPACE_BANNER_ID
-    el.textContent = '✽ LAPLACE 直播助手已恢复该账号的可见内容'
-    el.style.cssText = [
-      'background: rgb(228 243 240)',
-      'color: rgb(0 82 63)',
-      'padding: 8px 16px',
-      'font-size: 12px',
-      'text-align: center',
-      'box-sizing: border-box',
-      'width: 100%',
-      'line-height: 1',
-    ].join(';')
-    header.insertAdjacentElement('afterend', el)
-  }
-  const header = document.querySelector<HTMLElement>(headerSelector)
-  if (header) {
-    inject(header)
-    return
-  }
-  disconnectDeletedSpaceObserver()
-  deletedSpaceObserver = new MutationObserver(() => {
-    const h = document.querySelector<HTMLElement>(headerSelector)
-    if (!h) return
-    disconnectDeletedSpaceObserver()
-    inject(h)
-  })
-  deletedSpaceObserver.observe(document.documentElement, { childList: true, subtree: true })
-}
+const spaceBlockBanner = createSpaceBanner(SPACE_BLOCK_BANNER_ID)
+const deletedSpaceBanner = createSpaceBanner(DELETED_SPACE_BANNER_ID)
 
 // React to the configurator toggle in real time so disabling the feature
 // drops the indicator immediately, without forcing a reload. (Re-enabling
@@ -210,7 +176,7 @@ effect(() => {
   if (!unlockLiveBlock.value) removeLiveBlockIndicator()
 })
 effect(() => {
-  if (!unlockSpaceBlock.value) removeSpaceBlockBanner()
+  if (!unlockSpaceBlock.value) spaceBlockBanner.remove()
 })
 
 /** Pull the numeric `mid` out of an acc/info URL's query (0 if absent). */
@@ -301,12 +267,12 @@ function applyTransforms(url: string, data: any): void {
     // Same SPA-navigation rationale as the livestream branch above:
     // clear the previous user's banner before deciding whether the
     // current user's relation needs one.
-    removeSpaceBlockBanner()
+    spaceBlockBanner.remove()
     const beRel = data?.data?.be_relation
     if (beRel?.attribute === 128) {
       beRel.attribute = 0
       console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
-      ensureSpaceBlockBanner()
+      spaceBlockBanner.ensure('✽ LAPLACE 直播助手已解除该用户的部分拉黑限制', () => unlockSpaceBlock.value)
     }
   } else if (url.includes(ACC_INFO_PATTERN)) {
     // 注销 (self-deactivated) accounts answer acc/info with `code:-404` /
@@ -319,17 +285,17 @@ function applyTransforms(url: string, data: any): void {
     // Always-on (unlike the two block-unlocks above): the content is already
     // public, B站 just refuses to render the page around a missing profile.
     //
-    // `removeDeletedSpaceBanner()` runs unconditionally first so navigating
+    // `deletedSpaceBanner.remove()` runs unconditionally first so navigating
     // (SPA-style) from a revived account to a normal one clears the stale
     // banner; we only re-add it when this response was actually a 注销/封禁 one.
-    removeDeletedSpaceBanner()
+    deletedSpaceBanner.remove()
     if (data?.code === -404) {
       const mid = midFromUrl(url)
       console.log('[LAPLACE Chatterbox] Reviving deactivated account space:', mid || url)
       data.code = 0
       data.message = 'OK'
       data.data = buildDeletedAccountProfile(mid)
-      ensureDeletedSpaceBanner()
+      deletedSpaceBanner.ensure('✽ LAPLACE 直播助手已恢复该注销账号的可见内容')
     } else if (data?.code === 0 && (data.data?.silence === 1 || data.data?.control === 1)) {
       // 封禁 (banned) accounts DO return real data, but with silence/control set
       // to 1 — the SPA renders the header then shows a "封禁中" screen instead of
@@ -338,7 +304,7 @@ function applyTransforms(url: string, data: any): void {
       console.log('[LAPLACE Chatterbox] Reviving banned account space:', midFromUrl(url) || url)
       data.data.silence = 0
       data.data.control = 0
-      ensureDeletedSpaceBanner()
+      deletedSpaceBanner.ensure('✽ LAPLACE 直播助手已恢复该封禁账号的可见内容')
     }
   }
 }
