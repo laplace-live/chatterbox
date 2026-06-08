@@ -99,6 +99,11 @@ export const autoSendPanelOpen = gmSignal('autoSendPanelOpen', true)
 export const autoBlendPanelOpen = gmSignal('autoBlendPanelOpen', true)
 export const normalSendPanelOpen = gmSignal('normalSendPanelOpen', true)
 export const memesPanelOpen = gmSignal('memesPanelOpen', true)
+// Master switch for the 烂梗库's networking. When off, the panel issues no
+// requests at all — no list fetch, no 30s polling, no copy-count reports — so a
+// privacy-conscious user can fully opt out of the LAPLACE memes service. Off by
+// default: users consciously opt in to the network activity.
+export const memesEnabled = gmSignal('memesEnabled', false)
 export const dialogOpen = gmSignal('dialogOpen', false)
 
 // Per-section open state for the Settings tab accordions. All default closed

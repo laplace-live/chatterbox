@@ -7,10 +7,11 @@ import { BASE_URL } from '../lib/const'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
-import { cachedStreamerUid, maxLength, memesPanelOpen, msgSendInterval } from '../lib/store'
+import { cachedStreamerUid, maxLength, memesEnabled, memesPanelOpen, msgSendInterval } from '../lib/store'
 import { processMessages } from '../lib/utils'
 import { AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
@@ -200,6 +201,9 @@ export function MemesList() {
   }
 
   const loadMemes = async ({ silent = false }: { silent?: boolean } = {}) => {
+    // Hard gate: never hit the network while the feature is off, even if a
+    // caller (e.g. a stale timer) sneaks past the effect-level guard.
+    if (!memesEnabled.value) return
     if (!silent) loading.value = true
     isError.value = false
 
@@ -266,10 +270,19 @@ export function MemesList() {
   }
 
   useEffect(() => {
+    // Toggling the feature off clears any already-loaded list and skips both
+    // the initial fetch and the polling timer, so disabling it stops all
+    // network activity immediately (not just on the next reload).
+    if (!memesEnabled.value) {
+      memes.value = []
+      status.value = '已禁用'
+      isError.value = false
+      return
+    }
     void loadMemes()
     const timer = setInterval(() => void loadMemes({ silent: true }), MEME_RELOAD_INTERVAL)
     return () => clearInterval(timer)
-  }, [sortBy.value])
+  }, [sortBy.value, memesEnabled.value])
 
   return (
     <>
@@ -283,9 +296,19 @@ export function MemesList() {
       </AccordionItem>
       {memesPanelOpen.value && (
         <>
-          <div class='my-2 flex items-center gap-2'>
+          <div class='my-2 flex flex-wrap items-center gap-x-2'>
+            <Checkbox
+              id='memesEnabled'
+              checked={memesEnabled.value}
+              onInput={e => {
+                memesEnabled.value = e.currentTarget.checked
+              }}
+              title='开启后才会向云端发起请求'
+              label='开启烂梗库'
+            />
             <NativeSelect
               value={sortBy.value}
+              disabled={!memesEnabled.value}
               onChange={e => {
                 const v = e.currentTarget.value
                 if (isMemeSortBy(v)) sortBy.value = v
@@ -295,7 +318,12 @@ export function MemesList() {
               <option value='copyCount'>最多复制</option>
               <option value='createdAt'>最新添加</option>
             </NativeSelect>
-            <Button variant='outline' size='sm' disabled={loading.value} onClick={() => void loadMemes()}>
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={loading.value || !memesEnabled.value}
+              onClick={() => void loadMemes()}
+            >
               {loading.value ? '加载中…' : '刷新'}
             </Button>
             <span class={isError.value ? 'text-[#f44]' : 'text-ga6'}>{status.value}</span>

@@ -30,8 +30,9 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     name: '烂梗列表',
     host: 'workers.vrp.moe',
     url: 'https://subspace.institute/docs/laplace-chatterbox/memes',
-    trigger: '打开独轮车页面中的烂梗列表时',
-    description: '从 LAPLACE Live! 服务获取烂梗列表。复制烂梗时会向服务报告使用次数。',
+    trigger: '在「烂梗库」面板中勾选「开启烂梗库」后',
+    description:
+      '从 LAPLACE Live! 服务获取烂梗列表。该功能默认关闭，需在「烂梗库」面板左上角手动勾选开启；开启后每 30 秒自动刷新一次，复制或发送烂梗时会向服务报告使用次数。',
   },
   {
     name: 'Soniox 语音识别',
