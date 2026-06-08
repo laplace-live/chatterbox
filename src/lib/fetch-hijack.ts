@@ -174,7 +174,7 @@ function ensureDeletedSpaceBanner(): void {
     if (document.getElementById(DELETED_SPACE_BANNER_ID)) return
     const el = document.createElement('div')
     el.id = DELETED_SPACE_BANNER_ID
-    el.textContent = '✽ LAPLACE 直播助手已恢复该注销账号的可见内容'
+    el.textContent = '✽ LAPLACE 直播助手已恢复该账号的可见内容'
     el.style.cssText = [
       'background: rgb(228 243 240)',
       'color: rgb(0 82 63)',
@@ -321,7 +321,7 @@ function applyTransforms(url: string, data: any): void {
     //
     // `removeDeletedSpaceBanner()` runs unconditionally first so navigating
     // (SPA-style) from a revived account to a normal one clears the stale
-    // banner; we only re-add it when this response was actually a -404.
+    // banner; we only re-add it when this response was actually a 注销/封禁 one.
     removeDeletedSpaceBanner()
     if (data?.code === -404) {
       const mid = midFromUrl(url)
@@ -329,6 +329,15 @@ function applyTransforms(url: string, data: any): void {
       data.code = 0
       data.message = 'OK'
       data.data = buildDeletedAccountProfile(mid)
+      ensureDeletedSpaceBanner()
+    } else if (data?.code === 0 && (data.data?.silence === 1 || data.data?.control === 1)) {
+      // 封禁 (banned) accounts DO return real data, but with silence/control set
+      // to 1 — the SPA renders the header then shows a "封禁中" screen instead of
+      // the content tabs. Both flags gate it (clearing only `silence` isn't
+      // enough), so reset both to reveal the still-intact contributions.
+      console.log('[LAPLACE Chatterbox] Reviving banned account space:', midFromUrl(url) || url)
+      data.data.silence = 0
+      data.data.control = 0
       ensureDeletedSpaceBanner()
     }
   }
