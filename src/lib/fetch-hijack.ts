@@ -5,11 +5,13 @@ import { unlockLiveBlock, unlockSpaceBlock } from './store'
 
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
 const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
+const DELETED_SPACE_BANNER_ID = 'laplace-chatterbox-deleted-space-banner'
 
 // B站 API URLs whose JSON we transform on the fly. Match by `includes` so
 // a query string / version prefix doesn't matter.
 const GET_INFO_BY_USER_PATTERN = '/xlive/web-room/v1/index/getInfoByUser'
 const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
+const ACC_INFO_PATTERN = '/x/space/wbi/acc/info'
 
 // Observer references live at module scope so the toggle-off path
 // (`effect(...)` below) can cancel a pending injection. Without this, a
@@ -18,6 +20,7 @@ const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
 // `remove*()` calls find nothing in the DOM yet, so they can't undo it.
 let liveBlockObserver: MutationObserver | null = null
 let spaceBlockObserver: MutationObserver | null = null
+let deletedSpaceObserver: MutationObserver | null = null
 
 function disconnectLiveBlockObserver(): void {
   liveBlockObserver?.disconnect()
@@ -29,6 +32,11 @@ function disconnectSpaceBlockObserver(): void {
   spaceBlockObserver = null
 }
 
+function disconnectDeletedSpaceObserver(): void {
+  deletedSpaceObserver?.disconnect()
+  deletedSpaceObserver = null
+}
+
 function removeLiveBlockIndicator(): void {
   disconnectLiveBlockObserver()
   document.getElementById(LIVE_BLOCK_INDICATOR_ID)?.remove()
@@ -37,6 +45,11 @@ function removeLiveBlockIndicator(): void {
 function removeSpaceBlockBanner(): void {
   disconnectSpaceBlockObserver()
   document.getElementById(SPACE_BLOCK_BANNER_ID)?.remove()
+}
+
+function removeDeletedSpaceBanner(): void {
+  disconnectDeletedSpaceObserver()
+  document.getElementById(DELETED_SPACE_BANNER_ID)?.remove()
 }
 
 /**
@@ -148,6 +161,47 @@ function ensureSpaceBlockBanner(): void {
   spaceBlockObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
 
+/**
+ * Full-width banner for the revived-注销-account case. Same self-healing
+ * observer / sibling-after-header pattern as `ensureSpaceBlockBanner`, minus
+ * the toggle re-check: this feature is always-on (no configurator switch), so
+ * there's no "disabled while we waited" race to guard against.
+ */
+function ensureDeletedSpaceBanner(): void {
+  if (document.getElementById(DELETED_SPACE_BANNER_ID)) return
+  const headerSelector = '.header.space-header'
+  const inject = (header: HTMLElement): void => {
+    if (document.getElementById(DELETED_SPACE_BANNER_ID)) return
+    const el = document.createElement('div')
+    el.id = DELETED_SPACE_BANNER_ID
+    el.textContent = '✽ LAPLACE 直播助手已恢复该注销账号的可见内容'
+    el.style.cssText = [
+      'background: rgb(228 243 240)',
+      'color: rgb(0 82 63)',
+      'padding: 8px 16px',
+      'font-size: 12px',
+      'text-align: center',
+      'box-sizing: border-box',
+      'width: 100%',
+      'line-height: 1',
+    ].join(';')
+    header.insertAdjacentElement('afterend', el)
+  }
+  const header = document.querySelector<HTMLElement>(headerSelector)
+  if (header) {
+    inject(header)
+    return
+  }
+  disconnectDeletedSpaceObserver()
+  deletedSpaceObserver = new MutationObserver(() => {
+    const h = document.querySelector<HTMLElement>(headerSelector)
+    if (!h) return
+    disconnectDeletedSpaceObserver()
+    inject(h)
+  })
+  deletedSpaceObserver.observe(document.documentElement, { childList: true, subtree: true })
+}
+
 // React to the configurator toggle in real time so disabling the feature
 // drops the indicator immediately, without forcing a reload. (Re-enabling
 // only re-shows it on the next fetch hit, which matches the existing
@@ -159,11 +213,60 @@ effect(() => {
   if (!unlockSpaceBlock.value) removeSpaceBlockBanner()
 })
 
-/** True iff the current signal state means we'd actually rewrite this URL. */
+/** Pull the numeric `mid` out of an acc/info URL's query (0 if absent). */
+function midFromUrl(url: string): number {
+  try {
+    const mid = new URL(url).searchParams.get('mid')
+    const n = mid ? Number(mid) : 0
+    return Number.isFinite(n) ? n : 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Synthetic `acc/info` `data` payload for a 注销 (self-deactivated) account,
+ * whose real response is `code:-404` with no `data` at all.
+ *
+ * `name` is hard-coded to B站's canonical deactivated-account label — every
+ * 注销 account renders as "账号已注销", and `x/web-interface/card` (the only
+ * other identity source) returns the same tombstone, so there's nothing
+ * user-specific to recover. `face` falls back to the default avatar; the
+ * rest are inert zero/empty values. The real follower/like counts still show
+ * — the space page sources those from `relation/stat` + `upstat`, not here.
+ *
+ * This is the *verified minimum* field set. The space SPA (Vue 3) guards
+ * almost every profile field with optional chaining, so a partial object
+ * renders — except four it dereferences UNGUARDED, each of which throws a
+ * (B站-swallowed) TypeError mid-render if its parent is missing:
+ *   - `profession.is_show`
+ *   - `sys_notice.content`
+ *   - `official.type`
+ *   - `birthday` — read as a string via `.match(...)`
+ * `elec` / `contract` / `fans_medal` / `top_photo_v2` get traversed into for
+ * the header so they're kept too; the identity fields (mid/name/face/sex/
+ * level/sign/…) are display-only. Everything else B站 normally sends (vip,
+ * pendant, nameplate, live_room, user_honour_info, attestation, gaia_*, …)
+ * is never read — proven with a logging Proxy against a real 注销 space.
+ * Don't trim anything below without re-checking the console for new
+ * `Cannot read properties of undefined (reading '…')` throws.
+ */
+function buildDeletedAccountProfile(mid: number) {
+  return {
+    mid,
+    name: '账号已注销',
+    official: { role: 0, title: '', desc: '', type: -1 },
+    profession: { name: '', department: '', title: '', is_show: 0 },
+  }
+}
+
+/** True iff we'd actually rewrite this URL given the current signal state. */
 function shouldHijackUrl(url: string): boolean {
   return (
     (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) ||
-    (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN))
+    (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN)) ||
+    // acc/info revival is always-on — no signal gate.
+    url.includes(ACC_INFO_PATTERN)
   )
 }
 
@@ -172,8 +275,9 @@ function shouldHijackUrl(url: string): boolean {
  * flags AND triggers the matching indicator/banner side effects.
  *
  * Idempotent: re-applying it on already-transformed data is a no-op
- * (`is_forbid` is already `false`, `attribute` is already `0`), so it's
- * safe even if B站's code clones a Response and consumes it twice.
+ * (`is_forbid` is already `false`, `attribute` is already `0`, and a revived
+ * acc/info already reads `code: 0`), so it's safe even if B站's code clones a
+ * Response and consumes it twice.
  */
 // biome-ignore lint/suspicious/noExplicitAny: parsed JSON shape from B站
 function applyTransforms(url: string, data: any): void {
@@ -203,6 +307,29 @@ function applyTransforms(url: string, data: any): void {
       beRel.attribute = 0
       console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
       ensureSpaceBlockBanner()
+    }
+  } else if (url.includes(ACC_INFO_PATTERN)) {
+    // 注销 (self-deactivated) accounts answer acc/info with `code:-404` /
+    // "啥都木有" and no `data`, which makes B站's space SPA short-circuit to
+    // its "啥都木有" error page and never request the content tabs. The
+    // contributions themselves survive deactivation (arc/search, dynamics,
+    // navnum all still return them) — only the profile shell is gone — so we
+    // synthesize a minimal profile to get the SPA past its gate.
+    //
+    // Always-on (unlike the two block-unlocks above): the content is already
+    // public, B站 just refuses to render the page around a missing profile.
+    //
+    // `removeDeletedSpaceBanner()` runs unconditionally first so navigating
+    // (SPA-style) from a revived account to a normal one clears the stale
+    // banner; we only re-add it when this response was actually a -404.
+    removeDeletedSpaceBanner()
+    if (data?.code === -404) {
+      const mid = midFromUrl(url)
+      console.log('[LAPLACE Chatterbox] Reviving deactivated account space:', mid || url)
+      data.code = 0
+      data.message = 'OK'
+      data.data = buildDeletedAccountProfile(mid)
+      ensureDeletedSpaceBanner()
     }
   }
 }
