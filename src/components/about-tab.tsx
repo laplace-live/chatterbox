@@ -22,8 +22,9 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     name: '云端替换规则',
     host: 'workers.vrp.moe',
     url: 'https://subspace.institute/docs/laplace-chatterbox/replacement',
-    trigger: '打开设置页时自动同步',
-    description: '从云端获取由社区维护的弹幕敏感词替换规则，每 10 分钟自动同步一次。',
+    trigger: '在设置中启用「云端规则替换」后自动同步',
+    description:
+      '从云端获取由社区维护的弹幕敏感词替换规则。该功能默认关闭，需在设置页手动开启；开启后会立即同步一次，并每 10 分钟自动同步一次。',
   },
   {
     name: '烂梗列表',
