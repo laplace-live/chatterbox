@@ -35,18 +35,18 @@ const EXTERNAL_SERVICES: ExternalService[] = [
       '从 LAPLACE Live! 服务获取烂梗列表。该功能默认关闭，需在「烂梗库」面板左上角手动勾选开启；开启后每 30 秒自动刷新一次，复制或发送烂梗时会向服务报告使用次数。',
   },
   {
-    name: 'Soniox 语音识别',
-    host: 'api.soniox.com',
-    url: 'https://soniox.com',
-    trigger: '使用同传功能时',
-    description: '通过 WebSocket 连接 Soniox 语音识别云服务，将麦克风音频流实时转换为文字。需要提供 Soniox API Key。',
-  },
-  {
     name: 'LLM API（用户自定义）',
     host: '用户在设置中配置',
     trigger: '在设置中点击「刷新」获取模型列表，或使用对应的 AI 功能时调用',
     description:
       '兼容 OpenAI API 的大语言模型服务，由用户自行配置 API 地址与 API Key。脚本会向用户填写的地址发送请求，请确保该地址可信。',
+  },
+  {
+    name: 'Soniox 语音识别',
+    host: 'api.soniox.com',
+    url: 'https://soniox.com',
+    trigger: '使用同传功能时',
+    description: '通过 WebSocket 连接 Soniox 语音识别云服务，将麦克风音频流实时转换为文字。需要提供 Soniox API Key。',
   },
   {
     name: 'Soniox SDK',
@@ -66,6 +66,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '主播公会 / MCN 信息',
     host: 'workers.vrp.moe',
+    url: 'https://subspace.institute/docs/laplace-chatterbox/streamer-info',
     trigger: '在设置中开启「显示公会」或「显示 MCN」后，打开主播信息面板时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID，获取该主播在 bilibili 的历史公会与 MCN 归属记录。两个开关共享同一个接口，开启其中任意一个即会触发请求。数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
@@ -73,6 +74,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '主播魔法期数据',
     host: 'workers.vrp.moe',
+    url: 'https://subspace.institute/docs/laplace-chatterbox/streamer-info',
     trigger: '在设置中开启「显示魔法期」后，打开主播信息面板时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID（直播间页面为主播 UID，个人空间页面为页面 UID），获取该主播的魔法期记录与预测。仅在开启对应开关后才会请求，数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
