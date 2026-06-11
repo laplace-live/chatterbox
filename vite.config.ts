@@ -3,6 +3,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
 
+const DOWNLOAD_BASE = 'https://laplace-live.github.io/chatterbox'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -24,6 +26,10 @@ export default defineConfig({
         icon: 'https://laplace.live/favicon.ico',
         match: ['*://live.bilibili.com/*', '*://space.bilibili.com/*', '*://www.bilibili.com/video/*'],
         'run-at': 'document-start',
+        // Self-hosted on GitHub Pages: managers poll the 1 KB meta file for
+        // version checks and only fetch the full script when it changes.
+        downloadURL: `${DOWNLOAD_BASE}/laplace-chatterbox.user.js`,
+        updateURL: `${DOWNLOAD_BASE}/laplace-chatterbox.meta.js`,
       },
       build: {
         metaFileName: true,

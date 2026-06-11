@@ -3,6 +3,7 @@ name: Build and Deploy
 on:
   push:
     branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +26,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - run: bun install --frozen-lockfile
+
+      - run: bun run lint
+
+      - run: bun test
 
       - run: bun run build
 
