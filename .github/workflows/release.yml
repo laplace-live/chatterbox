@@ -41,3 +41,22 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@v5
+
+      - name: Mirror to Cloudflare R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: downloads
+        run: |
+          # Short cache on meta.js so update checks see new versions quickly;
+          # user.js is only fetched after a version bump so it can cache longer.
+          bunx wrangler r2 object put "$R2_BUCKET/chatterbox/laplace-chatterbox.user.js" \
+            --file dist/laplace-chatterbox.user.js \
+            --content-type "text/javascript; charset=utf-8" \
+            --cache-control "public, max-age=120" \
+            --remote
+          bunx wrangler r2 object put "$R2_BUCKET/chatterbox/laplace-chatterbox.meta.js" \
+            --file dist/laplace-chatterbox.meta.js \
+            --content-type "text/javascript; charset=utf-8" \
+            --cache-control "public, max-age=60" \
+            --remote
