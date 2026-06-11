@@ -1,29 +1,7 @@
-import { readFileSync } from 'node:fs'
 import preact from '@preact/preset-vite'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
-
-// Read package.json directly — some packages (e.g. @preact/signals) don't
-// expose it through their exports map, so require() can't reach it.
-const pkgVersion = (name: string) =>
-  JSON.parse(readFileSync(new URL(`./node_modules/${name}/package.json`, import.meta.url), 'utf8')).version
-
-// Greasy Fork requires inlined libraries to carry source attribution and a
-// technical reason for not using @require. Loading preact via @require from
-// jsDelivr proved slow and unstable for this script's primary audience
-// (mainland-China Bilibili users, where public CDNs are unreliable), so
-// everything is bundled.
-const inlinedLibsBanner = `/*
- * Bundled third-party libraries (each bundled verbatim from its official npm
- * package, unminified by this build). They are not loaded via @require
- * because no UMD build that @require could load:
- * - preact@${pkgVersion('preact')} (+ hooks/jsx-runtime/compat) — https://www.npmjs.com/package/preact (deps no UMD support)
- * - @preact/signals@${pkgVersion('@preact/signals')} — https://www.npmjs.com/package/@preact/signals (no UMD build)
- * - tailwind-merge@${pkgVersion('tailwind-merge')} — https://www.npmjs.com/package/tailwind-merge (no UMD build)
- * - clsx@${pkgVersion('clsx')} — https://www.npmjs.com/package/clsx
- * - @tabler/icons-preact@${pkgVersion('@tabler/icons-preact')} — https://www.npmjs.com/package/@tabler/icons-preact (only the icons actually used)
- */`
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -52,14 +30,4 @@ export default defineConfig({
       },
     }),
   ],
-  build: {
-    // Greasy Fork requires the posted script body to be unminified, with
-    // whitespace and variable names retained.
-    minify: false,
-    rollupOptions: {
-      output: {
-        banner: inlinedLibsBanner,
-      },
-    },
-  },
 })

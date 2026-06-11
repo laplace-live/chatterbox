@@ -1,4 +1,5 @@
 import { useSignal } from '@preact/signals'
+import { Fragment } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../lib/api'
