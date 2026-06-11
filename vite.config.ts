@@ -3,7 +3,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
 
-const DOWNLOAD_BASE = 'https://laplace-live.github.io/chatterbox'
+// const DOWNLOAD_BASE = 'https://laplace-live.github.io/chatterbox' // Github Pages backup, 100 GB bandwidth/month limit
+const DOWNLOAD_BASE = 'https://downlaods.vrp.moe/chatterbox'
 
 // https://vitejs.dev/config/
 export default defineConfig({
