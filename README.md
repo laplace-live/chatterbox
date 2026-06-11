@@ -6,7 +6,7 @@ A userscript for Bilibili Live that adds danmaku (chat message) utilities — au
 
 Requires a userscript manager such as [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
 
-Install from [Greasy Fork](https://greasyfork.org/scripts/552241).
+Install from [LAPLACE Live!](https://laplace.live/chatterbox).
 
 ## Credits
 
