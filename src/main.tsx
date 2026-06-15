@@ -85,25 +85,40 @@ const isVideoHost = location.hostname === 'www.bilibili.com'
 //
 //   - `/blackboard/era/<id>.html` campaign shells have no room number in their
 //     path, so `extractRoomNumber` already excludes them here.
-//   - `/<roomid>` promotion rooms like `/510` look exactly like a normal room
+//   - `/<roomid>` activity rooms like `/5555` look exactly like a normal room
 //     (`/999`) by URL, yet the real room lives in their `/blanc/<id>` iframe.
-//     The number-only gate used to mount the shell on top of its iframe — the
-//     reported double-mount on `/510`.
+//     The number-only gate used to mount the shell on top of its iframe.
 //
-// The discriminator is `__NEPTUNE_IS_MY_WAIFU__`, B站's standard live-room SSR
-// data global: real rooms define it (via an inline script, before
-// DOMContentLoaded), decorated shells never do. The `/blanc/<id>` embed is the
-// functional frame on those pages but omits the global, so it mounts on its
-// own path. We check at DOMContentLoaded so the inline script has run.
+// We pick the functional frame with two checks at DOMContentLoaded (so SSR
+// inline scripts have run):
+//
+//   - `/blanc/<id>` embeds are always the functional frame, so they mount
+//     unconditionally on their own path.
+//   - Other number-paths mount only if they're a real room AND not an activity
+//     shell. `__NEPTUNE_IS_MY_WAIFU__` (B站's standard live-room SSR data
+//     global) marks a room — but activity shells are built on B站's activity
+//     platform and SOME variants of them (e.g. the full/logged-in `/5555`) ALSO
+//     define it, so the neptune probe alone double-mounts on the shell and its
+//     `/blanc/<id>` iframe. Activity shells are reliably identified by their
+//     `__BILIACT_*` platform globals (baked into the page's SSR HTML and absent
+//     on real rooms), so we exclude any frame carrying them.
 const hasResolvableRoom = extractRoomNumber(location.href) !== undefined
 const isBlancEmbed = /^\/blanc\/\d+/.test(location.pathname)
+
+// Activity/campaign shells (e.g. `/5555`) expose B站's activity-platform SSR
+// globals (`__BILIACT_ENV__`, `__BILIACT_PAGEINFO__`, …). They embed the real
+// room in a `/blanc/<id>` iframe that mounts on its own path, so the shell must
+// not mount even when it also defines `__NEPTUNE_IS_MY_WAIFU__`.
+function isActivityShell(): boolean {
+  return Object.keys(unsafeWindow).some(key => key.startsWith('__BILIACT_'))
+}
 
 if (isLiveHost && hasResolvableRoom) {
   if (isBlancEmbed) {
     waitForBody(() => mount(<AppRoom />))
   } else {
     whenDomReady(() => {
-      if (unsafeWindow.__NEPTUNE_IS_MY_WAIFU__) waitForBody(() => mount(<AppRoom />))
+      if (!isActivityShell() && unsafeWindow.__NEPTUNE_IS_MY_WAIFU__) waitForBody(() => mount(<AppRoom />))
     })
   }
 } else if (isSpaceHost) {
