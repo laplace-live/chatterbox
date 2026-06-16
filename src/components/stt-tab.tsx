@@ -334,9 +334,7 @@ export function SttTab() {
 
   const recording = useSonioxRecording({
     apiKey: apiKeyForHook,
-    // stt-rt-v4 is the current real-time model; v3 was retired by
-    // Soniox in Feb 2026 and now auto-routes to v4 anyway.
-    model: 'stt-rt-v4',
+    model: 'stt-rt-v5',
     language_hints: langHintsForHook,
     enable_endpoint_detection: true,
     ...(translationEnabledForHook
