@@ -1,12 +1,12 @@
 /**
  * Sigma (1σ) of the send-interval jitter, expressed as a fraction of the
  * base interval. Used by `resolveSendDelayMs` when randomness is enabled.
- * 0.10 means ~68% of delays fall within ±10% of the user's configured
- * interval, and ~95% within ±20% (samples are clamped to ±2σ to bound the
+ * 0.20 means ~68% of delays fall within ±20% of the user's configured
+ * interval, and ~95% within ±40% (samples are clamped to ±2σ to bound the
  * worst case so a freak Gaussian draw can't, e.g., schedule a 5-minute
  * pause when the user set 1 second). Tune here.
  */
-const SEND_JITTER_SIGMA = 0.1
+const SEND_JITTER_SIGMA = 0.2
 
 /**
  * Splits a string into grapheme clusters (user-perceived characters).
