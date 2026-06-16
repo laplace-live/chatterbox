@@ -1,5 +1,5 @@
 import { cn } from '../lib/cn'
-import { activeTab, autoBlendEnabled, sendMsg, sttRunning } from '../lib/store'
+import { activeTab, aiChatEnabled, autoBlendEnabled, sendMsg, sttRunning } from '../lib/store'
 
 const TABS = [
   { id: 'fasong', label: '发送' },
@@ -36,6 +36,7 @@ export function Tabs() {
             {tab.id === 'fasong' && sendMsg.value ? ' 🟢' : ''}
             {tab.id === 'fasong' && autoBlendEnabled.value ? ' 🟣' : ''}
             {tab.id === 'tongchuan' && sttRunning.value ? ' 🔵' : ''}
+            {tab.id === 'tongchuan' && aiChatEnabled.value ? ' 🟡' : ''}
           </button>
         )
       })}
