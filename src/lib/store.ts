@@ -2,6 +2,7 @@ import { effect, signal } from '@preact/signals'
 
 import type { BilibiliEmoticonPackage } from '../types'
 import type { LlmModel } from './llm'
+import type { SonioxModel } from './soniox-models'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import { gmSignal } from './gm-signal'
@@ -281,6 +282,14 @@ export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
 
 // Soniox settings
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
+// Real-time STT model. Default `stt-rt-v5` preserves the behaviour from
+// when the model was hard-coded — existing users keep the same model until
+// they pick another. `sonioxModels` caches the most recently fetched list
+// (id + optional name) so the dropdown stays populated across reloads
+// without re-hitting Soniox's /v1/models endpoint on every mount, mirroring
+// how `llmModels` caches the LLM catalog.
+export const sonioxModel = gmSignal('sonioxModel', 'stt-rt-v5')
+export const sonioxModels = gmSignal<SonioxModel[]>('sonioxModels', [])
 export const sonioxLanguageHints = gmSignal<string[]>('sonioxLanguageHints', ['zh'])
 export const sonioxAutoSend = gmSignal('sonioxAutoSend', true)
 export const sonioxMaxLength = gmSignal('sonioxMaxLength', 40)

@@ -40,6 +40,14 @@ export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
 export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.1.0/dist/index.mjs'
 
 /**
+ * Soniox REST API root. Endpoints are built by appending a path — e.g.
+ * `${SONIOX_API_BASE}/models` to list available STT models. The base is
+ * fixed (Soniox-hosted), unlike the user-configurable LLM endpoint, so it
+ * lives here as a constant rather than a setting.
+ */
+export const SONIOX_API_BASE = 'https://api.soniox.com/v1'
+
+/**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
  * to `window.mpegts` at runtime, picked up via the shared
  * `loadScript()` probe path.

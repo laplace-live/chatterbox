@@ -8,12 +8,15 @@ import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { loadSoniox } from '../lib/soniox'
+import { fetchSonioxModels } from '../lib/soniox-models'
 import {
   sonioxApiKey,
   sonioxAudioDeviceId,
   sonioxAutoSend,
   sonioxLanguageHints,
   sonioxMaxLength,
+  sonioxModel,
+  sonioxModels,
   sonioxTranslationEnabled,
   sonioxTranslationTarget,
   sonioxWrapBrackets,
@@ -26,6 +29,7 @@ import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { AiChatSection } from './ai-chat-section'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
+import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
@@ -44,6 +48,12 @@ export function SttTab() {
   const finalText = useSignal('')
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
+  // Model-list fetch state machine (idle / loading / success / error),
+  // colour-coded the same way the recording status line is. Mirrors the
+  // LLM picker's refresh flow in settings-tab.
+  const modelFetching = useSignal(false)
+  const modelFetchStatus = useSignal('')
+  const modelFetchStatusColor = useSignal('#666')
 
   const accFinal = useRef('')
   const accTranslated = useRef('')
@@ -90,6 +100,30 @@ export function SttTab() {
         const msg = err instanceof Error ? err.message : String(err)
         appendLog(`🔴 麦克风权限请求失败：${msg}`)
       }
+    }
+  }
+
+  const refreshSonioxModels = async () => {
+    if (modelFetching.value) return
+    modelFetching.value = true
+    modelFetchStatus.value = '正在获取模型列表…'
+    modelFetchStatusColor.value = '#666'
+    try {
+      const models = await fetchSonioxModels(sonioxApiKey.value)
+      sonioxModels.value = models
+      // If the previously selected model isn't in the freshly fetched list
+      // (renamed / retired), keep the old id so the user can SEE it's stale
+      // via the Combobox's "saved but missing" sentinel. We don't
+      // auto-clobber their pick.
+      modelFetchStatus.value = `已获取 ${models.length} 个实时模型`
+      modelFetchStatusColor.value = '#36a185'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      modelFetchStatus.value = `获取失败：${msg}`
+      modelFetchStatusColor.value = '#f44'
+      appendLog(`❌ Soniox 模型列表获取失败：${msg}`)
+    } finally {
+      modelFetching.value = false
     }
   }
 
@@ -303,6 +337,9 @@ export function SttTab() {
   // at start() time anyway (captured into the hook's `cfg` snapshot),
   // so this is just keeping the contract honest.
   const apiKeyForHook = sonioxApiKey.value.trim()
+  // Fall back to stt-rt-v5 (the historical hard-coded default) if the
+  // persisted id is somehow empty, so the session never starts model-less.
+  const modelForHook = sonioxModel.value || 'stt-rt-v5'
   const langHintsForHook = sonioxLanguageHints.value
   const translationEnabledForHook = sonioxTranslationEnabled.value
   const translationTargetForHook = sonioxTranslationTarget.value
@@ -334,7 +371,7 @@ export function SttTab() {
 
   const recording = useSonioxRecording({
     apiKey: apiKeyForHook,
-    model: 'stt-rt-v5',
+    model: modelForHook,
     language_hints: langHintsForHook,
     enable_endpoint_detection: true,
     ...(translationEnabledForHook
@@ -491,6 +528,50 @@ export function SttTab() {
           </Button>
         </div>
         <div class={ROW_CLASS}>
+          <Label htmlFor='sonioxModel'>模型</Label>
+          <Combobox
+            id='sonioxModel'
+            className='min-w-37.5 flex-1'
+            value={sonioxModel.value}
+            // Display is id-only (the API has no pricing to show, and the
+            // name is often just a verbose restatement of the id). The
+            // friendly name still feeds searchText so filtering by it works.
+            options={sonioxModels.value.map(m => ({
+              value: m.id,
+              label: m.id,
+              searchText: [m.id, m.name].filter(Boolean).join(' '),
+            }))}
+            onChange={v => {
+              sonioxModel.value = v
+            }}
+            placeholder='选择模型'
+            searchPlaceholder='输入关键词过滤模型…'
+            emptyText='未找到匹配模型'
+            unloadedText='请点击「刷新」获取模型列表'
+            // Stale-but-persisted sentinel — same pattern the device select
+            // uses for an unplugged mic: surface the saved id so the user
+            // can SEE what's selected and switch, rather than silently
+            // dropping to the placeholder.
+            missingLabel={v => `${v}（已保存，不在当前列表中）`}
+          />
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={modelFetching.value || !sonioxApiKey.value.trim()}
+            onClick={() => void refreshSonioxModels()}
+          >
+            {modelFetching.value ? '加载中…' : '刷新'}
+          </Button>
+        </div>
+        {modelFetchStatus.value && (
+          // Status colour cycles neutral / success / error driven by the
+          // fetch state machine; inline color matches the recording status
+          // line below so the same visual language repeats.
+          <div class='mb-2' style={{ color: modelFetchStatusColor.value }}>
+            {modelFetchStatus.value}
+          </div>
+        )}
+        <div class={ROW_CLASS}>
           <span>语言提示：</span>
           {(['zh', 'en', 'ja', 'ko'] as const).map(lang => {
             const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
@@ -504,6 +585,8 @@ export function SttTab() {
               />
             )
           })}
+        </div>
+        <div class={ROW_CLASS}>
           <Label htmlFor='sonioxMaxLength'>超过</Label>
           <Input
             id='sonioxMaxLength'
