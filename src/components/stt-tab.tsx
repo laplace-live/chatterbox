@@ -26,6 +26,7 @@ import {
 } from '../lib/store'
 import { useSonioxRecording } from '../lib/use-soniox-recording'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
+import { wrapSegment, wrapSplitLen } from '../lib/wrap'
 import { AiChatSection } from './ai-chat-section'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -182,16 +183,16 @@ export function SttTab() {
       if (!sendBuffer.current.trim()) return
       const wrap = sonioxWrapBrackets.value
       const maxLen = sonioxMaxLength.value || 40
-      // Reserve 2 graphemes for the 【】 wrapper so the wrapped segment still
-      // fits within the user's configured max length.
-      const splitLen = wrap ? Math.max(1, maxLen - 2) : maxLen
+      // Reserve the 【】 wrapper graphemes so the wrapped segment still fits
+      // within the user's configured max length.
+      const splitLen = wrapSplitLen(maxLen, wrap)
       const processedText = applyReplacements(sendBuffer.current.trim())
       sendBuffer.current = ''
       const segments = splitTextSmart(processedText, splitLen)
       for (const segment of segments) {
         const clean = stripTrailingPunctuation(segment)
         if (!clean) continue
-        await sendSegment(wrap ? `【${clean}】` : clean)
+        await sendSegment(wrapSegment(clean, wrap))
       }
     } finally {
       isFlushing.current = false

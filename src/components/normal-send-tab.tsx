@@ -21,9 +21,11 @@ import {
   maxLength,
   msgSendInterval,
   normalSendPanelOpen,
+  normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
 import { processMessages } from '../lib/utils'
+import { wrapSegment, wrapSplitLen } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
@@ -124,7 +126,14 @@ export function NormalSendTab() {
         return
       }
 
-      const segments = isEmote ? [processedMessage] : processMessages(processedMessage, maxLength.value)
+      // Emotes are never wrapped — 【】 around an emote ID would break the
+      // emote. For plain text, reserve the wrapper graphemes in the split
+      // length so each wrapped segment still fits maxLength, then wrap each
+      // resulting segment in 【】.
+      const wrap = !isEmote && normalSendWrapBrackets.value
+      const segments = isEmote
+        ? [processedMessage]
+        : processMessages(processedMessage, wrapSplitLen(maxLength.value, wrap)).map(s => wrapSegment(s, wrap))
       const total = segments.length
 
       for (let i = 0; i < total; i++) {
@@ -260,7 +269,7 @@ export function NormalSendTab() {
           {!llmReady && <span class='ml-1 text-ga6'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
-        <div class='my-2'>
+        <div class='my-2 flex flex-wrap items-center gap-3'>
           <Checkbox
             id='aiEvasion'
             checked={aiEvasion.value}
@@ -268,6 +277,14 @@ export function NormalSendTab() {
               aiEvasion.value = e.currentTarget.checked
             }}
             label='AI规避（发送失败时自动检测敏感词并重试）'
+          />
+          <Checkbox
+            id='normalSendWrapBrackets'
+            checked={normalSendWrapBrackets.value}
+            onInput={e => {
+              normalSendWrapBrackets.value = e.currentTarget.checked
+            }}
+            label='使用【】包裹弹幕内容'
           />
         </div>
       </AccordionContent>

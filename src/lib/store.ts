@@ -16,6 +16,13 @@ export const randomColor = gmSignal('randomColor', false)
 export const randomInterval = gmSignal('randomInterval', false)
 export const randomChar = gmSignal('randomChar', false)
 export const aiEvasion = gmSignal('aiEvasion', false)
+// When on, each 常规发送 danmaku segment is wrapped in full-width 【】 so
+// viewers can tell it apart from regular chat. Independent from the 同传
+// tab's `sonioxWrapBrackets` (separate per-tab toggle) and off by default
+// so existing users keep sending unwrapped text. The split length reserves
+// the two wrapper graphemes (see `wrapSplitLen`) so a wrapped segment still
+// fits `maxLength`.
+export const normalSendWrapBrackets = gmSignal('normalSendWrapBrackets', false)
 // "YOLO" mode for the 常规发送 tab: when on, pressing Enter inside the
 // input box auto-polishes the text via the configured LLM and sends
 // the polished result. When off, Enter sends as-typed (the historical
