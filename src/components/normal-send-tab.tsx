@@ -19,7 +19,6 @@ import {
   llmActivePromptNormalSend,
   llmPromptsNormalSend,
   maxLength,
-  msgSendInterval,
   normalSendPanelOpen,
   normalSendWrapBrackets,
   normalSendYolo,
@@ -146,10 +145,6 @@ export function NormalSendTab() {
         appendLog(result, label, displayMsg)
         if (!result.success) {
           await tryAiEvasion(segment, roomId, csrfToken, '')
-        }
-
-        if (i < total - 1) {
-          await new Promise(r => setTimeout(r, msgSendInterval.value * 1000))
         }
       }
     } catch (err) {
