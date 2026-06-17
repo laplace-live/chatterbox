@@ -7,6 +7,7 @@ import { AutoBlendControls } from './auto-blend-controls'
 import { AutoSendControls } from './auto-send-controls'
 import { LogPanel } from './log-panel'
 import { MemesList } from './memes-list'
+import { MigrationBanner } from './migration-banner'
 import { NormalSendTab } from './normal-send-tab'
 import { SettingsTab } from './settings-tab'
 import { SttTab } from './stt-tab'
@@ -86,6 +87,7 @@ export function Configurator() {
       style={{ width: `${width}px`, '--laplace-chatterbox-dialog-width': `${width}px` }}
     >
       <ResizeHandle />
+      <MigrationBanner />
       <Tabs />
 
       <div class={panelClass(tab === 'fasong')}>
