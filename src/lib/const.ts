@@ -31,6 +31,15 @@ export const PROJECT_NAME = 'LAPLACE Chatterbox'
 export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
 
 /**
+ * Self-hosted install URL used by the (frozen) Greasy Fork edition's
+ * migration banner. The `?from=greasyfork` query string rides along on the
+ * userscript manager's first install fetch only — subsequent auto-updates use
+ * the clean `@downloadURL` baked into the installed script — so server logs
+ * can attribute migrations to this banner.
+ */
+export const SELF_HOSTED_INSTALL_URL = 'https://downloads.vrp.moe/chatterbox/laplace-chatterbox.user.js?from=greasyfork'
+
+/**
  * Soniox real-time speech-to-text SDK. ESM-only package; we point
  * at the package's own `dist/index.mjs` (fully self-contained —
  * zero bare-specifier imports verified against the published
