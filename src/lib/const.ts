@@ -50,7 +50,7 @@ export const SONIOX_API_BASE = 'https://api.soniox.com/v1'
 /**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
  * to `window.mpegts` at runtime, picked up via the shared
- * `loadScript()` probe path.
+ * `loadUmdScript()` probe path.
  */
 export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js'
 

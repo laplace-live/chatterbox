@@ -77,7 +77,7 @@ import type Mpegts from 'mpegts.js'
 import { unsafeWindow } from '$'
 import { ensureRoomId } from './api'
 import { MPEGTS_CDN_URL } from './const'
-import { loadScript } from './load-script'
+import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
 import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR } from './player-dom'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
@@ -297,13 +297,13 @@ function getMpegtsFromWindow(): typeof Mpegts | null {
 
 // === Lazy mpegts.js loader ===============================================
 //
-// Lazy-injected via `loadScript()` rather than declared as @require /
+// Lazy-injected via `loadUmdScript()` rather than declared as @require /
 // `externalGlobals` so users who never enable audio-only never pay the
 // ~120 KB CDN fetch. See `lib/load-script.ts` for the shared shape —
 // concurrent toggle attempts share a single in-flight fetch.
 
 function loadMpegts(): Promise<typeof Mpegts> {
-  return loadScript(MPEGTS_CDN_URL, getMpegtsFromWindow)
+  return loadUmdScript(MPEGTS_CDN_URL, getMpegtsFromWindow)
 }
 
 // === Audio-only stream URL fetch =========================================
