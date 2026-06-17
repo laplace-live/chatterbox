@@ -25,7 +25,12 @@ export default defineConfig({
         author: 'laplace-live',
         license: 'AGPL-3.0',
         icon: 'https://laplace.live/favicon.ico',
-        match: ['*://live.bilibili.com/*', '*://space.bilibili.com/*', '*://www.bilibili.com/video/*'],
+        match: [
+          '*://live.bilibili.com/*',
+          '*://space.bilibili.com/*',
+          '*://www.bilibili.com/video/*',
+          '*://www.bilibili.com/opus/*',
+        ],
         'run-at': 'document-start',
         // Self-hosted on GitHub Pages: managers poll the 1 KB meta file for
         // version checks and only fetch the full script when it changes.

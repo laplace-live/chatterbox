@@ -183,6 +183,108 @@ export function extractBvid(url: string): string | undefined {
 }
 
 /**
+ * SSR snapshot shape (`window.__INITIAL_STATE__`) for an opus page, narrowed
+ * to just the two author-identity fields we read. B站 sends far more, but
+ * this is the only slice `extractOpusAuthorUid` traverses.
+ */
+interface OpusInitialState {
+  detail?: {
+    /** `basic.uid` is the author uid as a string (e.g. `"1802654492"`). */
+    basic?: { uid?: string | number }
+    /**
+     * Typed module list; the author lives in the `MODULE_TYPE_AUTHOR` entry.
+     * `pub_ts` is the publish time in Unix seconds (string in the snapshot).
+     */
+    modules?: Array<{ module_type?: string; module_author?: { mid?: number; pub_ts?: string | number } }>
+  }
+}
+
+/**
+ * Extracts the author's UID from a `www.bilibili.com/opus/*` (图文动态 /
+ * 专栏) page's SSR snapshot.
+ *
+ * Unlike the space page, an opus URL carries the POST id, not a uid, so we
+ * can't parse identity from the path — it has to come from B站's
+ * server-rendered `window.__INITIAL_STATE__.detail`, which holds the post's
+ * data and is set by an inline script in the initial HTML (so it's present
+ * by `whenDomReady`). Two equivalent sources live there; we prefer the
+ * author module's numeric `mid` and fall back to `basic.uid` (a string):
+ *   - `detail.modules[] → MODULE_TYPE_AUTHOR → module_author.mid` (number)
+ *   - `detail.basic.uid` (string)
+ *
+ * The rendered DOM is deliberately NOT scraped: opus pages also link to
+ * unrelated users (fav lists, recommendations), so picking a uid out of
+ * `a[href*="space.bilibili.com"]` would frequently resolve the wrong person.
+ *
+ * Takes the raw global as `unknown` and traverses defensively so a shape
+ * change upstream degrades to `undefined` (caller leaves `infoCurrentUid`
+ * null) rather than throwing.
+ */
+export function extractOpusAuthorUid(initialState: unknown): number | undefined {
+  const detail = (initialState as OpusInitialState | undefined)?.detail
+  if (!detail) return undefined
+
+  // Primary: the author module's numeric mid.
+  const authorMid = detail.modules?.find(m => m?.module_type === 'MODULE_TYPE_AUTHOR')?.module_author?.mid
+  if (typeof authorMid === 'number' && Number.isFinite(authorMid) && authorMid > 0) return authorMid
+
+  // Fallback: basic.uid (a string in the SSR snapshot).
+  const uid = Number(detail.basic?.uid)
+  if (Number.isFinite(uid) && uid > 0) return uid
+
+  return undefined
+}
+
+/**
+ * Extracts the opus post's publish date as `YYYY-MM-DD` from the SSR
+ * snapshot, for the 魔法期 "贡献数据" link's `date` param.
+ *
+ * Source is `module_author.pub_ts` — the canonical publish Unix-seconds
+ * timestamp. We deliberately do NOT parse `module_author.pub_time`: that's a
+ * display string that reads "编辑于 …" once a post has been edited, so it
+ * reflects the EDIT time, not the original post date. The date is formatted
+ * in Asia/Shanghai because B站 timestamps are authored in Beijing time, so
+ * the calendar date should match the streamer's context rather than the
+ * viewer's locale (`en-CA` renders the parts as `YYYY-MM-DD`).
+ *
+ * Returns `undefined` when the snapshot lacks a usable pub_ts.
+ */
+export function extractOpusPubDate(initialState: unknown): string | undefined {
+  const detail = (initialState as OpusInitialState | undefined)?.detail
+  const pubTs = detail?.modules?.find(m => m?.module_type === 'MODULE_TYPE_AUTHOR')?.module_author?.pub_ts
+  const seconds = Number(pubTs)
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined
+  return new Date(seconds * 1000).toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
+/**
+ * Builds the 魔法期 "贡献数据" link that pre-fills the laplace.live /ovu
+ * contribution form:
+ *
+ *   https://laplace.live/ovu?uid=<uid>[&source=<url>][&date=<YYYY-MM-DD>]
+ *
+ * `uid` is always present. `source` (the opus permalink) and `date` (the
+ * opus post date) are only known on `/opus/*` pages, so they're optional and
+ * omitted on every other surface. Values are URL-encoded by `URLSearchParams`,
+ * which is exactly what we want when embedding a full URL as the `source`
+ * query value.
+ */
+export function buildOvuContributeUrl(
+  uid: number,
+  opts: { source?: string | null; date?: string | null } = {}
+): string {
+  const params = new URLSearchParams({ uid: String(uid) })
+  if (opts.source) params.set('source', opts.source)
+  if (opts.date) params.set('date', opts.date)
+  return `https://laplace.live/ovu?${params.toString()}`
+}
+
+/**
  * Runs `cb` once the DOM is parsed — immediately if parsing already finished,
  * otherwise on `DOMContentLoaded`. Used when a check needs the document's
  * inline scripts to have run (e.g. reading a server-rendered global).

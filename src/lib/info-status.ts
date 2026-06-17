@@ -40,6 +40,16 @@ export type BilibiliUserData = LaplaceInternal.HTTPS.Workers.BilibiliUser
 /** Uid currently being displayed by the info popover (null until resolved). */
 export const infoCurrentUid = signal<number | null>(null)
 
+/**
+ * Opus-page provenance for the 魔法期 "贡献数据" link. Null on every other
+ * surface; `main.tsx` sets it only on `/opus/*` pages. `source` is the opus
+ * permalink and `date` is the post's publish date (`YYYY-MM-DD`, may be null
+ * if the SSR snapshot carried no usable timestamp). It lives next to
+ * `infoCurrentUid` because, like the uid, it's surface-supplied context the
+ * popover reads but doesn't resolve itself.
+ */
+export const infoOpusMeta = signal<{ source: string; date: string | null } | null>(null)
+
 export const fertilityData = signal<FertilityData | null>(null)
 export const fertilityLoading = signal(false)
 export const fertilityError = signal<string | null>(null)

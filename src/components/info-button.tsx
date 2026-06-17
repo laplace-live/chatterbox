@@ -13,10 +13,12 @@ import {
   fertilityLoading,
   getFertilityDisplay,
   infoCurrentUid,
+  infoOpusMeta,
 } from '../lib/info-status'
 import { appendLog } from '../lib/log'
 import { cachedStreamerUid, infoFertilityEnabled, infoGuildEnabled, infoMcnEnabled } from '../lib/store'
 import { deleteUserNote, getUserNote, hasUserNote, setUserNote, userNotes } from '../lib/user-notes'
+import { buildOvuContributeUrl } from '../lib/utils'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Textarea } from './ui/textarea'
@@ -150,7 +152,7 @@ function InfoPopoverBody() {
         </a>
       </div>
 
-      {infoFertilityEnabled.value && <FertilitySection />}
+      {infoFertilityEnabled.value && <FertilitySection uid={uid} />}
       {infoGuildEnabled.value && <GuildSection />}
       {infoMcnEnabled.value && <McnSection />}
       {/* 用户备注 always renders — it's local-only with no network cost
@@ -329,22 +331,25 @@ function StatusLine({ children, color }: { children: preact.ComponentChildren; c
   return <div style={color ? { color } : undefined}>{children}</div>
 }
 
-function FertilitySection() {
+function FertilitySection({ uid }: { uid: number }) {
   const data = fertilityData.value
   const loading = fertilityLoading.value
   const error = fertilityError.value
+  // `source` / `date` are only populated on /opus/* pages (null elsewhere),
+  // so off-opus the link carries just `?uid=…`.
+  const opus = infoOpusMeta.value
+  const contributeUrl = buildOvuContributeUrl(uid, { source: opus?.source, date: opus?.date })
 
   return (
     <section class='flex flex-col gap-1'>
       <SectionHeading>
         魔法期{' '}
-        <a
-          href={'https://laplace.live/ovu'}
-          target={'_blank'}
-          className={'font-mono font-normal text-brand text-sm'}
-          rel='noopener'
-        >
-          /ovu
+        {/* Always available (independent of data state) so a viewer can
+          contribute precisely when there's no data yet. The uid is always
+          pre-filled; the opus permalink + post date ride along only on
+          /opus/* pages. */}
+        <a href={contributeUrl} target='_blank' rel='noopener' className='text-brand no-underline'>
+          贡献数据 ↗
         </a>
       </SectionHeading>
       {loading && !data ? (

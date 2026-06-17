@@ -4,18 +4,24 @@ import { unsafeWindow } from '$'
 import css from './styles.css?inline'
 import './lib/fetch-hijack'
 
+import { AppOpus } from './components/app-opus'
 import { AppRoom } from './components/app-room'
 import { AppSpace } from './components/app-space'
 import { AppVideo } from './components/app-video'
-import { infoCurrentUid } from './lib/info-status'
+import { infoCurrentUid, infoOpusMeta } from './lib/info-status'
 import { installShadowKeyboardGuard } from './lib/shadow-keyboard-guard'
-import { extractBvid, extractRoomNumber, whenDomReady } from './lib/utils'
+import { extractBvid, extractOpusAuthorUid, extractOpusPubDate, extractRoomNumber, whenDomReady } from './lib/utils'
 
-// `__NEPTUNE_IS_MY_WAIFU__` is B站's standard live-room SSR data global. We
-// only probe for its presence, so the value type is irrelevant.
+// B站 SSR data globals we probe at startup:
+//   - `__NEPTUNE_IS_MY_WAIFU__` marks a real live room (presence probe only,
+//     so the value type is irrelevant).
+//   - `__INITIAL_STATE__` carries the opus page's post data; we read the
+//     author uid out of it via `extractOpusAuthorUid`, which traverses it
+//     defensively, so `unknown` is enough here.
 declare global {
   interface Window {
     __NEPTUNE_IS_MY_WAIFU__?: unknown
+    __INITIAL_STATE__?: unknown
   }
 }
 
@@ -67,15 +73,18 @@ function waitForBody(cb: () => void): void {
   observer.observe(document.documentElement, { childList: true })
 }
 
-// The userscript matches three bilibili surfaces, each getting a different
+// The userscript matches several bilibili surfaces, each getting a different
 // tree so live-page features (send loop, room-id resolution, DOM hijacks)
 // never run against pages they were never designed for:
-//   - live.bilibili.com  → full danmaku helper UI (AppRoom)
-//   - space.bilibili.com → tiny read-only info surface (AppSpace)
+//   - live.bilibili.com        → full danmaku helper UI (AppRoom)
+//   - space.bilibili.com       → tiny read-only info surface (AppSpace)
 //   - www.bilibili.com/video/* → minimal LAPLACE ICU archive button (AppVideo)
+//   - www.bilibili.com/opus/*  → read-only 主播额外信息 popover (AppOpus)
+// The last two share the `www.bilibili.com` host, so they're disambiguated by
+// path below rather than by host.
 const isLiveHost = location.hostname === 'live.bilibili.com'
 const isSpaceHost = location.hostname === 'space.bilibili.com'
-const isVideoHost = location.hostname === 'www.bilibili.com'
+const isWwwHost = location.hostname === 'www.bilibili.com'
 
 // Campaign / activity / promotion pages embed the actual live room in a
 // same-origin `/blanc/<roomid>` iframe, and the userscript matches (and so
@@ -133,10 +142,37 @@ if (isLiveHost && hasResolvableRoom) {
     if (Number.isFinite(uid)) infoCurrentUid.value = uid
   }
   waitForBody(() => mount(<AppSpace />))
-} else if (isVideoHost) {
-  // Video watch pages (`/video/BVxxxx`). Mount only when the URL carries a
-  // BV id — legacy `av` short links and non-video paths under www.bilibili.com
-  // have nothing to archive, so we skip them rather than render a dead button.
+} else if (isWwwHost) {
+  // `www.bilibili.com` hosts two surfaces, disambiguated by path:
   const bvid = extractBvid(location.href)
-  if (bvid) waitForBody(() => mount(<AppVideo bvid={bvid} />))
+  if (bvid) {
+    // Video watch pages (`/video/BVxxxx`). Mount only when the URL carries a
+    // BV id — legacy `av` short links and non-video paths under www.bilibili.com
+    // have nothing to archive, so we skip them rather than render a dead button.
+    waitForBody(() => mount(<AppVideo bvid={bvid} />))
+  } else if (location.pathname.startsWith('/opus/')) {
+    // Opus (图文动态 / 专栏) pages. Identity isn't in the URL — the path carries
+    // the post id, not a uid — so we read the author's uid from the page's SSR
+    // snapshot (`__INITIAL_STATE__.detail`). That global is set by an inline
+    // script in the initial HTML, so it's reliably populated by `whenDomReady`
+    // (DOMContentLoaded). We seed `infoCurrentUid` before mounting so the
+    // popover has identity at first paint, and only mount when it resolves —
+    // mirroring the video branch's `if (bvid)` gate so we never render a dead,
+    // uid-less button.
+    whenDomReady(() => {
+      const state = unsafeWindow.__INITIAL_STATE__
+      const uid = extractOpusAuthorUid(state)
+      if (uid) {
+        infoCurrentUid.value = uid
+        // Provenance for the 魔法期 "贡献数据" link, only knowable here on the
+        // opus page: the permalink (origin+pathname, dropping any tracking
+        // query) as `source`, and the post's publish date as `date`.
+        infoOpusMeta.value = {
+          source: location.origin + location.pathname,
+          date: extractOpusPubDate(state) ?? null,
+        }
+        waitForBody(() => mount(<AppOpus />))
+      }
+    })
+  }
 }
