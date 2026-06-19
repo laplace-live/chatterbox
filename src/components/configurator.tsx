@@ -78,7 +78,6 @@ export function Configurator() {
       className={cn(
         'fixed right-1 bottom-[calc(34px)] z-2147483646 text-[13px]',
         'min-w-12.5 rounded border border-ga3 border-solid bg-bg1',
-        // 'shadow-[0_0_0_1px_var(--Ga2,rgba(0,0,0,.2))]',
         !visible && 'hidden',
         visible && optimized && 'flex h-[calc(100vh-110px)] flex-col overflow-hidden',
         visible && !optimized && 'block max-h-[calc(100vh-110px)] overflow-y-auto'

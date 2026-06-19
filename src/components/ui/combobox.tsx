@@ -289,7 +289,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
             'absolute top-full right-0 left-0 z-50 mt-1',
             'rounded border border-ga3 border-solid',
             'bg-bg1',
-            'shadow-[0_4px_12px_rgba(0,0,0,.15)]',
+            'shadow-sm',
             'overflow-hidden'
           )}
         >

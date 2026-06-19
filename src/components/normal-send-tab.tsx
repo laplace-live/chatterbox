@@ -261,7 +261,6 @@ export function NormalSendTab() {
               previewGraphemes={16}
             />
           )}
-          {!llmReady && <span class='ml-1 text-ga6'>AI 功能需配置 LLM 后启用</span>}
         </div>
 
         <div class='my-2 flex flex-wrap items-center gap-3'>
