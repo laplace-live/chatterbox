@@ -1,4 +1,5 @@
-import { DOCUMENT_URL, PROJECT_URL, VERSION } from '../lib/const'
+import { DOCUMENT_URL, GITHUB_URL } from '../lib/const'
+import { VERSION } from '../lib/version'
 import { Separator } from './ui/separator'
 
 interface ExternalService {
@@ -97,7 +98,7 @@ export function AboutTab() {
           <span>许可证: AGPL-3.0</span>
           <span>
             源代码:{' '}
-            <a href={PROJECT_URL} target='_blank' rel='noopener' class={'text-link no-underline'}>
+            <a href={GITHUB_URL} target='_blank' rel='noopener' class={'text-link no-underline'}>
               GitHub
             </a>
           </span>

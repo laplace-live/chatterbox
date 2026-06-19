@@ -7,7 +7,7 @@
  * URL-normalisation and error handling.
  */
 
-import { PROJECT_NAME, PROJECT_URL } from './const'
+import { GITHUB_URL, PROJECT_NAME } from './const'
 
 /**
  * Per-token pricing as returned by the OpenAI-compatible /models endpoint.
@@ -131,7 +131,7 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
       headers: {
         Authorization: `Bearer ${apiKey.trim()}`,
         Accept: 'application/json',
-        'HTTP-Referer': PROJECT_URL,
+        'HTTP-Referer': GITHUB_URL,
         'X-Title': PROJECT_NAME,
         'X-OpenRouter-Title': PROJECT_NAME,
         'X-OpenRouter-Categories': 'roleplay',
@@ -298,7 +298,7 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
         Authorization: `Bearer ${opts.apiKey.trim()}`,
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        'HTTP-Referer': PROJECT_URL,
+        'HTTP-Referer': GITHUB_URL,
         'X-Title': PROJECT_NAME,
         'X-OpenRouter-Title': PROJECT_NAME,
         'X-OpenRouter-Categories': 'roleplay',

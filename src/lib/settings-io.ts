@@ -1,5 +1,5 @@
 import { GM_deleteValue, GM_getValue, GM_listValues, GM_setValue } from '$'
-import { VERSION } from './const'
+import { VERSION } from './version'
 
 /** Schema version of the export file format itself. Bumped only if the
  *  structure changes in a non-backwards-compatible way. */

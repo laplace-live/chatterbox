@@ -3,6 +3,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
 
+import { GITHUB_URL, PROJECT_URL } from './src/lib/const'
+
 // const DOWNLOAD_BASE = 'https://laplace-live.github.io/chatterbox' // Github Pages backup, 100 GB bandwidth/month limit
 const DOWNLOAD_BASE = 'https://downloads.vrp.moe/chatterbox'
 
@@ -25,6 +27,8 @@ export default defineConfig({
         author: 'laplace-live',
         license: 'AGPL-3.0',
         icon: 'https://laplace.live/favicon.ico',
+        homepageURL: PROJECT_URL,
+        supportURL: GITHUB_URL,
         match: [
           '*://live.bilibili.com/*',
           '*://space.bilibili.com/*',

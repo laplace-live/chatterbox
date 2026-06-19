@@ -1,20 +1,10 @@
-import { GM_info } from '$'
-
-/**
- * Userscript version, sourced from the `// @version` header that
- * vite-plugin-monkey generates from `helper/package.json`. Importing
- * `GM_info` from `$` lets vite-plugin-monkey track the dependency and add
- * the matching `@grant`.
- */
-export const VERSION = GM_info.script.version
-
 /**
  * App-identity strings used in outbound HTTP headers (currently only
  * for LLM API calls — see `lib/llm.ts`). They specifically target
  * OpenRouter's `HTTP-Referer` + `X-Title` attribution headers, which
  * surface this project on OpenRouter's public rankings / analytics.
  *
- * - `PROJECT_URL` is the canonical GitHub URL so anyone clicking through
+ * - `GITHUB_URL` is the canonical GitHub URL so anyone clicking through
  *   from OpenRouter's leaderboard lands on the actual source rather
  *   than a generic homepage.
  * - `PROJECT_NAME` is the project's English handle; matches the GitHub
@@ -26,8 +16,9 @@ export const VERSION = GM_info.script.version
  * nothing and means the attribution is always present whenever the
  * user happens to be pointing at OpenRouter.
  */
-export const PROJECT_URL = 'https://github.com/laplace-live/chatterbox'
 export const PROJECT_NAME = 'LAPLACE Chatterbox'
+export const PROJECT_URL = 'https://laplace.live/chatterbox'
+export const GITHUB_URL = 'https://github.com/laplace-live/chatterbox'
 export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
 
 /**
