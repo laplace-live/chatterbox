@@ -25,6 +25,36 @@ declare global {
   }
 }
 
+// Tailwind v4 composes properties like `box-shadow`, `transform`, `filter`
+// and `--tw-ring-*` out of several `--tw-*` custom properties whose default
+// values (`0 0 #0000`, `0px`, …) are supplied solely by `@property`
+// initial-value registrations. In every current browser, `@property` rules
+// only register at the document scope — declarations inside a shadow root are
+// ignored — so the variables resolve to nothing and the composite shorthand
+// becomes invalid (e.g. `shadow-sm` renders as `box-shadow: none`).
+//   - https://developer.chrome.com/docs/css-ui/css-names (section "@property")
+//     "Today however, in all browsers you can only declare @property in the
+//      document scope and @property declarations within shadow roots are ignored."
+//   - https://github.com/w3c/csswg-drafts/issues/10541 (spec vs. implementation)
+//
+// Custom-property registration is global to the document, so we lift just the
+// `@property` blocks out of the compiled CSS and register them once in
+// <head>. This makes them available inside every shadow root without leaking
+// any visual utilities into B站's light DOM. Idempotent via a marker id so
+// repeated mounts don't duplicate the registration.
+function registerTailwindProperties() {
+  const markerId = 'laplace-chatterbox-tw-properties'
+  if (document.getElementById(markerId)) return
+
+  const propertyRules = css.match(/@property[^{]+\{[^}]*\}/g)
+  if (!propertyRules) return
+
+  const style = document.createElement('style')
+  style.id = markerId
+  style.textContent = propertyRules.join('\n')
+  ;(document.head ?? document.documentElement).appendChild(style)
+}
+
 function mount(tree: ComponentChild) {
   // Shadow DOM PoC: attach a shadow root on a host element appended to <body>.
   // The whole tree (live App or minimal AppSpace) mounts inside the shadow
@@ -44,6 +74,10 @@ function mount(tree: ComponentChild) {
   // fields — the shadow boundary hides our <textarea>/<input> focus from
   // their document-level handlers. See shadow-keyboard-guard.ts.
   installShadowKeyboardGuard(root)
+
+  // Register Tailwind's `@property` rules at the document level first — they
+  // don't take effect inside the shadow root (see registerTailwindProperties).
+  registerTailwindProperties()
 
   const style = document.createElement('style')
   style.textContent = css

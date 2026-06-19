@@ -155,7 +155,7 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
         alignClass,
         'rounded border border-ga3 border-solid',
         'bg-bg1',
-        'shadow-sm',
+        'shadow-md',
         'overflow-hidden',
         className
       )}
