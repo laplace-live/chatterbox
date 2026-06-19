@@ -1,22 +1,32 @@
 import type { ComponentChildren, VNode } from 'preact'
 import { cloneElement, createContext, isValidElement } from 'preact'
-import { useContext, useEffect, useRef } from 'preact/hooks'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
 import { cn } from '../../lib/cn'
+import {
+  computePopoverPosition,
+  type PopoverAlign,
+  type PopoverPlacement,
+  type PopoverSide,
+} from '../../lib/popover-position'
 
 // === Popover ============================================================
 //
 // shadcn-style compound popover. <Popover> sets up a relative-positioned
-// wrapper that contains both the trigger and the content; <PopoverContent>
-// is absolutely positioned against that wrapper so it floats next to the
-// trigger.
+// wrapper that contains both the trigger and the content. <PopoverContent>
+// renders as `position: fixed`, with its coordinates computed from the
+// trigger's bounding rect (see `computePopoverPosition`).
 //
-// Layout caveat: same as Combobox — the popover is positioned absolutely
-// against the wrapper. Inside the floating Configurator panel the dialog
-// itself is `overflow-hidden` (optimized) / `overflow-y-auto` (legacy),
-// so a popover that overflows the dialog edges will be clipped. Pick
-// `side` / `align` to give the content room within the dialog bounds, or
-// constrain the content's own size.
+// Why fixed and not absolute: inside the Configurator panel the dialog is
+// `overflow-hidden` (optimized) / `overflow-y-auto` (legacy). An absolutely
+// positioned child is clipped by that overflow, so a popover near the
+// dialog's top or bottom edge gets cut off. A fixed element's containing
+// block is the viewport — the dialog is itself `fixed` and sets no
+// transform/filter, so it never becomes a containing block for fixed
+// descendants — so the content escapes the clip. It still inherits the
+// dialog's CSS vars (e.g. `--laplace-chatterbox-dialog-width`) because it
+// stays in the DOM tree; only its positioning scheme changes. The
+// positioner flips sides and caps height to keep it on screen.
 
 interface PopoverContextValue {
   open: boolean
@@ -93,11 +103,13 @@ export function PopoverTrigger({ children }: PopoverTriggerProps) {
 
 // === PopoverContent =====================================================
 //
-// Absolute-positioned content shown when `open` is true. Outside-click
-// (mousedown anywhere outside the Popover wrapper) and Escape both close.
+// Fixed-positioned content shown when `open` is true. Coordinates are
+// computed from the trigger's rect so it escapes the Configurator dialog's
+// `overflow` clip instead of being cut off near the dialog's edges.
+// Outside-click (mousedown anywhere outside the Popover wrapper) and Escape
+// both close.
 
-export type PopoverSide = 'top' | 'bottom'
-export type PopoverAlign = 'start' | 'center' | 'end'
+export type { PopoverAlign, PopoverSide }
 
 export interface PopoverContentProps {
   children: ComponentChildren
@@ -110,6 +122,11 @@ export interface PopoverContentProps {
 
 export function PopoverContent({ children, side = 'bottom', align = 'start', className }: PopoverContentProps) {
   const { open, setOpen, wrapperRef } = usePopover()
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Computed fixed-position box. `null` until the first measure pass runs —
+  // during that pass the content renders hidden (it must be in the DOM to be
+  // measured) so it never flashes at the wrong spot.
+  const [placement, setPlacement] = useState<PopoverPlacement | null>(null)
 
   // mousedown (not click) so a gesture that ends in a drag-select doesn't
   // swallow the close — matches the Combobox close behaviour for
@@ -120,6 +137,8 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
       // composedPath() pierces shadow-DOM boundaries; e.target alone is
       // retargeted to the shadow host on a document-level listener and
       // would incorrectly fire "outside" for clicks inside the popover.
+      // The content is `fixed` but still a DOM descendant of the wrapper,
+      // so it stays "inside" for this test.
       const wrapper = wrapperRef.current
       if (wrapper && !e.composedPath().includes(wrapper)) {
         setOpen(false)
@@ -136,29 +155,85 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
     }
   }, [open])
 
-  if (!open) return null
+  // Measure the trigger + content and place the fixed box. While open it
+  // re-runs on scroll (capture phase, so the dialog's INNER panel scroll
+  // counts too — not just window scroll), window resize, and content resize
+  // (async data loading in, switching emote packages) so the popover stays
+  // glued to its trigger. useLayoutEffect so the first placement lands
+  // before paint.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(null)
+      return
+    }
+    const reposition = () => {
+      const wrapper = wrapperRef.current
+      const content = contentRef.current
+      if (!wrapper || !content) return
+      // The wrapper is `inline-block` around the trigger and the fixed
+      // content is out of flow, so the wrapper's rect IS the trigger's rect.
+      const t = wrapper.getBoundingClientRect()
+      // offsetWidth / scrollHeight report the content's NATURAL size,
+      // independent of the maxHeight cap applied below — so re-measuring
+      // never feeds the clamped height back into the computation.
+      const next = computePopoverPosition(
+        { top: t.top, left: t.left, width: t.width, height: t.height },
+        { width: content.offsetWidth, height: content.scrollHeight },
+        { width: window.innerWidth, height: window.innerHeight },
+        { side, align }
+      )
+      setPlacement(prev =>
+        prev &&
+        prev.left === next.left &&
+        prev.top === next.top &&
+        prev.maxHeight === next.maxHeight &&
+        prev.side === next.side
+          ? prev
+          : next
+      )
+    }
+    reposition()
 
-  // top:    popover sits ABOVE the trigger (its bottom edge meets the trigger's top).
-  // bottom: popover sits BELOW the trigger (its top edge meets the trigger's bottom).
-  const sideClass = side === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
-  // start:  popover's left edge aligns with the trigger's left edge.
-  // end:    popover's right edge aligns with the trigger's right edge.
-  // center: popover is centered horizontally on the trigger.
-  const alignClass = align === 'end' ? 'right-0' : align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'
+    let raf = 0
+    const schedule = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(reposition)
+    }
+    window.addEventListener('resize', schedule)
+    document.addEventListener('scroll', schedule, true)
+    const observer = new ResizeObserver(schedule)
+    if (contentRef.current) observer.observe(contentRef.current)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', schedule)
+      document.removeEventListener('scroll', schedule, true)
+      observer.disconnect()
+    }
+  }, [open, side, align])
+
+  if (!open) return null
 
   return (
     <div
+      ref={contentRef}
       role='dialog'
       class={cn(
-        'absolute z-50',
-        sideClass,
-        alignClass,
+        // Fixed (not absolute) so the dialog's overflow can't clip us; the
+        // positioner keeps us inside the viewport. overflow-y-auto lets a
+        // popover taller than the available space scroll rather than
+        // overflow the screen; overflow-x stays hidden for the rounded edge.
+        'fixed z-50',
         'rounded border border-ga3 border-solid',
         'bg-bg1',
         'shadow-md',
-        'overflow-hidden',
+        'overflow-y-auto overflow-x-hidden',
         className
       )}
+      style={
+        placement
+          ? { left: `${placement.left}px`, top: `${placement.top}px`, maxHeight: `${placement.maxHeight}px` }
+          : { visibility: 'hidden' }
+      }
     >
       {children}
     </div>
