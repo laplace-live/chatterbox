@@ -37,6 +37,7 @@ export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
  * the clean `@downloadURL` baked into the installed script — so server logs
  * can attribute migrations to this banner.
  */
+export const SELF_HOSTED_HOME_URL = 'https://laplace.live/chatterbox'
 export const SELF_HOSTED_INSTALL_URL = 'https://downloads.vrp.moe/chatterbox/laplace-chatterbox.user.js?from=greasyfork'
 
 /**

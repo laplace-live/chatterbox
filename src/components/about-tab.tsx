@@ -1,4 +1,4 @@
-import { DOCUMENT_URL, PROJECT_URL, SELF_HOSTED_INSTALL_URL, VERSION } from '../lib/const'
+import { DOCUMENT_URL, PROJECT_URL, SELF_HOSTED_HOME_URL, VERSION } from '../lib/const'
 import { Separator } from './ui/separator'
 
 interface ExternalService {
@@ -109,7 +109,7 @@ export function AboutTab() {
           </span>
           <span>
             已迁移至独立站点:{' '}
-            <a href={SELF_HOSTED_INSTALL_URL} target='_blank' rel='noopener' class={'text-link no-underline'}>
+            <a href={SELF_HOSTED_HOME_URL} target='_blank' rel='noopener' class={'text-link no-underline'}>
               安装新版
             </a>
           </span>

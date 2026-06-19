@@ -34,10 +34,6 @@ export const autoSendYolo = gmSignal('autoSendYolo', false)
 export const forceScrollDanmaku = gmSignal('forceScrollDanmaku', false)
 export const optimizeLayout = gmSignal('optimizeLayout', false)
 
-// One-time dismissal flag for the Greasy-Fork-edition migration banner
-// (see components/migration-banner.tsx). Persisted globally — the user's
-// "I've seen the move notice" decision isn't room-specific.
-export const migrationNoticeDismissed = gmSignal('migrationNoticeDismissed', false)
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
