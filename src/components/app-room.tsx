@@ -1,4 +1,4 @@
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 
 import { startAiChatEngine, stopAiChatEngine } from '../lib/ai-chat'
 import { startAudioOnly, stopAudioOnly } from '../lib/audio-only'
@@ -7,11 +7,18 @@ import { startAutoQuality, stopAutoQuality } from '../lib/auto-quality'
 import { startAutoSeek, stopAutoSeek } from '../lib/auto-seek'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
-import { aiChatEnabled, autoBlendEnabled, danmakuDirectMode, optimizeLayout } from '../lib/store'
+import {
+  aiChatEnabled,
+  autoBlendEnabled,
+  danmakuDirectMode,
+  dialogOpen,
+  dialogWidth,
+  optimizeLayout,
+} from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
 import { AudioOnlyButton } from './audio-only-button'
 import { AudioOnlyControls } from './audio-only-controls'
-import { Configurator } from './configurator'
+import { Configurator, clampWidth } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
 import { CornerCluster } from './corner-cluster'
 import { InfoButton } from './info-button'
@@ -98,6 +105,11 @@ export function AppRoom() {
   // once the page finished loading. Inject a <style> rule with !important
   // so the browser applies it whenever `.app-body` exists and B站's
   // post-hydration inline writes can't clobber it.
+  //
+  // The actual rule text is filled in by the effect below so we can update
+  // it reactively (dialog open/close, width drag) by rewriting
+  // `textContent` instead of churning a fresh <style> node per pointermove.
+  const layoutStyleRef = useRef<HTMLStyleElement | null>(null)
   useEffect(() => {
     // Clear stale inline margin left over from older versions of this
     // script that mutated `.app-body` directly. We only clear the exact
@@ -108,10 +120,37 @@ export function AppRoom() {
 
     if (!optimizeLayout.value) return
     const style = document.createElement('style')
-    style.textContent = '.app-body { margin-left: 1rem !important; }'
+    layoutStyleRef.current = style
     document.head.appendChild(style)
-    return () => style.remove()
+    return () => {
+      style.remove()
+      layoutStyleRef.current = null
+    }
   }, [optimizeLayout.value])
+
+  // Keep `.app-body`'s reserved space in sync with the right-anchored
+  // configurator dialog (`fixed right-1`) so page content never tucks under
+  // the open panel.
+  //
+  // We cap `max-width` rather than adding `margin-right`: B站 pins
+  // `.app-body`'s width via JS keyed to `window.innerWidth`, so a
+  // margin-right is just absorbed as negative margin and frees no space —
+  // capping the width is what actually reflows the content. Using
+  // `calc(100% - …)` keeps the reserved strip responsive to viewport resizes
+  // natively (the browser recomputes 100% on resize — no JS resize listener
+  // needed); only the dialog-width term is re-injected here when the user
+  // drags the resize handle. The +24 covers the dialog's `right-1` offset
+  // plus a small breathing gap, and `clampWidth` is the same source of truth
+  // the dialog renders with so the reserve can't drift from the panel.
+  useEffect(() => {
+    const style = layoutStyleRef.current
+    if (!style) return
+    const rules = ['margin-left: 1rem !important']
+    if (dialogOpen.value) {
+      rules.push(`max-width: calc(100% - ${clampWidth(dialogWidth.value) + 24}px) !important`)
+    }
+    style.textContent = `.app-body { ${rules.join('; ')}; }`
+  }, [optimizeLayout.value, dialogOpen.value, dialogWidth.value])
 
   return (
     <>

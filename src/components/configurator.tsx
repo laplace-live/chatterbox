@@ -28,7 +28,7 @@ const DIALOG_VIEWPORT_MARGIN = 40
 // user can't see (e.g. 800 px persisted from a wider session, but the
 // viewport caps the visible width at 360), making the first ~hundreds of
 // pixels of drag a no-op against the clamp.
-function clampWidth(raw: number): number {
+export function clampWidth(raw: number): number {
   const viewportMax = Math.min(DIALOG_MAX_WIDTH, window.innerWidth - DIALOG_VIEWPORT_MARGIN)
   return Math.max(DIALOG_MIN_WIDTH, Math.min(raw, viewportMax))
 }
