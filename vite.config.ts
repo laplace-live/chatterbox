@@ -9,11 +9,11 @@ import monkey from 'vite-plugin-monkey'
 const pkgVersion = (name: string) =>
   JSON.parse(readFileSync(new URL(`./node_modules/${name}/package.json`, import.meta.url), 'utf8')).version
 
-// Preact is loaded via @require per Greasy Fork's library rule. npmmirror is
-// on Greasy Fork's allowed CDN list and is reliable for this script's
-// primary audience (mainland-China Bilibili users), unlike jsDelivr.
+// Preact is loaded via @require per Greasy Fork's library rule. jsDelivr is
+// on Greasy Fork's allowed CDN list and is the trusted, widely-mirrored
+// default. (We avoid npmmirror.)
 const preactVersion = pkgVersion('preact')
-const preactCdn = (path: string) => `https://registry.npmmirror.com/preact/${preactVersion}/files/${path}`
+const preactCdn = (path: string) => `https://cdn.jsdelivr.net/npm/preact@${preactVersion}/${path}`
 
 // Greasy Fork requires inlined libraries to carry source attribution and a
 // technical reason for not using @require.
