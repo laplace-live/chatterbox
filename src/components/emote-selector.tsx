@@ -146,7 +146,7 @@ export function EmoteSelector() {
                 Horizontal-scrolls when the packages outrun the popover
                 width. `border-solid` is explicit because preflight is
                 disabled — a width-only `border-b` would render nothing. */}
-            <div role='tablist' class='flex shrink-0 gap-1 overflow-x-auto border-ga2 border-b border-solid p-1'>
+            <div role='tablist' class='flex shrink-0 gap-1 overflow-x-auto border-ga2 border-b border-solid px-2'>
               {packages.map(pkg => {
                 const isActive = pkg.pkg_id === activePkg.pkg_id
                 // First emote doubles as the tab thumbnail; fall back to the

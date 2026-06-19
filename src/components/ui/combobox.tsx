@@ -4,6 +4,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { cn } from '../../lib/cn'
+import { Popover, PopoverContent, PopoverTrigger } from './popover'
 import { Separator } from './separator'
 
 /**
@@ -103,7 +104,6 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   // currently target. Re-anchored on open and clamped on filter changes.
   const highlight = useSignal(0)
 
-  const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -162,31 +162,8 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
     }
   }, [open.value])
 
-  // Outside-click / Escape closes the popover. mousedown (not click) so a
-  // gesture that ends in a drag-select doesn't swallow the close — the
-  // close decision is made the moment the user presses outside, not when
-  // they release.
-  useEffect(() => {
-    if (!open.value) return
-    const onDoc = (e: MouseEvent) => {
-      // composedPath() pierces shadow-DOM boundaries; e.target alone is
-      // retargeted to the shadow host on a document-level listener and
-      // would incorrectly fire "outside" for clicks inside the dropdown.
-      const wrapper = wrapperRef.current
-      if (wrapper && !e.composedPath().includes(wrapper)) {
-        open.value = false
-      }
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') open.value = false
-    }
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDoc)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open.value])
+  // Outside-click and Escape are handled by <Popover>/<PopoverContent>, so
+  // the Combobox no longer wires its own document listeners.
 
   // Keep the highlighted option visible while keyboard-navigating a long
   // list. `block: 'nearest'` so we don't jerk the scroll position around
@@ -203,8 +180,10 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   }
 
   const onTriggerKeyDown = (e: KeyboardEvent) => {
-    if (disabled) return
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+    // Enter / Space already toggle via the native button click that
+    // PopoverTrigger hooks; only ArrowDown (which fires no click) needs to
+    // open the list here. A disabled <button> receives no keydown at all.
+    if (e.key === 'ArrowDown') {
       e.preventDefault()
       open.value = true
     }
@@ -241,174 +220,168 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   }
 
   return (
-    <div ref={wrapperRef} class={cn('relative', className)}>
-      <button
-        type='button'
-        id={id}
-        disabled={disabled}
-        onClick={() => {
-          if (disabled) return
-          open.value = !open.value
-        }}
-        onKeyDown={onTriggerKeyDown}
-        aria-haspopup='listbox'
-        aria-expanded={open.value}
-        // Match Input's vertical metrics so a Combobox sitting inside
-        // ROW_CLASS lines up with sibling inputs/buttons instead of
-        // floating a hairline above or below them.
-        class={cn(
-          'box-border w-full',
-          'flex items-center justify-between gap-1',
-          'min-h-5 py-px pr-1 pl-1.5',
-          'rounded border border-ga4 border-solid',
-          'bg-bg1 text-left text-inherit leading-none',
-          'cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
-          'outline-none transition',
-          'focus:border-brand',
-          open.value && 'border-brand'
-        )}
-      >
-        <span class={cn('flex-1 truncate leading-tight', !value && 'text-ga5')}>{triggerLabel || placeholder}</span>
-        {/* size/stroke explicit because Tabler's defaults (24/2) are too
-            chunky here — we want the chevron to read as a hint, not an
-            anchor, on a 20-px-tall trigger. */}
-        <IconChevronDown
-          size={12}
-          aria-hidden='true'
-          class={cn('shrink-0 transition-transform', open.value && 'rotate-180')}
-        />
-      </button>
-
-      {open.value && (
-        <div
-          role='dialog'
+    <Popover
+      open={open.value}
+      onOpenChange={v => {
+        open.value = v
+      }}
+      // `block` overrides the Popover wrapper's default `inline-block` so the
+      // combobox keeps the block / flex-1 sizing it gets from `className`.
+      className={cn('block', className)}
+    >
+      <PopoverTrigger>
+        <button
+          type='button'
+          id={id}
+          disabled={disabled}
+          onKeyDown={onTriggerKeyDown}
+          aria-haspopup='listbox'
+          aria-expanded={open.value}
+          // Match Input's vertical metrics so a Combobox sitting inside
+          // ROW_CLASS lines up with sibling inputs/buttons instead of
+          // floating a hairline above or below them.
           class={cn(
-            // top-full anchors below the trigger; left/right 0 stretch
-            // the popover to the wrapper's full width so long ids have
-            // room to breathe.
-            'absolute top-full right-0 left-0 z-50 mt-1',
-            'rounded border border-ga3 border-solid',
-            'bg-bg1',
-            'shadow-md',
-            'overflow-hidden'
+            'box-border w-full',
+            'flex items-center justify-between gap-1',
+            'min-h-5 py-px pr-1 pl-1.5',
+            'rounded border border-ga4 border-solid',
+            'bg-bg1 text-left text-inherit leading-none',
+            'cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
+            'outline-none transition',
+            'focus:border-brand',
+            open.value && 'border-brand'
           )}
         >
-          <div class='p-1'>
-            <input
-              ref={inputRef}
-              type='text'
-              placeholder={searchPlaceholder}
-              value={query.value}
-              onInput={e => {
-                query.value = e.currentTarget.value
-              }}
-              onKeyDown={onInputKeyDown}
-              class={cn(
-                'box-border w-full',
-                'px-1 py-px',
-                'rounded border border-ga4 border-solid',
-                'bg-bg1 text-inherit',
-                'min-h-5 leading-none outline-none',
-                'focus:border-brand'
-              )}
-            />
-          </div>
+          <span class={cn('flex-1 truncate leading-tight', !value && 'text-ga5')}>{triggerLabel || placeholder}</span>
+          {/* size/stroke explicit because Tabler's defaults (24/2) are too
+              chunky here — we want the chevron to read as a hint, not an
+              anchor, on a 20-px-tall trigger. */}
+          <IconChevronDown
+            size={12}
+            aria-hidden='true'
+            class={cn('shrink-0 transition-transform', open.value && 'rotate-180')}
+          />
+        </button>
+      </PopoverTrigger>
 
-          <Separator />
-
-          <div ref={listRef} role='listbox' class='max-h-50 overflow-y-auto'>
-            {options.length === 0 && !showMissing ? (
-              // Pre-fetch case: the user hasn't loaded any options yet.
-              // Use unloadedText if the consumer supplied one (e.g.
-              // "请先点击「刷新」"), else fall back to the generic empty
-              // text so we still say *something*.
-              <div class='px-2 py-1 text-ga5'>{unloadedText ?? emptyText}</div>
-            ) : filtered.length === 0 && !showMissing ? (
-              <div class='px-2 py-1 text-ga5'>{emptyText}</div>
-            ) : (
-              filtered.map((opt, i) => {
-                const selected = opt.value === value
-                const active = i === highlight.value
-                return (
-                  <button
-                    key={opt.value}
-                    type='button'
-                    role='option'
-                    aria-selected={selected}
-                    data-idx={i}
-                    title={opt.label ?? opt.value}
-                    onMouseEnter={() => {
-                      highlight.value = i
-                    }}
-                    onClick={() => select(opt.value)}
-                    class={cn(
-                      'box-border w-full',
-                      'flex items-start gap-2',
-                      'px-2 py-1',
-                      'border-none bg-transparent',
-                      'text-left text-inherit leading-tight',
-                      'cursor-pointer',
-                      // Mouse-hover and keyboard-highlight both drive the
-                      // same `active` state so the visible "where am I"
-                      // signal never disagrees between input modalities.
-                      active && 'bg-ga1s'
-                    )}
-                  >
-                    {/* min-w-0 lets the inner content respect break-all
-                        even though it sits inside a flex row; without
-                        it long ids would force the parent button wider
-                        than the popover. */}
-                    <div class='min-w-0 flex-1'>
-                      {renderItem ? (
-                        renderItem(opt, { selected, active })
-                      ) : (
-                        // Default render: single-line label, bold when
-                        // selected. break-all (not truncate) so a 60-char
-                        // id like `meta-llama/Llama-3.1-405B-Instruct-FP8`
-                        // wraps and stays fully readable.
-                        <span class={cn('block break-all', selected && 'font-bold')}>{opt.label ?? opt.value}</span>
-                      )}
-                    </div>
-                    <IconCheck
-                      size={12}
-                      aria-hidden='true'
-                      // Reserve the slot even for unselected rows
-                      // (invisible, not hidden) so the option
-                      // content doesn't shift horizontally as the
-                      // selection moves between rows.
-                      class={cn('mt-0.5 shrink-0', !selected && 'invisible')}
-                    />
-                  </button>
-                )
-              })
+      {/* matchTriggerWidth stretches the dropdown to the trigger, replacing
+          the old `left-0 right-0` now that the content is position:fixed. */}
+      <PopoverContent side='bottom' align='start' matchTriggerWidth>
+        <div class='p-1'>
+          <input
+            ref={inputRef}
+            type='text'
+            placeholder={searchPlaceholder}
+            value={query.value}
+            onInput={e => {
+              query.value = e.currentTarget.value
+            }}
+            onKeyDown={onInputKeyDown}
+            class={cn(
+              'box-border w-full',
+              'px-1 py-px',
+              'rounded border border-ga4 border-solid',
+              'bg-bg1 text-inherit',
+              'min-h-5 leading-none outline-none',
+              'focus:border-brand'
             )}
+          />
+        </div>
 
-            {showMissing && (
-              <>
-                {/* Pin the sentinel below the live list with a divider
-                    so it reads as a separate cluster. Static informational
-                    row — not a real listbox option. We deliberately drop
-                    role='option' so screen readers don't announce it as
-                    selectable; the user can't pick it (it's already what's
-                    selected) and clicking does nothing. */}
-                <Separator />
-                <div
-                  title={value}
+        <Separator />
+
+        <div ref={listRef} role='listbox' class='max-h-50 overflow-y-auto'>
+          {options.length === 0 && !showMissing ? (
+            // Pre-fetch case: the user hasn't loaded any options yet.
+            // Use unloadedText if the consumer supplied one (e.g.
+            // "请先点击「刷新」"), else fall back to the generic empty
+            // text so we still say *something*.
+            <div class='px-2 py-1 text-ga5'>{unloadedText ?? emptyText}</div>
+          ) : filtered.length === 0 && !showMissing ? (
+            <div class='px-2 py-1 text-ga5'>{emptyText}</div>
+          ) : (
+            filtered.map((opt, i) => {
+              const selected = opt.value === value
+              const active = i === highlight.value
+              return (
+                <button
+                  key={opt.value}
+                  type='button'
+                  role='option'
+                  aria-selected={selected}
+                  data-idx={i}
+                  title={opt.label ?? opt.value}
+                  onMouseEnter={() => {
+                    highlight.value = i
+                  }}
+                  onClick={() => select(opt.value)}
                   class={cn(
                     'box-border w-full',
                     'flex items-start gap-2',
                     'px-2 py-1',
-                    'text-left text-ga6 leading-tight'
+                    'border-none bg-transparent',
+                    'text-left text-inherit leading-tight',
+                    'cursor-pointer',
+                    // Mouse-hover and keyboard-highlight both drive the
+                    // same `active` state so the visible "where am I"
+                    // signal never disagrees between input modalities.
+                    active && 'bg-ga1s'
                   )}
                 >
-                  <span class='flex-1 break-all'>{missingLabel(value)}</span>
-                  <IconCheck size={12} aria-hidden='true' class='mt-0.5 shrink-0' />
-                </div>
-              </>
-            )}
-          </div>
+                  {/* min-w-0 lets the inner content respect break-all
+                      even though it sits inside a flex row; without
+                      it long ids would force the parent button wider
+                      than the popover. */}
+                  <div class='min-w-0 flex-1'>
+                    {renderItem ? (
+                      renderItem(opt, { selected, active })
+                    ) : (
+                      // Default render: single-line label, bold when
+                      // selected. break-all (not truncate) so a 60-char
+                      // id like `meta-llama/Llama-3.1-405B-Instruct-FP8`
+                      // wraps and stays fully readable.
+                      <span class={cn('block break-all', selected && 'font-bold')}>{opt.label ?? opt.value}</span>
+                    )}
+                  </div>
+                  <IconCheck
+                    size={12}
+                    aria-hidden='true'
+                    // Reserve the slot even for unselected rows
+                    // (invisible, not hidden) so the option
+                    // content doesn't shift horizontally as the
+                    // selection moves between rows.
+                    class={cn('mt-0.5 shrink-0', !selected && 'invisible')}
+                  />
+                </button>
+              )
+            })
+          )}
+
+          {showMissing && (
+            <>
+              {/* Pin the sentinel below the live list with a divider
+                  so it reads as a separate cluster. Static informational
+                  row — not a real listbox option. We deliberately drop
+                  role='option' so screen readers don't announce it as
+                  selectable; the user can't pick it (it's already what's
+                  selected) and clicking does nothing. */}
+              <Separator />
+              <div
+                title={value}
+                class={cn(
+                  'box-border w-full',
+                  'flex items-start gap-2',
+                  'px-2 py-1',
+                  'text-left text-ga6 leading-tight'
+                )}
+              >
+                <span class='flex-1 break-all'>{missingLabel(value)}</span>
+                <IconCheck size={12} aria-hidden='true' class='mt-0.5 shrink-0' />
+              </div>
+            </>
+          )}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   )
 }

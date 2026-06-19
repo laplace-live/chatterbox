@@ -117,16 +117,32 @@ export interface PopoverContentProps {
   side?: PopoverSide
   /** How the popover is aligned along the horizontal axis. */
   align?: PopoverAlign
+  /**
+   * Stretch the content to the trigger's measured width — for select-style
+   * popovers (Combobox) whose dropdown lines up under the trigger instead of
+   * sizing to its own content.
+   */
+  matchTriggerWidth?: boolean
   className?: string
 }
 
-export function PopoverContent({ children, side = 'bottom', align = 'start', className }: PopoverContentProps) {
+export function PopoverContent({
+  children,
+  side = 'bottom',
+  align = 'start',
+  matchTriggerWidth,
+  className,
+}: PopoverContentProps) {
   const { open, setOpen, wrapperRef } = usePopover()
   const contentRef = useRef<HTMLDivElement>(null)
   // Computed fixed-position box. `null` until the first measure pass runs —
   // during that pass the content renders hidden (it must be in the DOM to be
   // measured) so it never flashes at the wrong spot.
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null)
+  // Trigger-matched width (px) when `matchTriggerWidth` is set, else null
+  // (content sizes itself). Kept apart from `placement` so the pure geometry
+  // stays width-agnostic.
+  const [width, setWidth] = useState<number | null>(null)
 
   // mousedown (not click) so a gesture that ends in a drag-select doesn't
   // swallow the close — matches the Combobox close behaviour for
@@ -176,9 +192,12 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
       // offsetWidth / scrollHeight report the content's NATURAL size,
       // independent of the maxHeight cap applied below — so re-measuring
       // never feeds the clamped height back into the computation.
+      // When matching the trigger width, feed that width in as the content
+      // width so horizontal alignment/clamping reflect the width we'll apply.
+      const contentWidth = matchTriggerWidth ? t.width : content.offsetWidth
       const next = computePopoverPosition(
         { top: t.top, left: t.left, width: t.width, height: t.height },
-        { width: content.offsetWidth, height: content.scrollHeight },
+        { width: contentWidth, height: content.scrollHeight },
         { width: window.innerWidth, height: window.innerHeight },
         { side, align }
       )
@@ -191,6 +210,7 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
           ? prev
           : next
       )
+      setWidth(matchTriggerWidth ? t.width : null)
     }
     reposition()
 
@@ -209,7 +229,7 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
       document.removeEventListener('scroll', schedule, true)
       observer.disconnect()
     }
-  }, [open, side, align])
+  }, [open, side, align, matchTriggerWidth])
 
   if (!open) return null
 
@@ -223,7 +243,7 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
         // popover taller than the available space scroll rather than
         // overflow the screen; overflow-x stays hidden for the rounded edge.
         'fixed z-50',
-        'rounded border border-ga3 border-solid',
+        'rounded ring ring-ga6/30',
         'bg-bg1',
         'shadow-md',
         'overflow-y-auto overflow-x-hidden',
@@ -231,7 +251,12 @@ export function PopoverContent({ children, side = 'bottom', align = 'start', cla
       )}
       style={
         placement
-          ? { left: `${placement.left}px`, top: `${placement.top}px`, maxHeight: `${placement.maxHeight}px` }
+          ? {
+              left: `${placement.left}px`,
+              top: `${placement.top}px`,
+              maxHeight: `${placement.maxHeight}px`,
+              ...(width !== null ? { width: `${width}px` } : null),
+            }
           : { visibility: 'hidden' }
       }
     >
