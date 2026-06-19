@@ -13,7 +13,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^2.5.0",
-        "@laplace.live/internal": "^1.3.19",
+        "@laplace.live/internal": "^1.3.23",
         "@preact/preset-vite": "^2.10.5",
         "@soniox/client": "^2.1.1",
         "@tailwindcss/vite": "^4.3.1",
@@ -103,7 +103,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@laplace.live/internal": ["@laplace.live/internal@1.3.19", "", { "peerDependencies": { "typescript": "^5.9.3" } }, "sha512-/4y1kngo/xQJp6Ng+3OAPyXpQEaAUN5gIklEf6uVei7mm+R3gW6L26SyOTls/NJFGtjdeKBZvFnRuAicCQfEVg=="],
+    "@laplace.live/internal": ["@laplace.live/internal@1.3.23", "", { "peerDependencies": { "typescript": "^5.9.3" } }, "sha512-V7wMLoOYwfaTHdnwwjqV0p7KDR9yI8cFG8kQDMM5RDUUzPNFQCjeZ438QVLpxF3wVOMzRB01I8WG5j89AFzn4w=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
 
