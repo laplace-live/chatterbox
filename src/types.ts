@@ -101,3 +101,18 @@ export interface BilibiliGetEmoticonsResponse {
     data: BilibiliEmoticonPackage[]
   }
 }
+
+/**
+ * A user-pinned emote, persisted across sessions/rooms. Stores a self-contained
+ * snapshot (not just the `emoticon_unique` id) so a favorite can still render in
+ * the picker even when its source package isn't loaded — e.g. a room-exclusive
+ * emote favorited in one room and viewed from another, where it shows grayed
+ * out / unsendable. Only the fields needed to draw and re-send the cell are
+ * kept; the volatile unlock/permission metadata is re-read from the live cache.
+ */
+export interface FavoriteEmote {
+  emoticon_unique: string
+  url: string
+  emoji: string
+  descript?: string
+}

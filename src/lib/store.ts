@@ -1,6 +1,6 @@
 import { effect, signal } from '@preact/signals'
 
-import type { BilibiliEmoticonPackage } from '../types'
+import type { BilibiliEmoticonPackage, FavoriteEmote } from '../types'
 import type { LlmModel } from './llm'
 import type { SonioxModel } from './soniox-models'
 
@@ -439,6 +439,12 @@ export const availableDanmakuColors = signal<string[] | null>(null)
 export const replacementMap = signal<Map<string, string> | null>(null)
 
 export const cachedEmoticonPackages = signal<BilibiliEmoticonPackage[]>([])
+
+// User-pinned emotes, surfaced as the leftmost "收藏" tab in the picker.
+// GM-persisted so favorites survive reloads and follow the user across rooms;
+// stores self-contained snapshots (see `FavoriteEmote`) so a room-exclusive
+// emote can still render — grayed out — when viewed from a different room.
+export const favoriteEmotes = gmSignal<FavoriteEmote[]>('favoriteEmotes', [])
 
 // Fasong tab shared text
 export const fasongText = signal('')
