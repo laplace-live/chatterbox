@@ -22,11 +22,10 @@
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
-import { DEEPGRAM_WS_URL } from '../const'
+import { DEEPGRAM_DEFAULT_MODEL, DEEPGRAM_WS_URL } from '../const'
 import { parseDeepgramResult } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
 
-const DEFAULT_MODEL = 'nova-3'
 // Milliseconds of silence before Deepgram finalizes an utterance (speech_final).
 // Deepgram's default (10 ms) fragments aggressively; 300 ms gives utterance-ish
 // boundaries that map better to one danmaku per phrase.
@@ -101,7 +100,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
   const start = (): void => {
     try {
       const url = new URL(DEEPGRAM_WS_URL)
-      url.searchParams.set('model', params.model || DEFAULT_MODEL)
+      url.searchParams.set('model', params.model || DEEPGRAM_DEFAULT_MODEL)
       url.searchParams.set('encoding', 'linear16')
       url.searchParams.set('sample_rate', String(PCM_SAMPLE_RATE))
       url.searchParams.set('channels', '1')

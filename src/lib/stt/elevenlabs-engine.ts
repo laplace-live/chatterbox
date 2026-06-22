@@ -24,13 +24,11 @@
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
-import { ELEVENLABS_WS_URL } from '../const'
+import { ELEVENLABS_DEFAULT_MODEL, ELEVENLABS_WS_URL } from '../const'
 import { int16ToBase64 } from './audio'
 import { mintElevenLabsToken } from './elevenlabs-token'
 import { elevenLabsTextToChunk, readStringField } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
-
-const DEFAULT_MODEL = 'scribe_v2_realtime'
 
 // Server message types that should end the session. Transient warnings
 // (commit_throttled, rate_limited, insufficient_audio_activity, …) are ignored
@@ -142,7 +140,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
         if (aborted || settled) return
 
         const url = new URL(ELEVENLABS_WS_URL)
-        url.searchParams.set('model_id', params.model || DEFAULT_MODEL)
+        url.searchParams.set('model_id', params.model || ELEVENLABS_DEFAULT_MODEL)
         url.searchParams.set('audio_format', 'pcm_16000')
         url.searchParams.set('commit_strategy', 'vad')
         const languageCode = params.languageHints[0]

@@ -24,12 +24,12 @@
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
+import { GLADIA_DEFAULT_MODEL } from '../const'
 import { int16ToBase64 } from './audio'
 import { initGladiaSession } from './gladia-session'
 import { parseGladiaResult } from './normalize'
 import { type PcmCapture, startPcmCapture } from './pcm-capture'
 
-const DEFAULT_MODEL = 'solaria-1'
 // After `stop_recording`, Gladia flushes a final transcript and closes the
 // socket itself; force-close after this long if that close never arrives.
 const STOP_GRACE_MS = 2000
@@ -103,7 +103,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
       try {
         const url = await initGladiaSession({
           apiKey: params.apiKey,
-          model: params.model || DEFAULT_MODEL,
+          model: params.model || GLADIA_DEFAULT_MODEL,
           languages: params.languageHints,
         })
         if (aborted || settled) return

@@ -5,6 +5,12 @@ import type { SttChunk, SttProvider, SttSessionParams } from '../lib/stt/types'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
+import {
+  DEEPGRAM_DEFAULT_MODEL,
+  ELEVENLABS_DEFAULT_MODEL,
+  GLADIA_DEFAULT_MODEL,
+  SONIOX_DEFAULT_MODEL,
+} from '../lib/const'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
@@ -51,13 +57,6 @@ const STT_FLUSH_DELAY_MS = 5000
 
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
-
-// Default model ids — used as the session fallback if the persisted value is
-// somehow empty. ElevenLabs has a single realtime model (hardcoded; no picker).
-const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
-const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
-const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
-const GLADIA_DEFAULT_MODEL = 'solaria-1'
 
 // Per-provider display label + signup link, so the API-key section renders
 // generically instead of branching per provider.

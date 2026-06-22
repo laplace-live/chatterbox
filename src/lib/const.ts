@@ -89,6 +89,18 @@ export const DEEPGRAM_API_BASE = 'https://api.deepgram.com/v1'
 export const GLADIA_API_BASE = 'https://api.gladia.io/v2'
 
 /**
+ * Default realtime model id per provider — the single source of truth shared by
+ * the engines (fallback when a session passes no model id), the `store`
+ * model-signal defaults, and the picker's fixed-model display. Soniox and
+ * Deepgram also expose fetchable lists the user can override; ElevenLabs and
+ * Gladia each have one fixed realtime model.
+ */
+export const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
+export const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
+export const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
+export const GLADIA_DEFAULT_MODEL = 'solaria-1'
+
+/**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
  * to `window.mpegts` at runtime, picked up via the shared
  * `loadUmdScript()` probe path.

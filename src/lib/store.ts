@@ -6,6 +6,7 @@ import type { SonioxModel } from './soniox-models'
 import type { SttModelOption, SttProvider } from './stt/types'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
+import { DEEPGRAM_DEFAULT_MODEL, SONIOX_DEFAULT_MODEL } from './const'
 import { gmSignal } from './gm-signal'
 import { appendLog } from './log'
 import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT } from './prompts'
@@ -306,7 +307,7 @@ export const sonioxApiKey = gmSignal('sonioxApiKey', '')
 // (id + optional name) so the dropdown stays populated across reloads
 // without re-hitting Soniox's /v1/models endpoint on every mount, mirroring
 // how `llmModels` caches the LLM catalog.
-export const sonioxModel = gmSignal('sonioxModel', 'stt-rt-v5')
+export const sonioxModel = gmSignal('sonioxModel', SONIOX_DEFAULT_MODEL)
 export const sonioxModels = gmSignal<SonioxModel[]>('sonioxModels', [])
 export const sonioxLanguageHints = gmSignal<string[]>('sonioxLanguageHints', ['zh'])
 // Realtime translation is Soniox-only (ElevenLabs Scribe is transcription-
@@ -319,7 +320,7 @@ export const sonioxTranslationTarget = gmSignal('sonioxTranslationTarget', 'en')
 export const elevenLabsApiKey = gmSignal('elevenLabsApiKey', '')
 // No model setting: `scribe_v2_realtime` is the only realtime Scribe model and
 // ElevenLabs exposes no API to list STT models, so the id is hardcoded in the
-// engine (see `ELEVENLABS_DEFAULT_MODEL` in `stt-tab.tsx`).
+// engine (see `ELEVENLABS_DEFAULT_MODEL` in `const.ts`).
 // Single ISO-639-1/3 code, or empty for auto-detect — the shape Scribe's
 // `languageCode` takes (not a multi-hint list like Soniox).
 export const elevenLabsLanguageCode = gmSignal('elevenLabsLanguageCode', '')
@@ -329,7 +330,7 @@ export const deepgramApiKey = gmSignal('deepgramApiKey', '')
 // Default `nova-3` (Deepgram's flagship realtime model). `deepgramModels`
 // caches the streaming-filtered list from /v1/models so the dropdown stays
 // populated across reloads, mirroring `sonioxModels`.
-export const deepgramModel = gmSignal('deepgramModel', 'nova-3')
+export const deepgramModel = gmSignal('deepgramModel', DEEPGRAM_DEFAULT_MODEL)
 export const deepgramModels = gmSignal<SttModelOption[]>('deepgramModels', [])
 // `multi` enables nova-3 multilingual code-switching; or a specific BCP-47 / ISO
 // code. (Deepgram has no "auto"; `multi` is the closest for mixed-language streams.)
