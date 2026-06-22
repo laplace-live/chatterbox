@@ -1546,8 +1546,7 @@ export function SettingsTab() {
         <AccordionContent className={ACCORDION_CONTENT_CLASS}>
           <div class={HINT_CLASS}>
             为 UID 添加本地备注，可在主播信息面板中查看与编辑。当前 UID
-            存在备注时，按钮上会显示备注图标作为提示。直播间页面以主播 UID 为索引、个人空间页面以页面 UID
-            为索引。备注仅保存在本地，可单独导入导出便于分享或备份
+            存在备注时，按钮上会显示备注图标作为提示。备注仅保存在本地，可单独导入导出便于分享或备份
           </div>
           <div class='mb-2 text-ga6'>本地已保存 {Object.keys(userNotes.value).length} 条备注</div>
           <div class={ROW_CLASS}>
