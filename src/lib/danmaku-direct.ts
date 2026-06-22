@@ -233,8 +233,8 @@ function tryInjectContextMenuItems(li: HTMLLIElement): void {
     closeNativeContextMenu()
   }
 
-  ul.insertBefore(stealEl, li.nextSibling)
-  ul.insertBefore(repeatEl, li.nextSibling)
+  ul.insertBefore(stealEl, ul.firstChild)
+  ul.insertBefore(repeatEl, ul.firstChild)
 }
 
 function initContextMenuHijack(): void {
