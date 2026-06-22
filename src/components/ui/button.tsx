@@ -18,21 +18,6 @@ export interface ButtonProps extends ButtonBase {
   className?: string
 }
 
-// Base classes shared by every variant/size. The hover/active brightness
-// previously lived in styles.ts as `:not(:disabled):hover { filter: ... }`;
-// we now express that via the arbitrary-selector variant so disabled
-// buttons stay un-darkened automatically.
-const BASE_CLASS = [
-  'inline-flex items-center justify-center',
-  'gap-1 rounded',
-  'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
-  'leading-[1.2]',
-  'select-none whitespace-nowrap box-border',
-  'transition',
-  '[&:not(:disabled):hover]:brightness-[.96]',
-  '[&:not(:disabled):active]:brightness-[.9]',
-].join(' ')
-
 const SIZE_CLASS: Record<ButtonSize, string> = {
   sm: 'px-1.5 py-px min-h-[18px]',
   default: 'px-2.5 py-1 min-h-6',
@@ -68,7 +53,19 @@ export function Button({
     <button
       type={type}
       disabled={disabled}
-      class={cn(BASE_CLASS, SIZE_CLASS[size], VARIANT_CLASS[variant], className)}
+      class={cn(
+        'inline-flex items-center justify-center shadow-sm',
+        'gap-1 rounded',
+        'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
+        'leading-[1.2]',
+        'box-border select-none whitespace-nowrap',
+        'transition',
+        '[&:not(:disabled):hover]:brightness-[.96]',
+        '[&:not(:disabled):active]:brightness-[.9]',
+        SIZE_CLASS[size],
+        VARIANT_CLASS[variant],
+        className
+      )}
       data-variant={variant}
       data-size={size}
       {...props}
