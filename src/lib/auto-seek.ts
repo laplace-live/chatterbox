@@ -19,7 +19,7 @@
  *   whenever the buffer state changes meaningfully; piggy-backing on
  *   them means zero wakeups while paused / background / idle, and we
  *   react faster than a 50ms `setInterval` could (which is the cadence
- *   c-basalt's upstream uses for slowdown). A short throttle (~80ms)
+ *   c-basalt's upstream uses for slowdown). A short throttle
  *   keeps us from doing redundant work when `timeupdate` and `progress`
  *   fire on the same tick.
  *
@@ -80,9 +80,9 @@ import {
 
 // Throttle adjacent ticks so a burst of `progress` + `timeupdate` events
 // on the same animation frame doesn't translate into multiple
-// `playbackRate` writes. 80ms is well below the user-perceptible reaction
+// `playbackRate` writes. 150ms is well below the user-perceptible reaction
 // window (~150ms) but above typical event-burst spacing (<16ms).
-const TICK_THROTTLE_MS = 80
+const TICK_THROTTLE_MS = 150
 
 // `playbackRate` reads/writes carry FP noise; comparing to 2 decimals
 // matches c-basalt's upstream and avoids spurious browser-side
