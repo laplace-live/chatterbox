@@ -70,7 +70,7 @@ export function AccordionTrigger({ className, children, ...props }: AccordionTri
   return (
     <summary
       class={cn(
-        'flex items-center justify-between gap-2',
+        'sticky top-0 z-10 flex items-center justify-between gap-2',
         'cursor-pointer select-none font-bold',
         'rounded-sm bg-ga1 px-1 py-0.5',
         // Hide the disclosure triangle two ways: `list-style: none` for browsers
