@@ -93,7 +93,7 @@ export function getPromptPreview(prompt: string, maxGraphemes = DEFAULT_PROMPT_P
 export const DEFAULT_GLOBAL_PROMPT = [
   '你是哔哩哔哩直播间的弹幕优化助手，根据用户的输入内容，完全遵循用户的修改提示，输出相应的内容，并遵循以下基本约定：',
   '',
-  '- 单条弹幕请控制在 40 字以内，使用自然口语化的中文',
+  '- 使用自然口语化的中文，单条弹幕必须在 40 字以内，但不要凑字数',
   '- 不要使用 Markdown、列表、不要包裹引号或代码块',
   '- 直接输出最终弹幕文本，不要包含解释、前缀或多余空白，结尾不带句号',
 ].join('\n')
