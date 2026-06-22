@@ -24,7 +24,7 @@ export interface PromptManagerProps {
 /**
  * Reusable per-feature LLM prompt editor.
  *
- * UX intentionally mirrors the 独轮车 template manager: a NativeSelect
+ * UX intentionally mirrors the 独轮车 template manager: a Combobox
  * picker, 新增 / 删除当前 buttons, and a single Textarea bound to the
  * active draft. The user's request was explicit about that parity so the
  * mental model carries over without learning anything new.

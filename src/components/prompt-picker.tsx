@@ -1,5 +1,5 @@
 import { getPromptPreview } from '../lib/prompts'
-import { NativeSelect } from './ui/native-select'
+import { Combobox } from './ui/combobox'
 
 export interface PromptPickerProps {
   /** All prompt drafts to choose from. */
@@ -9,10 +9,10 @@ export interface PromptPickerProps {
   /** Notify parent when the user picks a different draft. */
   onActiveIndexChange: (idx: number) => void
 
-  /** Forwarded to the underlying <select> so external <Label htmlFor>
-   *  / form-control wiring works. */
+  /** Forwarded to the underlying Combobox trigger so external
+   *  <Label htmlFor> / form-control wiring works. */
   id?: string
-  /** Forwarded to the underlying <select>. */
+  /** Forwarded to the underlying Combobox. */
   className?: string
   /** Native HTML title (tooltip). Useful when there's no visible label. */
   title?: string
@@ -27,7 +27,7 @@ export interface PromptPickerProps {
    *  value to keep the dropdown narrow. */
   previewGraphemes?: number
 
-  /** Sentinel option label rendered when `prompts` is empty.
+  /** Placeholder shown in the trigger when `prompts` is empty.
    *  Defaults to `(空)` — pass a domain-relevant hint (e.g.
    *  "暂无提示词，请点击「新增」添加") when the surrounding UI offers an
    *  obvious next step. Callers that prefer to *hide* the picker
@@ -50,11 +50,11 @@ export interface PromptPickerProps {
  *      `preview` is the prompt's first line, grapheme-trimmed by
  *      `getPromptPreview`. Numeric prefix gives users a stable handle
  *      to refer to ("the 3rd prompt") even when previews look similar.
- *   3. Empty-state handling — renders a single sentinel option
- *      labelled `emptyText ?? '(空)'` and auto-disables the select.
- *      We don't return null on empty so the layout doesn't reflow as
- *      the user adds / removes prompts; callers that *need* the
- *      picker to disappear should gate the JSX themselves.
+ *   3. Empty-state handling — shows `emptyText ?? '(空)'` as the
+ *      Combobox placeholder and auto-disables the trigger. We don't
+ *      return null on empty so the layout doesn't reflow as the user
+ *      adds / removes prompts; callers that *need* the picker to
+ *      disappear should gate the JSX themselves.
  *
  * Used by the Settings PromptManager (with 24-grapheme previews and
  * a domain-specific empty hint) and the inline picker on each feature
@@ -80,7 +80,7 @@ export function PromptPicker({
   const isEmpty = prompts.length === 0
 
   return (
-    <NativeSelect
+    <Combobox
       id={id}
       className={className}
       title={title}
@@ -88,27 +88,24 @@ export function PromptPicker({
       // can ALSO disable for their own reasons (e.g. "in flight"),
       // and either condition wins.
       disabled={disabled || isEmpty}
-      // Sentinel value '' when empty so the <select>'s value matches
-      // the sentinel option's value. Without this, Firefox / Safari
-      // would treat the value '0' as pointing at no visible option
-      // and render the field blank. Chrome happens to fall back to
-      // the first option, which is the same outcome but inconsistent
-      // — this keeps all three browsers in sync.
+      // Empty value when there are no prompts so the trigger falls back
+      // to `placeholder` (the emptyText hint) instead of echoing a stale
+      // index. A real pick always writes a clean index back via onChange.
       value={isEmpty ? '' : String(safeIndex)}
-      onChange={e => {
-        const v = parseInt(e.currentTarget.value, 10)
-        if (!Number.isNaN(v)) onActiveIndexChange(v)
+      options={prompts.map((p, i) => ({
+        value: String(i),
+        // Numeric prefix gives users a stable handle to refer to
+        // ("the 3rd prompt") even when previews look similar.
+        label: `${i + 1}: ${getPromptPreview(p, previewGraphemes)}`,
+      }))}
+      onChange={v => {
+        const idx = parseInt(v, 10)
+        if (!Number.isNaN(idx)) onActiveIndexChange(idx)
       }}
-    >
-      {isEmpty ? (
-        <option value=''>{emptyText ?? '(空)'}</option>
-      ) : (
-        prompts.map((p, i) => (
-          <option key={i} value={String(i)}>
-            {i + 1}: {getPromptPreview(p, previewGraphemes)}
-          </option>
-        ))
-      )}
-    </NativeSelect>
+      // Placeholder doubles as the empty-state sentinel: when the list
+      // is empty the (disabled) trigger shows this text. Mirrors the
+      // old single-sentinel <option>.
+      placeholder={emptyText ?? '(空)'}
+    />
   )
 }

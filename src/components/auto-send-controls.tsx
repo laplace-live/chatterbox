@@ -22,14 +22,14 @@ import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
+import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
-import { NativeSelect } from './ui/native-select'
 import { Textarea } from './ui/textarea'
 
 function getPreview(template: string): string {
   const firstLine = (template.split('\n')[0] ?? '').trim()
   if (!firstLine) return '(空)'
-  return getGraphemes(firstLine).length > 10 ? `${trimText(firstLine, 10)[0]}…` : firstLine
+  return getGraphemes(firstLine).length > 10 ? `${trimText(firstLine, 40)[0]}…` : firstLine
 }
 
 export function AutoSendControls() {
@@ -101,19 +101,18 @@ export function AutoSendControls() {
           <Button variant={sendMsg.value ? 'destructive' : 'default'} size='sm' onClick={toggleSend}>
             {sendMsg.value ? '停车' : '开车'}
           </Button>
-          <NativeSelect
+          <Combobox
             className='w-full'
             value={String(idx)}
-            onChange={e => {
-              activeTemplateIndex.value = parseInt(e.currentTarget.value, 10)
+            options={templates.map((t, i) => ({
+              value: String(i),
+              label: `${i + 1}: ${getPreview(t)}`,
+              searchText: t,
+            }))}
+            onChange={v => {
+              activeTemplateIndex.value = parseInt(v, 10)
             }}
-          >
-            {templates.map((t, i) => (
-              <option key={i} value={String(i)}>
-                {i + 1}: {getPreview(t)}
-              </option>
-            ))}
-          </NativeSelect>
+          />
           <Button variant='outline' size='sm' onClick={addTemplate}>
             新增
           </Button>

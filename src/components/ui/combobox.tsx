@@ -82,6 +82,12 @@ export interface ComboboxProps<O extends ComboboxOption = ComboboxOption> {
   className?: string
   /** Forwarded onto the trigger button so external <Label htmlFor> works. */
   id?: string
+  /**
+   * Native HTML title (tooltip) forwarded onto the trigger button.
+   * Useful when the combobox has no visible <Label> beside it (e.g. the
+   * inline PromptPicker that swaps the active prompt on a feature tab).
+   */
+  title?: string
 }
 
 export function Combobox<O extends ComboboxOption = ComboboxOption>({
@@ -97,6 +103,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   disabled,
   className,
   id,
+  title,
 }: ComboboxProps<O>) {
   const open = useSignal(false)
   const query = useSignal('')
@@ -233,6 +240,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
         <button
           type='button'
           id={id}
+          title={title}
           disabled={disabled}
           onKeyDown={onTriggerKeyDown}
           aria-haspopup='listbox'
@@ -336,11 +344,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                     {renderItem ? (
                       renderItem(opt, { selected, active })
                     ) : (
-                      // Default render: single-line label, bold when
-                      // selected. break-all (not truncate) so a 60-char
-                      // id like `meta-llama/Llama-3.1-405B-Instruct-FP8`
-                      // wraps and stays fully readable.
-                      <span class={cn('block break-all', selected && 'font-bold')}>{opt.label ?? opt.value}</span>
+                      <span class={cn('block truncate', selected && 'font-bold')}>{opt.label ?? opt.value}</span>
                     )}
                   </div>
                   <IconCheck
