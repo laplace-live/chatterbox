@@ -39,6 +39,27 @@ export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.1.0/dist/index
 export const SONIOX_API_BASE = 'https://api.soniox.com/v1'
 
 /**
+ * ElevenLabs Scribe v2 Realtime speech-to-text WebSocket endpoint.
+ *
+ * We talk the protocol directly rather than via `@elevenlabs/client`: that SDK
+ * bundles `livekit-client`, whose webrtc-adapter shim runs at import time and
+ * throws (`'ontrack' in undefined`) in the bilibili page context — and Scribe
+ * realtime is a plain WebSocket that never needs WebRTC anyway. The engine
+ * appends `?token=&model_id=&audio_format=pcm_16000&commit_strategy=vad`
+ * (+ optional `language_code`) and streams base64 PCM16 chunks.
+ */
+export const ELEVENLABS_WS_URL = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime'
+
+/**
+ * ElevenLabs REST API root. We hit `${ELEVENLABS_API_BASE}/single-use-token/
+ * realtime_scribe` to mint the short-lived (15 min, single-use) token the
+ * WebSocket needs — browsers can't set the `xi-api-key` header on a WebSocket,
+ * so the key rides the `token` query param instead and never travels on the
+ * socket itself. Fixed (ElevenLabs-hosted), like `SONIOX_API_BASE`.
+ */
+export const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1'
+
+/**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
  * to `window.mpegts` at runtime, picked up via the shared
  * `loadUmdScript()` probe path.

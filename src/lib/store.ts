@@ -3,6 +3,7 @@ import { effect, signal } from '@preact/signals'
 import type { BilibiliEmoticonPackage, FavoriteEmote } from '../types'
 import type { LlmModel } from './llm'
 import type { SonioxModel } from './soniox-models'
+import type { SttProvider } from './stt/types'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import { gmSignal } from './gm-signal'
@@ -287,7 +288,17 @@ export const aiChatViewerWindow = gmSignal('aiChatViewerWindow', 50)
 export const aiChatViewerInterval = gmSignal('aiChatViewerInterval', 10)
 export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
 
-// Soniox settings
+// ---------------------------------------------------------------------------
+// STT (同传) settings
+// ---------------------------------------------------------------------------
+// The 同传 tab supports multiple realtime providers. `sttProvider` picks the
+// active one; each provider keeps its own api key + model, while the output /
+// capture settings (auto-send, segment length, 【】 wrap, mic device) are
+// shared across providers under provider-neutral `stt*` keys. Default stays
+// `soniox` so existing users see no change.
+export const sttProvider = gmSignal<SttProvider>('sttProvider', 'soniox')
+
+// --- Soniox (provider-specific) ---
 export const sonioxApiKey = gmSignal('sonioxApiKey', '')
 // Real-time STT model. Default `stt-rt-v5` preserves the behaviour from
 // when the model was hard-coded — existing users keep the same model until
@@ -298,15 +309,52 @@ export const sonioxApiKey = gmSignal('sonioxApiKey', '')
 export const sonioxModel = gmSignal('sonioxModel', 'stt-rt-v5')
 export const sonioxModels = gmSignal<SonioxModel[]>('sonioxModels', [])
 export const sonioxLanguageHints = gmSignal<string[]>('sonioxLanguageHints', ['zh'])
-export const sonioxAutoSend = gmSignal('sonioxAutoSend', true)
-export const sonioxMaxLength = gmSignal('sonioxMaxLength', 40)
-export const sonioxWrapBrackets = gmSignal('sonioxWrapBrackets', false)
+// Realtime translation is Soniox-only (ElevenLabs Scribe is transcription-
+// only), so these stay provider-specific; the tab hides the translation
+// section when another provider is active.
 export const sonioxTranslationEnabled = gmSignal('sonioxTranslationEnabled', false)
 export const sonioxTranslationTarget = gmSignal('sonioxTranslationTarget', 'en')
+
+// --- ElevenLabs (provider-specific) ---
+export const elevenLabsApiKey = gmSignal('elevenLabsApiKey', '')
+// No model setting: `scribe_v2_realtime` is the only realtime Scribe model and
+// ElevenLabs exposes no API to list STT models, so the id is hardcoded in the
+// engine (see `ELEVENLABS_DEFAULT_MODEL` in `stt-tab.tsx`).
+// Single ISO-639-1/3 code, or empty for auto-detect — the shape Scribe's
+// `languageCode` takes (not a multi-hint list like Soniox).
+export const elevenLabsLanguageCode = gmSignal('elevenLabsLanguageCode', '')
+
+// --- Shared output / capture (every provider) ---
+// These were Soniox-prefixed before multi-provider support; migrate the
+// persisted values to neutral keys one time. Idempotent and sentinel-guarded
+// per key — copy the old value only if the new key is unset, then delete the
+// old key — so it self-disables once migrated, and a re-imported pre-upgrade
+// backup (which rewrites the old key then reloads, see `settings-io.ts`) is
+// migrated again on the next load.
+;(() => {
+  const renames: Array<[string, string]> = [
+    ['sonioxAutoSend', 'sttAutoSend'],
+    ['sonioxMaxLength', 'sttMaxLength'],
+    ['sonioxWrapBrackets', 'sttWrapBrackets'],
+    ['sonioxAudioDeviceId', 'sttAudioDeviceId'],
+  ]
+  for (const [oldKey, newKey] of renames) {
+    const missing = Symbol()
+    const oldVal = GM_getValue<unknown>(oldKey, missing)
+    if (oldVal === missing) continue
+    const newVal = GM_getValue<unknown>(newKey, missing)
+    if (newVal === missing) GM_setValue(newKey, oldVal)
+    GM_deleteValue(oldKey)
+  }
+})()
+
+export const sttAutoSend = gmSignal('sttAutoSend', true)
+export const sttMaxLength = gmSignal('sttMaxLength', 40)
+export const sttWrapBrackets = gmSignal('sttWrapBrackets', false)
 // Empty string = use system default microphone. Validated against the live
 // device list before each start so a stale id (mic unplugged across
 // sessions) silently falls back to default instead of erroring out.
-export const sonioxAudioDeviceId = gmSignal('sonioxAudioDeviceId', '')
+export const sttAudioDeviceId = gmSignal('sttAudioDeviceId', '')
 
 // Migrate legacy flat replacementRules → localGlobalRules (one-time, then delete old key)
 ;(() => {

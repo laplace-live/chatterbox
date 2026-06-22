@@ -57,6 +57,14 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     description: '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/client)，仅在首次点击「开始同传」时下载。',
   },
   {
+    name: 'ElevenLabs 语音识别',
+    host: 'api.elevenlabs.io',
+    url: 'https://elevenlabs.io',
+    trigger: '将同传供应商切换为 ElevenLabs 并使用同传功能时',
+    description:
+      '通过 WebSocket 连接 ElevenLabs Scribe 实时语音识别服务，将麦克风音频流实时转换为文字。连接前会先用 API Key 申请一个有效期 15 分钟的一次性令牌（避免在 WebSocket 上暴露 API Key）。需要提供 ElevenLabs API Key。',
+  },
+  {
     name: 'mpegts.js',
     host: 'unpkg.com',
     url: 'https://github.com/xqq/mpegts.js',

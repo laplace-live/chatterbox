@@ -1,30 +1,34 @@
 import { useSignal } from '@preact/signals'
-import type { RealtimeResult } from '@soniox/client'
 import { useEffect, useRef } from 'preact/hooks'
+
+import type { SttChunk, SttProvider, SttSessionParams } from '../lib/stt/types'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
-import { loadSoniox } from '../lib/soniox'
 import { fetchSonioxModels } from '../lib/soniox-models'
 import {
+  elevenLabsApiKey,
+  elevenLabsLanguageCode,
   sonioxApiKey,
-  sonioxAudioDeviceId,
-  sonioxAutoSend,
   sonioxLanguageHints,
-  sonioxMaxLength,
   sonioxModel,
   sonioxModels,
   sonioxTranslationEnabled,
   sonioxTranslationTarget,
-  sonioxWrapBrackets,
+  sttAudioDeviceId,
+  sttAutoSend,
   sttEndpointReached,
+  sttMaxLength,
+  sttProvider,
   sttRunning,
   sttTranscriptBuffer,
+  sttWrapBrackets,
 } from '../lib/store'
-import { useSonioxRecording } from '../lib/use-soniox-recording'
+import { reduceChunks } from '../lib/stt/normalize'
+import { useSttRecording } from '../lib/use-stt-recording'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { wrapSegment, wrapSplitLen } from '../lib/wrap'
 import { AiChatSection } from './ai-chat-section'
@@ -36,10 +40,26 @@ import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
 
-const SONIOX_FLUSH_DELAY_MS = 5000
+const STT_FLUSH_DELAY_MS = 5000
 
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
+
+// Default model ids — mirror the gmSignal defaults so a session never starts
+// model-less even if the persisted value is somehow empty.
+const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
+const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
+
+// Shared language options for the ElevenLabs single `languageCode` picker
+// (empty = auto-detect). Scribe accepts any ISO-639 code; these are the common
+// ones for this audience, matching Soniox's hint checkboxes.
+const ELEVENLABS_LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: '', label: '自动检测' },
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+]
 
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
@@ -51,20 +71,23 @@ export function SttTab() {
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
   // Model-list fetch state machine (idle / loading / success / error),
   // colour-coded the same way the recording status line is. Mirrors the
-  // LLM picker's refresh flow in settings-tab.
+  // LLM picker's refresh flow in settings-tab. Soniox-only — ElevenLabs has a
+  // single realtime model, so there's no list to fetch.
   const modelFetching = useSignal(false)
   const modelFetchStatus = useSignal('')
   const modelFetchStatusColor = useSignal('#666')
 
-  const accFinal = useRef('')
-  const accTranslated = useRef('')
+  // Single accumulator for the finalised display text. Translation mode is
+  // captured for the lifetime of a session (see `translationModeRef`), so one
+  // buffer suffices — `reduceChunks` already picks the right stream.
+  const acc = useRef('')
   const sendBuffer = useRef('')
   const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFlushing = useRef(false)
-  // Translation toggle / target captured at start() time and stashed in
-  // refs so the SDK event handlers — which fire across the lifetime of
-  // the recording — observe the values the user picked when they
-  // clicked 开始同传, not whatever they've flipped to since.
+  // Translation toggle captured at start() time and stashed in a ref so the
+  // event handlers — which fire across the lifetime of the recording —
+  // observe the value the user picked when they clicked 开始同传, not whatever
+  // they've flipped to since. Always false for providers without translation.
   const translationModeRef = useRef(false)
 
   const enumerateMics = async () => {
@@ -142,8 +165,7 @@ export function SttTab() {
     statusColor.value = '#666'
     sendBuffer.current = ''
     isFlushing.current = false
-    accFinal.current = ''
-    accTranslated.current = ''
+    acc.current = ''
     finalText.value = ''
     nonFinalText.value = ''
     if (flushTimeout.current) {
@@ -181,8 +203,8 @@ export function SttTab() {
         flushTimeout.current = null
       }
       if (!sendBuffer.current.trim()) return
-      const wrap = sonioxWrapBrackets.value
-      const maxLen = sonioxMaxLength.value || 40
+      const wrap = sttWrapBrackets.value
+      const maxLen = sttMaxLength.value || 40
       // Reserve the 【】 wrapper graphemes so the wrapped segment still fits
       // within the user's configured max length.
       const splitLen = wrapSplitLen(maxLen, wrap)
@@ -204,80 +226,46 @@ export function SttTab() {
     sendBuffer.current += text
     if (flushTimeout.current) clearTimeout(flushTimeout.current)
     if (state.value === 'running') {
-      flushTimeout.current = setTimeout(() => void flushBuffer(), SONIOX_FLUSH_DELAY_MS)
+      flushTimeout.current = setTimeout(() => void flushBuffer(), STT_FLUSH_DELAY_MS)
     }
   }
 
-  // Result handler — extracted from the inline `onResult` callback the
-  // legacy SDK took. Same fan-out: tokens get bucketed into final vs
-  // non-final (or translation vs non-translation), the running display
-  // gets refreshed with a 500-char sliding window, the danmaku send
-  // buffer gets fed for auto-send, and the AI-Chat transcript buffer
-  // gets the same final stream the captions show.
-  const handleResult = (result: RealtimeResult) => {
-    const translationEnabled = translationModeRef.current
-    let newFinal = ''
-    let nonFinal = ''
-    let newTransFinal = ''
-    let transNonFinal = ''
-    for (const token of result.tokens ?? []) {
-      if (translationEnabled) {
-        if (token.translation_status === 'translation') {
-          if (token.is_final) newTransFinal += token.text
-          else transNonFinal += token.text
-        }
-      } else {
-        if (token.is_final) newFinal += token.text
-        else nonFinal += token.text
-      }
-    }
-    if (translationEnabled) {
-      if (newTransFinal && sonioxAutoSend.value) addToBuffer(newTransFinal)
-      accTranslated.current += newTransFinal
-      let display = accTranslated.current
-      if (display.length > 500) display = `…${display.slice(-500)}`
-      finalText.value = display
-      nonFinalText.value = transNonFinal
-      // Forward whichever final stream the user is listening to
-      // (translation here, original below) into the global AI
-      // Chat buffer. The engine doesn't care which it gets —
-      // it's just "the thing the streamer's audience is hearing
-      // turned into text" — so feeding the translation when
-      // it's on keeps the context aligned with what the
-      // viewers actually see in captions.
-      if (newTransFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newTransFinal
-    } else {
-      if (newFinal && sonioxAutoSend.value) addToBuffer(newFinal)
-      accFinal.current += newFinal
-      let display = accFinal.current
-      if (display.length > 500) display = `…${display.slice(-500)}`
-      finalText.value = display
-      nonFinalText.value = nonFinal
-      if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
-    }
+  // Transcript handler — provider-agnostic. Each frame's chunks are reduced to
+  // the new final text + current non-final text for the stream the user is
+  // listening to (translation vs original). Finals feed the 500-char sliding
+  // display, the danmaku send buffer (when auto-send is on), and the AI-Chat
+  // transcript buffer; non-finals just refresh the provisional display.
+  const handleTranscript = (chunks: SttChunk[]) => {
+    const { newFinal, nonFinal } = reduceChunks(chunks, translationModeRef.current)
+    if (newFinal && sttAutoSend.value) addToBuffer(newFinal)
+    acc.current += newFinal
+    let display = acc.current
+    if (display.length > 500) display = `…${display.slice(-500)}`
+    finalText.value = display
+    nonFinalText.value = nonFinal
+    if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
   }
 
   const handleEndpoint = () => {
-    if (sonioxAutoSend.value) {
-      // The translation pipeline lags the original transcript by a
-      // few hundred ms, so when we're sending translated text we
-      // delay the flush slightly to avoid clipping the tail of the
-      // current utterance before its translation lands.
+    if (sttAutoSend.value) {
+      // The translation pipeline lags the original transcript by a few hundred
+      // ms, so when sending translated text we delay the flush slightly to
+      // avoid clipping the tail of the current utterance before its
+      // translation lands. (Translation is Soniox-only.)
       setTimeout(() => void flushBuffer(), translationModeRef.current ? 300 : 0)
     }
-    // Surface the endpoint to AI Chat unconditionally (independent
-    // of auto-send gating above) so the engine still fires when the
-    // user has same-tab danmaku auto-send turned off — the engine
-    // treats endpoint as a stronger "ready to generate" signal than
-    // buffer length alone.
+    // Surface the endpoint to AI Chat unconditionally (independent of the
+    // auto-send gating above) so the engine still fires when same-tab danmaku
+    // auto-send is off — it treats endpoint as a stronger "ready to generate"
+    // signal than buffer length alone.
     sttEndpointReached.value = true
   }
 
   const handleFinished = async () => {
-    // Wait briefly for any in-flight flush triggered by the last
-    // result frame to settle before declaring the session over.
-    // 100 × 100 ms = 10 s upper bound; longer than that is a stuck
-    // network call and we'd rather move on than hang the UI.
+    // Wait briefly for any in-flight flush triggered by the last result frame
+    // to settle before declaring the session over. 100 × 100 ms = 10 s upper
+    // bound; longer than that is a stuck network call and we'd rather move on
+    // than hang the UI.
     let waitCount = 0
     while (isFlushing.current && waitCount < 100) {
       await new Promise(r => setTimeout(r, 100))
@@ -289,14 +277,15 @@ export function SttTab() {
   }
 
   const handleError = (err: Error) => {
-    console.error('Soniox error:', err)
+    console.error('STT error:', err)
     const message = err.message || String(err)
-    // Surface platform-typed mic errors with friendly Chinese copy.
-    // The SDK's `AudioPermissionError` / `AudioDeviceError` /
-    // `AudioUnavailableError` subclasses each set distinct codes;
-    // we sniff by name (string-compatible across loader boundaries)
-    // rather than `instanceof`, which wouldn't survive the
-    // page-context ↔ sandbox boundary the SDK is loaded across.
+    const label = sttProvider.value === 'elevenlabs' ? 'ElevenLabs' : 'Soniox'
+    // Surface platform-typed mic errors with friendly Chinese copy. Both
+    // providers' audio layers throw the same DOM error names
+    // (NotAllowedError / NotFoundError); Soniox's SDK adds its own
+    // Audio*Error subclasses, sniffed by name (string-compatible across the
+    // loader's page-context ↔ sandbox boundary, where instanceof wouldn't
+    // survive).
     if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
       statusText.value = '麦克风权限被拒绝'
@@ -304,7 +293,7 @@ export function SttTab() {
       appendLog('❌ 未找到麦克风设备')
       statusText.value = '未找到麦克风'
     } else {
-      appendLog(`🔴 Soniox 错误：${message}`)
+      appendLog(`🔴 ${label} 错误：${message}`)
       statusText.value = `错误: ${message}`
     }
     statusColor.value = '#f44'
@@ -314,8 +303,7 @@ export function SttTab() {
   const handleConnected = () => {
     state.value = 'running'
     sttRunning.value = true
-    const translationEnabled = translationModeRef.current
-    if (translationEnabled) {
+    if (translationModeRef.current) {
       const target = sonioxTranslationTarget.value
       const langNames: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' }
       statusText.value = `正在识别并翻译为${langNames[target] ?? target}…`
@@ -328,104 +316,74 @@ export function SttTab() {
   }
 
   // ---------------------------------------------------------------
-  // Reactive config for the recording hook
+  // Provider-aware config for the recording hook
   // ---------------------------------------------------------------
-  // Read all relevant signals here so the config object passed into
-  // the hook re-evaluates on each render — that way callback refs
-  // inside the hook always see the latest event handlers.
-  //
-  // The api key / language hints / translation target are all read
-  // at start() time anyway (captured into the hook's `cfg` snapshot),
-  // so this is just keeping the contract honest.
-  const apiKeyForHook = sonioxApiKey.value.trim()
-  // Fall back to stt-rt-v5 (the historical hard-coded default) if the
-  // persisted id is somehow empty, so the session never starts model-less.
-  const modelForHook = sonioxModel.value || 'stt-rt-v5'
-  const langHintsForHook = sonioxLanguageHints.value
-  const translationEnabledForHook = sonioxTranslationEnabled.value
-  const translationTargetForHook = sonioxTranslationTarget.value
-  const savedDeviceIdForHook = sonioxAudioDeviceId.value
+  const provider: SttProvider = sttProvider.value
+  const isSoniox = provider === 'soniox'
+  const activeApiKey = (isSoniox ? sonioxApiKey.value : elevenLabsApiKey.value).trim()
 
-  // Validate the saved device is still present at the moment we'd use
-  // it. If it isn't, fall back to the system default (matching what
-  // <NativeSelect> renders as "系统默认") and surface the swap once.
-  // The persisted reset happens lazily inside toggle() to avoid
-  // mutating store state during render.
+  // Validate the saved device is still present at the moment we'd use it. If
+  // it isn't, fall back to the system default (matching what <NativeSelect>
+  // renders as "系统默认") and surface the swap once. The persisted reset
+  // happens lazily inside toggle() to avoid mutating store state during render.
+  const savedDeviceIdForHook = sttAudioDeviceId.value
   const deviceStillAvailable =
     !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
   const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
 
-  // Mirror the SDK's MicrophoneSource defaults (raw mono, no DSP) so
-  // that pinning a deviceId doesn't silently flip echo cancellation /
-  // noise suppression / AGC back to the browser's "true" defaults —
-  // Soniox recommends raw audio for best transcription quality.
-  const micConstraints: MediaTrackConstraints | undefined = effectiveDeviceId
-    ? {
-        deviceId: { exact: effectiveDeviceId },
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 1,
-        sampleRate: 16000,
-      }
-    : undefined
+  const translationEnabledForHook = isSoniox && sonioxTranslationEnabled.value
 
-  const recording = useSonioxRecording({
-    apiKey: apiKeyForHook,
-    model: modelForHook,
-    language_hints: langHintsForHook,
-    enable_endpoint_detection: true,
-    ...(translationEnabledForHook
-      ? { translation: { type: 'one_way' as const, target_language: translationTargetForHook } }
-      : {}),
-    ...(micConstraints ? { microphoneConstraints: micConstraints } : {}),
-    onResult: handleResult,
+  const params: SttSessionParams = isSoniox
+    ? {
+        apiKey: activeApiKey,
+        model: sonioxModel.value || SONIOX_DEFAULT_MODEL,
+        languageHints: sonioxLanguageHints.value,
+        audioDeviceId: effectiveDeviceId,
+        ...(sonioxTranslationEnabled.value ? { translation: { targetLanguage: sonioxTranslationTarget.value } } : {}),
+      }
+    : {
+        apiKey: activeApiKey,
+        model: ELEVENLABS_DEFAULT_MODEL,
+        languageHints: elevenLabsLanguageCode.value ? [elevenLabsLanguageCode.value] : [],
+        audioDeviceId: effectiveDeviceId,
+      }
+
+  const recording = useSttRecording({
+    provider,
+    params,
+    onTranscript: handleTranscript,
     onEndpoint: handleEndpoint,
     onError: handleError,
     onFinished: handleFinished,
     onConnected: handleConnected,
   })
 
-  const toggle = async () => {
+  const toggle = () => {
     if (state.value === 'stopped') {
-      const apiKey = sonioxApiKey.value.trim()
-      if (!apiKey) {
-        appendLog('⚠️ 请先输入 Soniox API Key')
+      if (!activeApiKey) {
+        appendLog(isSoniox ? '⚠️ 请先输入 Soniox API Key' : '⚠️ 请先输入 ElevenLabs API Key')
         statusText.value = '请输入 API Key'
         statusColor.value = '#f44'
         return
       }
-      // Persist the device fallback now (deferred from render to keep
-      // it out of the render path's signal-write side effects).
+      // Persist the device fallback now (deferred from render to keep it out
+      // of the render path's signal-write side effects).
       if (savedDeviceIdForHook && !deviceStillAvailable) {
         appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
-        sonioxAudioDeviceId.value = ''
+        sttAudioDeviceId.value = ''
       }
-      // Reset display and accumulators for the new session.
+      // Reset display and accumulator for the new session.
       finalText.value = ''
       nonFinalText.value = ''
-      accFinal.current = ''
-      accTranslated.current = ''
+      acc.current = ''
       state.value = 'starting'
       statusText.value = '正在连接…'
       statusColor.value = '#666'
-      // Capture translation mode for the lifetime of this session —
-      // user toggling it mid-session shouldn't reinterpret tokens that
-      // were tagged on the way out from the server.
+      // Capture translation mode for the lifetime of this session — toggling
+      // it mid-session shouldn't reinterpret tokens tagged on the way out.
       translationModeRef.current = translationEnabledForHook
-      // Pre-warm the loader. Without this the user's first 开始同传
-      // press would race the CDN fetch silently; doing it here lets
-      // us surface load errors with our usual error path.
-      try {
-        await loadSoniox()
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        appendLog(`🔴 加载 Soniox SDK 失败：${message}`)
-        statusText.value = `加载失败: ${message}`
-        statusColor.value = '#f44'
-        resetState()
-        return
-      }
+      // The engine lazy-loads its SDK (and mints a token, for ElevenLabs) and
+      // surfaces any failure through onError, so no pre-warm is needed here.
       recording.start()
     } else if (state.value === 'running') {
       state.value = 'stopping'
@@ -457,21 +415,45 @@ export function SttTab() {
   // microphone permission. We use the presence of any non-empty label as a
   // proxy for "permission already granted, no need to nag the user".
   const hasMicLabels = devices.some(d => d.label)
-  const savedDeviceId = sonioxAudioDeviceId.value
+  const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
   return (
     <>
       <div class={'my-2'}>
-        <div class={HEADING_CLASS}>Soniox API 设置</div>
+        <div class={HEADING_CLASS}>语音识别服务</div>
+        <div class={ROW_CLASS}>
+          <Label htmlFor='sttProvider'>供应商</Label>
+          <NativeSelect
+            id='sttProvider'
+            className='min-w-37.5 flex-1 pr-5'
+            value={provider}
+            // Locked while a session is live — switching providers mid-stream
+            // would only take effect on the next start and reads as a no-op.
+            disabled={state.value !== 'stopped'}
+            onChange={e => {
+              sttProvider.value = e.currentTarget.value === 'elevenlabs' ? 'elevenlabs' : 'soniox'
+            }}
+          >
+            <option value='soniox'>Soniox</option>
+            <option value='elevenlabs'>ElevenLabs</option>
+          </NativeSelect>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div class={'my-2'}>
+        <div class={HEADING_CLASS}>{isSoniox ? 'Soniox API 设置' : 'ElevenLabs API 设置'}</div>
         <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
-            placeholder='输入 Soniox API Key'
+            placeholder={isSoniox ? '输入 Soniox API Key' : '输入 ElevenLabs API Key'}
             className='min-w-37.5 flex-1'
-            value={sonioxApiKey.value}
+            value={isSoniox ? sonioxApiKey.value : elevenLabsApiKey.value}
             onInput={e => {
-              sonioxApiKey.value = e.currentTarget.value
+              if (isSoniox) sonioxApiKey.value = e.currentTarget.value
+              else elevenLabsApiKey.value = e.currentTarget.value
             }}
           />
           <Button
@@ -486,9 +468,15 @@ export function SttTab() {
         </div>
         <div class='my-2 text-ga6'>
           前往{' '}
-          <a href='https://soniox.com/' target='_blank' class='text-link' rel='noopener'>
-            Soniox
-          </a>{' '}
+          {isSoniox ? (
+            <a href='https://soniox.com/' target='_blank' class='text-link' rel='noopener'>
+              Soniox
+            </a>
+          ) : (
+            <a href='https://elevenlabs.io/' target='_blank' class='text-link' rel='noopener'>
+              ElevenLabs
+            </a>
+          )}{' '}
           注册账号并获取 API Key
         </div>
       </div>
@@ -498,13 +486,13 @@ export function SttTab() {
       <div class={'my-2'}>
         <div class={HEADING_CLASS}>语音识别设置</div>
         <div class={ROW_CLASS}>
-          <Label htmlFor='sonioxAudioDevice'>设备</Label>
+          <Label htmlFor='sttAudioDevice'>设备</Label>
           <NativeSelect
-            id='sonioxAudioDevice'
+            id='sttAudioDevice'
             className='min-w-37.5 flex-1 pr-5'
             value={savedDeviceId}
             onChange={e => {
-              sonioxAudioDeviceId.value = e.currentTarget.value
+              sttAudioDeviceId.value = e.currentTarget.value
             }}
           >
             <option value=''>系统默认</option>
@@ -513,10 +501,9 @@ export function SttTab() {
                 {d.label || `麦克风 ${i + 1}`}
               </option>
             ))}
-            {/* Surface a stale id so the user can see *something* is
-                selected and switch away — without this the <select> would
-                silently fall back to "系统默认" while the underlying
-                stored id remains unchanged. */}
+            {/* Surface a stale id so the user can see *something* is selected
+                and switch away — without this the <select> would silently fall
+                back to "系统默认" while the underlying stored id stays put. */}
             {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
           </NativeSelect>
           {!hasMicLabels && (
@@ -528,131 +515,164 @@ export function SttTab() {
             刷新
           </Button>
         </div>
-        <div class={ROW_CLASS}>
-          <Label htmlFor='sonioxModel'>模型</Label>
-          <Combobox
-            id='sonioxModel'
-            className='min-w-37.5 flex-1'
-            value={sonioxModel.value}
-            // Display is id-only (the API has no pricing to show, and the
-            // name is often just a verbose restatement of the id). The
-            // friendly name still feeds searchText so filtering by it works.
-            options={sonioxModels.value.map(m => ({
-              value: m.id,
-              label: m.id,
-              searchText: [m.id, m.name].filter(Boolean).join(' '),
-            }))}
-            onChange={v => {
-              sonioxModel.value = v
-            }}
-            placeholder='选择模型'
-            searchPlaceholder='输入关键词过滤模型…'
-            emptyText='未找到匹配模型'
-            unloadedText='请点击「刷新」获取模型列表'
-            // Stale-but-persisted sentinel — same pattern the device select
-            // uses for an unplugged mic: surface the saved id so the user
-            // can SEE what's selected and switch, rather than silently
-            // dropping to the placeholder.
-            missingLabel={v => `${v}（已保存，不在当前列表中）`}
-          />
-          <Button
-            variant='outline'
-            size='sm'
-            disabled={modelFetching.value || !sonioxApiKey.value.trim()}
-            onClick={() => void refreshSonioxModels()}
-          >
-            {modelFetching.value ? '加载中…' : '刷新'}
-          </Button>
-        </div>
-        {modelFetchStatus.value && (
-          // Status colour cycles neutral / success / error driven by the
-          // fetch state machine; inline color matches the recording status
-          // line below so the same visual language repeats.
-          <div class='mb-2' style={{ color: modelFetchStatusColor.value }}>
-            {modelFetchStatus.value}
+
+        {isSoniox ? (
+          <>
+            <div class={ROW_CLASS}>
+              <Label htmlFor='sonioxModel'>模型</Label>
+              <Combobox
+                id='sonioxModel'
+                className='min-w-37.5 flex-1'
+                value={sonioxModel.value}
+                // Display is id-only (the API has no pricing to show, and the
+                // name is often just a verbose restatement of the id). The
+                // friendly name still feeds searchText so filtering by it works.
+                options={sonioxModels.value.map(m => ({
+                  value: m.id,
+                  label: m.id,
+                  searchText: [m.id, m.name].filter(Boolean).join(' '),
+                }))}
+                onChange={v => {
+                  sonioxModel.value = v
+                }}
+                placeholder='选择模型'
+                searchPlaceholder='输入关键词过滤模型…'
+                emptyText='未找到匹配模型'
+                unloadedText='请点击「刷新」获取模型列表'
+                // Stale-but-persisted sentinel — same pattern the device select
+                // uses for an unplugged mic: surface the saved id so the user
+                // can SEE what's selected and switch, rather than silently
+                // dropping to the placeholder.
+                missingLabel={v => `${v}（已保存，不在当前列表中）`}
+              />
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={modelFetching.value || !sonioxApiKey.value.trim()}
+                onClick={() => void refreshSonioxModels()}
+              >
+                {modelFetching.value ? '加载中…' : '刷新'}
+              </Button>
+            </div>
+            {modelFetchStatus.value && (
+              // Status colour cycles neutral / success / error driven by the
+              // fetch state machine; inline color matches the recording status
+              // line below so the same visual language repeats.
+              <div class='mb-2' style={{ color: modelFetchStatusColor.value }}>
+                {modelFetchStatus.value}
+              </div>
+            )}
+            <div class={ROW_CLASS}>
+              <span>语言提示：</span>
+              {['zh', 'en', 'ja', 'ko'].map(lang => {
+                const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
+                return (
+                  <Checkbox
+                    key={lang}
+                    id={`stt-lang-${lang}`}
+                    checked={hints.includes(lang)}
+                    onChange={e => updateLangHints(lang, e.currentTarget.checked)}
+                    label={labels[lang]}
+                  />
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <div class={ROW_CLASS}>
+            <Label>模型</Label>
+            {/* Read-only: scribe_v2_realtime is the only realtime Scribe model
+                and ElevenLabs has no API to list STT models, so it's fixed. */}
+            <span class='text-ga6'>{ELEVENLABS_DEFAULT_MODEL}</span>
+            <Label htmlFor='elevenLabsLanguage'>语言</Label>
+            <NativeSelect
+              id='elevenLabsLanguage'
+              className='min-w-20 pr-5'
+              value={elevenLabsLanguageCode.value}
+              onChange={e => {
+                elevenLabsLanguageCode.value = e.currentTarget.value
+              }}
+            >
+              {ELEVENLABS_LANGUAGES.map(l => (
+                <option key={l.value || 'auto'} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </NativeSelect>
           </div>
         )}
+
         <div class={ROW_CLASS}>
-          <span>语言提示：</span>
-          {(['zh', 'en', 'ja', 'ko'] as const).map(lang => {
-            const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
-            return (
-              <Checkbox
-                key={lang}
-                id={`stt-lang-${lang}`}
-                checked={hints.includes(lang)}
-                onChange={e => updateLangHints(lang, e.currentTarget.checked)}
-                label={labels[lang]}
-              />
-            )
-          })}
-        </div>
-        <div class={ROW_CLASS}>
-          <Label htmlFor='sonioxMaxLength'>超过</Label>
+          <Label htmlFor='sttMaxLength'>超过</Label>
           <Input
-            id='sonioxMaxLength'
+            id='sttMaxLength'
             type='number'
             min='1'
             className='w-20'
-            value={sonioxMaxLength.value}
+            value={sttMaxLength.value}
             onInput={e => {
               const v = parseInt(e.currentTarget.value, 10) || 1
-              sonioxMaxLength.value = Math.max(1, v)
+              sttMaxLength.value = Math.max(1, v)
             }}
           />
           <span>字自动分段</span>
         </div>
         <div class='flex flex-wrap items-center gap-3'>
           <Checkbox
-            id='sonioxAutoSend'
-            checked={sonioxAutoSend.value}
+            id='sttAutoSend'
+            checked={sttAutoSend.value}
             onInput={e => {
-              sonioxAutoSend.value = e.currentTarget.checked
+              sttAutoSend.value = e.currentTarget.checked
             }}
             label='识别完成后自动发送弹幕'
           />
           <Checkbox
-            id='sonioxWrapBrackets'
-            checked={sonioxWrapBrackets.value}
+            id='sttWrapBrackets'
+            checked={sttWrapBrackets.value}
             onInput={e => {
-              sonioxWrapBrackets.value = e.currentTarget.checked
+              sttWrapBrackets.value = e.currentTarget.checked
             }}
             label='使用【】包裹同传内容'
           />
         </div>
       </div>
 
-      <Separator />
-
-      <div class={'my-2'}>
-        <div class={HEADING_CLASS}>实时翻译设置</div>
-        <div class={ROW_CLASS}>
-          <Checkbox
-            id='sonioxTranslationEnabled'
-            checked={sonioxTranslationEnabled.value}
-            onInput={e => {
-              sonioxTranslationEnabled.value = e.currentTarget.checked
-            }}
-            label='启用实时翻译'
-          />
-        </div>
-        <div class='flex flex-wrap items-center gap-2'>
-          <Label htmlFor='sonioxTranslationTarget'>翻译目标语言：</Label>
-          <NativeSelect
-            id='sonioxTranslationTarget'
-            className='min-w-20'
-            value={sonioxTranslationTarget.value}
-            onChange={e => {
-              sonioxTranslationTarget.value = e.currentTarget.value
-            }}
-          >
-            <option value='en'>English</option>
-            <option value='zh'>中文</option>
-            <option value='ja'>日本語</option>
-          </NativeSelect>
-        </div>
-        <div class='text-ga6'>启用后将发送翻译结果而非原始识别文字</div>
-      </div>
+      {/* Realtime translation is Soniox-only — ElevenLabs Scribe transcribes
+          but doesn't translate, so we hide the whole section for it. */}
+      {isSoniox && (
+        <>
+          <Separator />
+          <div class={'my-2'}>
+            <div class={HEADING_CLASS}>实时翻译设置</div>
+            <div class={ROW_CLASS}>
+              <Checkbox
+                id='sonioxTranslationEnabled'
+                checked={sonioxTranslationEnabled.value}
+                onInput={e => {
+                  sonioxTranslationEnabled.value = e.currentTarget.checked
+                }}
+                label='启用实时翻译'
+              />
+            </div>
+            <div class='flex flex-wrap items-center gap-2'>
+              <Label htmlFor='sonioxTranslationTarget'>翻译目标语言：</Label>
+              <NativeSelect
+                id='sonioxTranslationTarget'
+                className='min-w-20'
+                value={sonioxTranslationTarget.value}
+                onChange={e => {
+                  sonioxTranslationTarget.value = e.currentTarget.value
+                }}
+              >
+                <option value='en'>English</option>
+                <option value='zh'>中文</option>
+                <option value='ja'>日本語</option>
+              </NativeSelect>
+            </div>
+            <div class='text-ga6'>启用后将发送翻译结果而非原始识别文字</div>
+          </div>
+        </>
+      )}
 
       <Separator />
 
@@ -683,10 +703,9 @@ export function SttTab() {
       <Separator />
 
       {/* AI Chat lives downstream of STT — it consumes the same final
-          transcript stream that the captions above render — so we mount
-          it inside this tab rather than burning a top-level tab slot.
-          The component owns its own enable / mode toggles; this tab
-          just hosts it. */}
+          transcript stream that the captions above render — so we mount it
+          inside this tab rather than burning a top-level tab slot. The
+          component owns its own enable / mode toggles; this tab just hosts it. */}
       <AiChatSection />
     </>
   )
