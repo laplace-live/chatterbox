@@ -10,7 +10,7 @@
  * Float32 samples in [-1, 1] → little-endian Int16 PCM (s16le), the encoding
  * ElevenLabs' `audio_format=pcm_16000` expects. Out-of-range samples clamp.
  */
-export function floatTo16(input: Float32Array): Int16Array {
+export function floatTo16(input: Float32Array): Int16Array<ArrayBuffer> {
   const out = new Int16Array(input.length)
   for (let i = 0; i < input.length; i++) {
     const sample = Math.max(-1, Math.min(1, input[i]))

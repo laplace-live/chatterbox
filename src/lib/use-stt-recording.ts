@@ -27,6 +27,7 @@ import type {
   SttSessionParams,
 } from './stt/types'
 
+import { createDeepgramEngine } from './stt/deepgram-engine'
 import { createElevenLabsEngine } from './stt/elevenlabs-engine'
 import { createSonioxEngine } from './stt/soniox-engine'
 
@@ -64,6 +65,7 @@ const TERMINAL_STATES = new Set<SttRecordingState>(['idle', 'stopped', 'canceled
 const ENGINE_FACTORIES: Record<SttProvider, SttEngineFactory> = {
   soniox: createSonioxEngine,
   elevenlabs: createElevenLabsEngine,
+  deepgram: createDeepgramEngine,
 }
 
 export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingReturn {

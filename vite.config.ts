@@ -36,6 +36,12 @@ export default defineConfig({
           '*://www.bilibili.com/opus/*',
         ],
         'run-at': 'document-start',
+        // GM_xmlhttpRequest target: the Deepgram model-list fetch
+        // (GET /v1/models) is cross-origin and Deepgram sends no CORS headers
+        // for third-party origins, so it routes through GM_xmlhttpRequest. The
+        // STT WebSockets (all providers) and the ElevenLabs token fetch need no
+        // @connect.
+        connect: ['api.deepgram.com'],
         // Self-hosted on GitHub Pages: managers poll the 1 KB meta file for
         // version checks and only fetch the full script when it changes.
         downloadURL: `${DOWNLOAD_BASE}/laplace-chatterbox.user.js`,

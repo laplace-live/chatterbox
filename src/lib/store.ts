@@ -3,7 +3,7 @@ import { effect, signal } from '@preact/signals'
 import type { BilibiliEmoticonPackage, FavoriteEmote } from '../types'
 import type { LlmModel } from './llm'
 import type { SonioxModel } from './soniox-models'
-import type { SttProvider } from './stt/types'
+import type { SttModelOption, SttProvider } from './stt/types'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import { gmSignal } from './gm-signal'
@@ -323,6 +323,17 @@ export const elevenLabsApiKey = gmSignal('elevenLabsApiKey', '')
 // Single ISO-639-1/3 code, or empty for auto-detect — the shape Scribe's
 // `languageCode` takes (not a multi-hint list like Soniox).
 export const elevenLabsLanguageCode = gmSignal('elevenLabsLanguageCode', '')
+
+// --- Deepgram (provider-specific) ---
+export const deepgramApiKey = gmSignal('deepgramApiKey', '')
+// Default `nova-3` (Deepgram's flagship realtime model). `deepgramModels`
+// caches the streaming-filtered list from /v1/models so the dropdown stays
+// populated across reloads, mirroring `sonioxModels`.
+export const deepgramModel = gmSignal('deepgramModel', 'nova-3')
+export const deepgramModels = gmSignal<SttModelOption[]>('deepgramModels', [])
+// `multi` enables nova-3 multilingual code-switching; or a specific BCP-47 / ISO
+// code. (Deepgram has no "auto"; `multi` is the closest for mixed-language streams.)
+export const deepgramLanguage = gmSignal('deepgramLanguage', 'multi')
 
 // --- Shared output / capture (every provider) ---
 // These were Soniox-prefixed before multi-provider support; migrate the

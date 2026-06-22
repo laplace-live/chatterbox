@@ -11,33 +11,26 @@
  *      WebSocket, so it rides the `?token=` query param).
  *   2. Open the WS with `model_id`, `audio_format=pcm_16000`,
  *      `commit_strategy=vad` (+ optional `language_code`).
- *   3. On open, capture the mic through an AudioContext pinned to 16 kHz and a
- *      ScriptProcessor (no AudioWorklet blob → no CSP surprises on the host
- *      page), and stream base64 PCM16 `input_audio_chunk` messages.
- *   4. Map server messages onto normalized events:
- *      - `partial_transcript`   → a non-final original chunk
- *      - `committed_transcript` → a final original chunk, then `endpoint`
- *        (VAD decides the boundary)
- *      - fatal `*_error`        → error
- *      - socket close           → finished
+ *   3. On open, capture the mic via the shared PCM pipeline and stream base64
+ *      PCM16 `input_audio_chunk` messages.
+ *   4. Map server messages onto normalized events: `partial_transcript` → a
+ *      non-final chunk; `committed_transcript` → a final chunk then `endpoint`
+ *      (VAD-driven); fatal `*_error` → error; socket close → finished.
  *
- * Scribe is transcription-only (no translation), so every chunk is 'original'
- * and `params.translation` is ignored. `pause`/`resume` gate chunk sending;
+ * Scribe is transcription-only, so every chunk is 'original' and
+ * `params.translation` is ignored. `pause`/`resume` gate chunk sending;
  * `finalize` is a no-op (VAD auto-commits, and the UI doesn't call it).
  */
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
 import { ELEVENLABS_WS_URL } from '../const'
-import { floatTo16, int16ToBase64 } from './audio'
+import { int16ToBase64 } from './audio'
 import { mintElevenLabsToken } from './elevenlabs-token'
 import { elevenLabsTextToChunk, readStringField } from './normalize'
+import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
 
 const DEFAULT_MODEL = 'scribe_v2_realtime'
-const TARGET_SAMPLE_RATE = 16000
-// 4096 frames ≈ 256 ms at 16 kHz — a good latency/overhead balance, and a
-// valid ScriptProcessor buffer size.
-const SCRIPT_PROCESSOR_BUFFER = 4096
 
 // Server message types that should end the session. Transient warnings
 // (commit_throttled, rate_limited, insufficient_audio_activity, …) are ignored
@@ -59,30 +52,17 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
   let settled = false
   let paused = false
   let ws: WebSocket | null = null
-  let audioContext: AudioContext | null = null
-  let mediaStream: MediaStream | null = null
-  let sourceNode: MediaStreamAudioSourceNode | null = null
-  let processor: ScriptProcessorNode | null = null
-  let zeroGain: GainNode | null = null
+  let capture: PcmCapture | null = null
 
-  const stopAudio = (): void => {
-    if (processor) processor.onaudioprocess = null
-    processor?.disconnect()
-    sourceNode?.disconnect()
-    zeroGain?.disconnect()
-    processor = null
-    sourceNode = null
-    zeroGain = null
-    for (const track of mediaStream?.getTracks() ?? []) track.stop()
-    mediaStream = null
-    void audioContext?.close().catch(() => {})
-    audioContext = null
+  const stopCapture = (): void => {
+    capture?.stop()
+    capture = null
   }
 
   const finish = (): void => {
     if (settled) return
     settled = true
-    stopAudio()
+    stopCapture()
     onEvent({ type: 'state', state: 'stopped' })
     onEvent({ type: 'finished' })
   }
@@ -90,7 +70,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
   const fail = (err: unknown): void => {
     if (settled || aborted) return
     settled = true
-    stopAudio()
+    stopCapture()
     try {
       ws?.close()
     } catch {
@@ -99,51 +79,25 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
     onEvent({ type: 'error', error: toError(err) })
   }
 
-  const startAudioCapture = async (): Promise<void> => {
-    const constraints: MediaStreamConstraints = {
-      audio: {
-        ...(params.audioDeviceId ? { deviceId: { exact: params.audioDeviceId } } : {}),
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 1,
+  const beginAudio = async (): Promise<void> => {
+    const cap = await startPcmCapture({
+      deviceId: params.audioDeviceId,
+      onFrame: frame => {
+        if (paused || !ws || ws.readyState !== WebSocket.OPEN) return
+        ws.send(
+          JSON.stringify({
+            message_type: 'input_audio_chunk',
+            audio_base_64: int16ToBase64(frame),
+            sample_rate: PCM_SAMPLE_RATE,
+          })
+        )
       },
-    }
-    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    })
     if (aborted || settled) {
-      for (const track of stream.getTracks()) track.stop()
+      cap.stop()
       return
     }
-    mediaStream = stream
-    // Pinning the context to 16 kHz makes the browser resample the mic input
-    // for us, so the ScriptProcessor frames are already at the rate Scribe
-    // expects.
-    const context = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE })
-    audioContext = context
-    sourceNode = context.createMediaStreamSource(stream)
-    processor = context.createScriptProcessor(SCRIPT_PROCESSOR_BUFFER, 1, 1)
-    // A muted sink: ScriptProcessor only fires while connected to a
-    // destination, and routing through a zero gain avoids playing the mic back.
-    zeroGain = context.createGain()
-    zeroGain.gain.value = 0
-    processor.onaudioprocess = event => {
-      if (paused || !ws || ws.readyState !== WebSocket.OPEN) return
-      const samples = event.inputBuffer.getChannelData(0)
-      ws.send(
-        JSON.stringify({
-          message_type: 'input_audio_chunk',
-          audio_base_64: int16ToBase64(floatTo16(samples)),
-          sample_rate: TARGET_SAMPLE_RATE,
-        })
-      )
-    }
-    sourceNode.connect(processor)
-    processor.connect(zeroGain)
-    zeroGain.connect(context.destination)
-    // A context created several awaits after the click gesture can start
-    // suspended under the autoplay policy, which would stop the
-    // ScriptProcessor from firing. Resume it; harmless if already running.
-    void context.resume().catch(() => {})
+    capture = cap
   }
 
   const handleMessage = (raw: string): void => {
@@ -171,15 +125,12 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
       }
       case 'session_started':
       case 'committed_transcript_with_timestamps':
-        // session_started carries no transcript; the timestamped variant is
-        // only sent when include_timestamps is set, which we don't request.
         break
       default: {
         if (FATAL_MESSAGE_TYPES.has(messageType)) {
           const detail = readStringField(message, 'error')
           fail(new Error(detail ? `${messageType}: ${detail}` : messageType))
         }
-        // Non-fatal messages (transient warnings) are ignored.
       }
     }
   }
@@ -208,7 +159,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
           }
           onEvent({ type: 'state', state: 'running' })
           onEvent({ type: 'connected' })
-          void startAudioCapture().catch(err => fail(err))
+          void beginAudio().catch(err => fail(err))
         }
         socket.onmessage = event => {
           if (typeof event.data === 'string') handleMessage(event.data)
@@ -223,9 +174,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
 
   const stop = async (): Promise<void> => {
     onEvent({ type: 'state', state: 'stopping' })
-    // Stop sending audio; closing the socket lets any final committed
-    // transcript still in flight arrive before onclose → finish().
-    stopAudio()
+    stopCapture()
     try {
       ws?.close()
     } catch {
@@ -236,7 +185,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
   const cancel = (): void => {
     aborted = true
     settled = true
-    stopAudio()
+    stopCapture()
     try {
       ws?.close()
     } catch {
@@ -252,8 +201,6 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
     paused = false
   }
 
-  // VAD commits automatically and the STT tab never calls finalize, so there's
-  // nothing to force here.
   const finalize = (): void => {}
 
   return { start, stop, cancel, pause, resume, finalize }

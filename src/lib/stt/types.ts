@@ -12,7 +12,17 @@
  * to import from anywhere (including Bun tests).
  */
 
-export type SttProvider = 'soniox' | 'elevenlabs'
+export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram'
+
+/**
+ * A selectable STT model in a picker. `id` is the value sent to the provider
+ * (e.g. Soniox model id, Deepgram `canonical_name`); `name` is an optional
+ * friendlier label. Shared by the providers that expose a fetchable model list.
+ */
+export interface SttModelOption {
+  id: string
+  name?: string
+}
 
 /**
  * Recording lifecycle state. A superset of Soniox's own `RecordingState`

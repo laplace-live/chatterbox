@@ -46,19 +46,21 @@ SttSessionParams ─▶ createSonioxEngine ─┐
 
 | File | Role |
 |---|---|
-| `src/lib/stt/types.ts` (new) | `SttProvider`, `SttRecordingState`, `SttChunk`, discriminated-union `SttEngineEvent`, `SttSessionParams`, `SttEngine`, `SttEngineFactory`. |
-| `src/lib/stt/normalize.ts` (new) | Pure mappers: `sonioxResultToChunks`, `elevenLabsTextToChunk`, `reduceChunks`, `isSingleUseTokenResponse`, `readStringField`. No `$`/SDK runtime deps → unit-testable. |
-| `src/lib/stt/normalize.test.ts` (new) | TDD coverage for the pure mappers + guards. |
-| `src/lib/stt/audio.ts` (new) | Pure PCM helpers `floatTo16` + `int16ToBase64` (Float32 → base64 s16le). |
-| `src/lib/stt/audio.test.ts` (new) | TDD coverage for the PCM helpers (incl. little-endian byte order). |
-| `src/lib/stt/soniox-engine.ts` (new) | `createSonioxEngine` — SDK logic lifted from the old hook. |
-| `src/lib/stt/elevenlabs-engine.ts` (new) | `createElevenLabsEngine` — token mint → raw WebSocket + ScriptProcessor PCM pipeline → event mapping. |
-| `src/lib/stt/elevenlabs-token.ts` (new) | `mintElevenLabsToken` via plain `fetch` (ElevenLabs CORS is open — no `GM_xmlhttpRequest`/`@connect` needed), validated with `isSingleUseTokenResponse`. |
-| `src/lib/use-stt-recording.ts` (new, replaces `use-soniox-recording.ts`) | One hook, instantiates the active engine, exposes unified control surface. |
-| `src/components/stt-tab.tsx` (edit) | Provider selector + conditional settings + unified chunk consumer. |
-| `src/components/about-tab.tsx` (edit) | ElevenLabs websocket + token-mint privacy disclosure. |
-| `src/lib/store.ts` (edit) | `sttProvider`, `elevenLabs*` keys, shared keys migrated to neutral `stt*`. |
-| `src/lib/const.ts` (edit) | `ELEVENLABS_WS_URL`, `ELEVENLABS_API_BASE`. |
+| `src/lib/stt/types.ts` (new) | `SttProvider` (soniox/elevenlabs/deepgram), `SttRecordingState`, `SttChunk`, `SttModelOption`, discriminated-union `SttEngineEvent`, `SttSessionParams`, `SttEngine`, `SttEngineFactory`. |
+| `src/lib/stt/normalize.ts` (+ `.test.ts`) (new) | Pure mappers/guards: `sonioxResultToChunks`, `elevenLabsTextToChunk`, `reduceChunks`, `isSingleUseTokenResponse`, `readField`/`readStringField`, `parseDeepgramResult`, `parseDeepgramModels`. No `$`/SDK deps → unit-testable. |
+| `src/lib/stt/audio.ts` (+ `.test.ts`) (new) | Pure PCM helpers `floatTo16` + `int16ToBase64` (Float32 → s16le → base64). |
+| `src/lib/stt/pcm-capture.ts` (new) | Shared mic → 16 kHz → ScriptProcessor → Int16 capture (`startPcmCapture`); used by the ElevenLabs + Deepgram engines. |
+| `src/lib/stt/soniox-engine.ts` (new) | `createSonioxEngine` — `@soniox/client` SDK logic lifted from the old hook. |
+| `src/lib/stt/elevenlabs-engine.ts` (new) | `createElevenLabsEngine` — token mint → raw WebSocket → shared PCM capture (base64 chunks) → event mapping. |
+| `src/lib/stt/elevenlabs-token.ts` (new) | `mintElevenLabsToken` via plain `fetch` (ElevenLabs CORS is open). |
+| `src/lib/stt/deepgram-engine.ts` (new) | `createDeepgramEngine` — raw WebSocket + `['token', key]` subprotocol auth → shared PCM capture (raw binary) → `Results` mapping. |
+| `src/lib/stt/deepgram-models.ts` (new) | `fetchDeepgramModels` via `GM_xmlhttpRequest` (Deepgram REST has no browser CORS) → `parseDeepgramModels`. |
+| `src/lib/use-stt-recording.ts` (new, replaces `use-soniox-recording.ts`) | One hook; `ENGINE_FACTORIES` maps all three providers. |
+| `src/components/stt-tab.tsx` (edit) | 3-provider selector + generalized api-key/model/language UI + unified chunk consumer. |
+| `src/components/about-tab.tsx` (edit) | Soniox / ElevenLabs / Deepgram privacy disclosures. |
+| `src/lib/store.ts` (edit) | `sttProvider`, `elevenLabs*` + `deepgram*` keys, shared keys migrated to neutral `stt*`. |
+| `src/lib/const.ts` (edit) | `ELEVENLABS_WS_URL`/`_API_BASE`, `DEEPGRAM_WS_URL`/`_API_BASE`. |
+| `vite.config.ts` (edit) | `connect: ['api.deepgram.com']` for the Deepgram model-list fetch. |
 
 (No `src/lib/elevenlabs.ts` SDK loader and no `@elevenlabs/client` dependency — both removed after the raw-WebSocket pivot.)
 
@@ -72,6 +74,8 @@ Each engine emits `{ type: 'transcript', chunks: SttChunk[] }` where
 - **ElevenLabs:** `PARTIAL_TRANSCRIPT → {isFinal:false}`; `COMMITTED_TRANSCRIPT →
   {isFinal:true}` followed by an `endpoint` (VAD-driven); `kind` always
   `'original'` (Scribe realtime is transcription-only).
+- **Deepgram:** `Results` interim → `{isFinal:false}`; `is_final` → `{isFinal:true}`;
+  `speech_final` → `endpoint`; `kind` always `'original'`.
 
 The consumer reduces each event's chunks with `reduceChunks(chunks,
 translationEnabled)`: when translating, only `translation` chunks count;
@@ -103,16 +107,38 @@ AI-chat buffer; non-final replaces the provisional display.
   no-op (VAD auto-commits; the UI doesn't call it). Only fatal `*_error`
   messages end the session — transient warnings are ignored.
 
+## Deepgram specifics (third provider, from official docs)
+
+- WebSocket: `wss://api.deepgram.com/v1/listen` with
+  `?model=&language=&encoding=linear16&sample_rate=16000&channels=1&
+  interim_results=true&smart_format=true&endpointing=300`.
+- **Auth (simplest of the three):** the API key rides the
+  `Sec-WebSocket-Protocol` subprotocol — `new WebSocket(url, ['token', key])` —
+  the browser-blessed way to pass it without an `Authorization` header. No token
+  mint, no CORS (the WS isn't subject to it).
+- Audio: same shared `startPcmCapture` pipeline, but Deepgram takes **raw binary
+  PCM16 frames** (`ws.send(int16)`), not base64. Continuous frames (incl.
+  silence) keep the socket alive, so no KeepAlive.
+- Model: fetched from `GET /v1/models` filtered to `streaming: true`
+  (`parseDeepgramModels`). Deepgram REST sends **no CORS headers for third-party
+  origins** (verified: preflight 400s, no ACAO), so the fetch goes through
+  `GM_xmlhttpRequest` + `@connect api.deepgram.com`. Default `nova-3`.
+- `stop` sends `{type:'CloseStream'}` to flush; `finalize` sends
+  `{type:'Finalize'}`; a close before `open` is reported as an auth/connection
+  failure.
+
 ## Settings
 
 - New: `sttProvider` (default `'soniox'`); `elevenLabsApiKey`,
-  `elevenLabsLanguageCode` (empty = auto). (No `elevenLabsModel` — the model id
-  is hardcoded, see ElevenLabs specifics above.)
+  `elevenLabsLanguageCode` (empty = auto); `deepgramApiKey`, `deepgramModel`
+  (default `nova-3`), `deepgramModels` (cached list), `deepgramLanguage`
+  (default `multi`). (No `elevenLabsModel` — hardcoded.)
 - Shared output/capture settings promoted to neutral `stt*` keys with one-time
   migration from the old `soniox*` names: `sttAutoSend`, `sttMaxLength`,
   `sttWrapBrackets`, `sttAudioDeviceId`.
 - Soniox-specific stays: `sonioxModel`, `sonioxModels`, `sonioxLanguageHints`,
-  `sonioxTranslation*`. Translation UI is hidden when provider = ElevenLabs.
+  `sonioxTranslation*`. Translation UI shows only for Soniox; the fetchable
+  model picker shows for Soniox + Deepgram (ElevenLabs is read-only).
 
 ## Dev rules honored
 

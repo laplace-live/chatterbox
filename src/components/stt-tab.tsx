@@ -10,6 +10,10 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { fetchSonioxModels } from '../lib/soniox-models'
 import {
+  deepgramApiKey,
+  deepgramLanguage,
+  deepgramModel,
+  deepgramModels,
   elevenLabsApiKey,
   elevenLabsLanguageCode,
   sonioxApiKey,
@@ -27,6 +31,7 @@ import {
   sttTranscriptBuffer,
   sttWrapBrackets,
 } from '../lib/store'
+import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
 import { reduceChunks } from '../lib/stt/normalize'
 import { useSttRecording } from '../lib/use-stt-recording'
 import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
@@ -45,18 +50,34 @@ const STT_FLUSH_DELAY_MS = 5000
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
-// Default model ids — mirror the gmSignal defaults so a session never starts
-// model-less even if the persisted value is somehow empty.
+// Default model ids — used as the session fallback if the persisted value is
+// somehow empty. ElevenLabs has a single realtime model (hardcoded; no picker).
 const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
 const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
+const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
 
-// Shared language options for the ElevenLabs single `languageCode` picker
-// (empty = auto-detect). Scribe accepts any ISO-639 code; these are the common
-// ones for this audience, matching Soniox's hint checkboxes.
+// Per-provider display label + signup link, so the API-key section renders
+// generically instead of branching per provider.
+const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> = {
+  soniox: { label: 'Soniox', signupUrl: 'https://soniox.com/' },
+  elevenlabs: { label: 'ElevenLabs', signupUrl: 'https://elevenlabs.io/' },
+  deepgram: { label: 'Deepgram', signupUrl: 'https://deepgram.com/' },
+}
+
+// Single-value language pickers for the providers that take one language code
+// (ElevenLabs `languageCode`, Deepgram `language`). Soniox uses multi-hint
+// checkboxes instead.
 const ELEVENLABS_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: '', label: '自动检测' },
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+]
+const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: 'multi', label: '多语种' },
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
@@ -70,9 +91,8 @@ export function SttTab() {
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
   // Model-list fetch state machine (idle / loading / success / error),
-  // colour-coded the same way the recording status line is. Mirrors the
-  // LLM picker's refresh flow in settings-tab. Soniox-only — ElevenLabs has a
-  // single realtime model, so there's no list to fetch.
+  // colour-coded like the recording status line. Used by the providers with a
+  // fetchable model list (Soniox, Deepgram); ElevenLabs has a single model.
   const modelFetching = useSignal(false)
   const modelFetchStatus = useSignal('')
   const modelFetchStatusColor = useSignal('#666')
@@ -86,8 +106,8 @@ export function SttTab() {
   const isFlushing = useRef(false)
   // Translation toggle captured at start() time and stashed in a ref so the
   // event handlers — which fire across the lifetime of the recording —
-  // observe the value the user picked when they clicked 开始同传, not whatever
-  // they've flipped to since. Always false for providers without translation.
+  // observe the value the user picked when they clicked 开始同传. Always false
+  // for providers without translation (ElevenLabs, Deepgram).
   const translationModeRef = useRef(false)
 
   const enumerateMics = async () => {
@@ -124,30 +144,6 @@ export function SttTab() {
         const msg = err instanceof Error ? err.message : String(err)
         appendLog(`🔴 麦克风权限请求失败：${msg}`)
       }
-    }
-  }
-
-  const refreshSonioxModels = async () => {
-    if (modelFetching.value) return
-    modelFetching.value = true
-    modelFetchStatus.value = '正在获取模型列表…'
-    modelFetchStatusColor.value = '#666'
-    try {
-      const models = await fetchSonioxModels(sonioxApiKey.value)
-      sonioxModels.value = models
-      // If the previously selected model isn't in the freshly fetched list
-      // (renamed / retired), keep the old id so the user can SEE it's stale
-      // via the Combobox's "saved but missing" sentinel. We don't
-      // auto-clobber their pick.
-      modelFetchStatus.value = `已获取 ${models.length} 个实时模型`
-      modelFetchStatusColor.value = '#36a185'
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      modelFetchStatus.value = `获取失败：${msg}`
-      modelFetchStatusColor.value = '#f44'
-      appendLog(`❌ Soniox 模型列表获取失败：${msg}`)
-    } finally {
-      modelFetching.value = false
     }
   }
 
@@ -250,22 +246,20 @@ export function SttTab() {
     if (sttAutoSend.value) {
       // The translation pipeline lags the original transcript by a few hundred
       // ms, so when sending translated text we delay the flush slightly to
-      // avoid clipping the tail of the current utterance before its
-      // translation lands. (Translation is Soniox-only.)
+      // avoid clipping the tail of the current utterance. (Translation is
+      // Soniox-only.)
       setTimeout(() => void flushBuffer(), translationModeRef.current ? 300 : 0)
     }
     // Surface the endpoint to AI Chat unconditionally (independent of the
     // auto-send gating above) so the engine still fires when same-tab danmaku
-    // auto-send is off — it treats endpoint as a stronger "ready to generate"
-    // signal than buffer length alone.
+    // auto-send is off.
     sttEndpointReached.value = true
   }
 
   const handleFinished = async () => {
     // Wait briefly for any in-flight flush triggered by the last result frame
     // to settle before declaring the session over. 100 × 100 ms = 10 s upper
-    // bound; longer than that is a stuck network call and we'd rather move on
-    // than hang the UI.
+    // bound; longer than that is a stuck network call and we'd rather move on.
     let waitCount = 0
     while (isFlushing.current && waitCount < 100) {
       await new Promise(r => setTimeout(r, 100))
@@ -279,13 +273,10 @@ export function SttTab() {
   const handleError = (err: Error) => {
     console.error('STT error:', err)
     const message = err.message || String(err)
-    const label = sttProvider.value === 'elevenlabs' ? 'ElevenLabs' : 'Soniox'
-    // Surface platform-typed mic errors with friendly Chinese copy. Both
-    // providers' audio layers throw the same DOM error names
-    // (NotAllowedError / NotFoundError); Soniox's SDK adds its own
-    // Audio*Error subclasses, sniffed by name (string-compatible across the
-    // loader's page-context ↔ sandbox boundary, where instanceof wouldn't
-    // survive).
+    const label = PROVIDER_META[sttProvider.value].label
+    // Surface platform-typed mic errors with friendly Chinese copy. The audio
+    // layers throw the same DOM error names (NotAllowedError / NotFoundError);
+    // Soniox's SDK adds Audio*Error subclasses, sniffed by name.
     if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
       statusText.value = '麦克风权限被拒绝'
@@ -320,12 +311,15 @@ export function SttTab() {
   // ---------------------------------------------------------------
   const provider: SttProvider = sttProvider.value
   const isSoniox = provider === 'soniox'
-  const activeApiKey = (isSoniox ? sonioxApiKey.value : elevenLabsApiKey.value).trim()
+  // The api key signal for the active provider — bound directly to the input.
+  const apiKeySignal =
+    provider === 'soniox' ? sonioxApiKey : provider === 'elevenlabs' ? elevenLabsApiKey : deepgramApiKey
+  const activeApiKey = apiKeySignal.value.trim()
 
   // Validate the saved device is still present at the moment we'd use it. If
-  // it isn't, fall back to the system default (matching what <NativeSelect>
-  // renders as "系统默认") and surface the swap once. The persisted reset
-  // happens lazily inside toggle() to avoid mutating store state during render.
+  // it isn't, fall back to the system default and surface the swap once (the
+  // persisted reset happens lazily inside toggle() to avoid mutating store
+  // state during render).
   const savedDeviceIdForHook = sttAudioDeviceId.value
   const deviceStillAvailable =
     !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
@@ -333,24 +327,33 @@ export function SttTab() {
 
   const translationEnabledForHook = isSoniox && sonioxTranslationEnabled.value
 
-  const params: SttSessionParams = isSoniox
-    ? {
-        apiKey: activeApiKey,
+  const buildParams = (): SttSessionParams => {
+    const base = { apiKey: activeApiKey, audioDeviceId: effectiveDeviceId }
+    if (provider === 'soniox') {
+      return {
+        ...base,
         model: sonioxModel.value || SONIOX_DEFAULT_MODEL,
         languageHints: sonioxLanguageHints.value,
-        audioDeviceId: effectiveDeviceId,
         ...(sonioxTranslationEnabled.value ? { translation: { targetLanguage: sonioxTranslationTarget.value } } : {}),
       }
-    : {
-        apiKey: activeApiKey,
+    }
+    if (provider === 'elevenlabs') {
+      return {
+        ...base,
         model: ELEVENLABS_DEFAULT_MODEL,
         languageHints: elevenLabsLanguageCode.value ? [elevenLabsLanguageCode.value] : [],
-        audioDeviceId: effectiveDeviceId,
       }
+    }
+    return {
+      ...base,
+      model: deepgramModel.value || DEEPGRAM_DEFAULT_MODEL,
+      languageHints: deepgramLanguage.value ? [deepgramLanguage.value] : [],
+    }
+  }
 
   const recording = useSttRecording({
     provider,
-    params,
+    params: buildParams(),
     onTranscript: handleTranscript,
     onEndpoint: handleEndpoint,
     onError: handleError,
@@ -358,10 +361,43 @@ export function SttTab() {
     onConnected: handleConnected,
   })
 
+  // Fetch + cache the realtime model list for providers that expose one
+  // (Soniox via fetch+CORS, Deepgram via GM_xmlhttpRequest). ElevenLabs has a
+  // single hardcoded model, so it has no refresh.
+  const refreshModels = async () => {
+    if (modelFetching.value) return
+    modelFetching.value = true
+    modelFetchStatus.value = '正在获取模型列表…'
+    modelFetchStatusColor.value = '#666'
+    try {
+      let count = 0
+      if (provider === 'soniox') {
+        const models = await fetchSonioxModels(apiKeySignal.value)
+        sonioxModels.value = models
+        count = models.length
+      } else if (provider === 'deepgram') {
+        const models = await fetchDeepgramModels(apiKeySignal.value)
+        deepgramModels.value = models
+        count = models.length
+      } else {
+        return
+      }
+      modelFetchStatus.value = `已获取 ${count} 个实时模型`
+      modelFetchStatusColor.value = '#36a185'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      modelFetchStatus.value = `获取失败：${msg}`
+      modelFetchStatusColor.value = '#f44'
+      appendLog(`❌ ${PROVIDER_META[provider].label} 模型列表获取失败：${msg}`)
+    } finally {
+      modelFetching.value = false
+    }
+  }
+
   const toggle = () => {
     if (state.value === 'stopped') {
       if (!activeApiKey) {
-        appendLog(isSoniox ? '⚠️ 请先输入 Soniox API Key' : '⚠️ 请先输入 ElevenLabs API Key')
+        appendLog(`⚠️ 请先输入 ${PROVIDER_META[provider].label} API Key`)
         statusText.value = '请输入 API Key'
         statusColor.value = '#f44'
         return
@@ -372,18 +408,16 @@ export function SttTab() {
         appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
         sttAudioDeviceId.value = ''
       }
-      // Reset display and accumulator for the new session.
       finalText.value = ''
       nonFinalText.value = ''
       acc.current = ''
       state.value = 'starting'
       statusText.value = '正在连接…'
       statusColor.value = '#666'
-      // Capture translation mode for the lifetime of this session — toggling
-      // it mid-session shouldn't reinterpret tokens tagged on the way out.
+      // Capture translation mode for the lifetime of this session.
       translationModeRef.current = translationEnabledForHook
-      // The engine lazy-loads its SDK (and mints a token, for ElevenLabs) and
-      // surfaces any failure through onError, so no pre-warm is needed here.
+      // The engine handles SDK/socket setup and surfaces any failure via
+      // onError, so no pre-warm is needed here.
       recording.start()
     } else if (state.value === 'running') {
       state.value = 'stopping'
@@ -411,32 +445,42 @@ export function SttTab() {
 
   const hints = sonioxLanguageHints.value
   const devices = audioDevices.value
-  // Labels are blanked by the browser until the page has been granted
-  // microphone permission. We use the presence of any non-empty label as a
-  // proxy for "permission already granted, no need to nag the user".
+  // Labels are blanked by the browser until microphone permission is granted;
+  // a non-empty label is our proxy for "already granted, no need to nag".
   const hasMicLabels = devices.some(d => d.label)
   const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
+
+  // Model picker resolution for the fetch-list providers (Soniox / Deepgram).
+  const usesModelFetch = provider === 'soniox' || provider === 'deepgram'
+  const modelSignal = provider === 'deepgram' ? deepgramModel : sonioxModel
+  const modelOptions = (provider === 'deepgram' ? deepgramModels.value : sonioxModels.value).map(m => ({
+    value: m.id,
+    label: m.id,
+    searchText: [m.id, m.name].filter(Boolean).join(' '),
+  }))
 
   return (
     <>
       <div class={'my-2'}>
         <div class={HEADING_CLASS}>语音识别服务</div>
         <div class={ROW_CLASS}>
-          <Label htmlFor='sttProvider'>供应商</Label>
+          <Label htmlFor='sttProvider'>服务商</Label>
           <NativeSelect
             id='sttProvider'
             className='min-w-37.5 flex-1 pr-5'
             value={provider}
             // Locked while a session is live — switching providers mid-stream
-            // would only take effect on the next start and reads as a no-op.
+            // would only take effect on the next start.
             disabled={state.value !== 'stopped'}
             onChange={e => {
-              sttProvider.value = e.currentTarget.value === 'elevenlabs' ? 'elevenlabs' : 'soniox'
+              const next = e.currentTarget.value
+              sttProvider.value = next === 'elevenlabs' ? 'elevenlabs' : next === 'deepgram' ? 'deepgram' : 'soniox'
             }}
           >
             <option value='soniox'>Soniox</option>
             <option value='elevenlabs'>ElevenLabs</option>
+            <option value='deepgram'>Deepgram</option>
           </NativeSelect>
         </div>
       </div>
@@ -444,16 +488,15 @@ export function SttTab() {
       <Separator />
 
       <div class={'my-2'}>
-        <div class={HEADING_CLASS}>{isSoniox ? 'Soniox API 设置' : 'ElevenLabs API 设置'}</div>
+        <div class={HEADING_CLASS}>{PROVIDER_META[provider].label} API 设置</div>
         <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
-            placeholder={isSoniox ? '输入 Soniox API Key' : '输入 ElevenLabs API Key'}
+            placeholder={`输入 ${PROVIDER_META[provider].label} API Key`}
             className='min-w-37.5 flex-1'
-            value={isSoniox ? sonioxApiKey.value : elevenLabsApiKey.value}
+            value={apiKeySignal.value}
             onInput={e => {
-              if (isSoniox) sonioxApiKey.value = e.currentTarget.value
-              else elevenLabsApiKey.value = e.currentTarget.value
+              apiKeySignal.value = e.currentTarget.value
             }}
           />
           <Button
@@ -468,15 +511,9 @@ export function SttTab() {
         </div>
         <div class='my-2 text-ga6'>
           前往{' '}
-          {isSoniox ? (
-            <a href='https://soniox.com/' target='_blank' class='text-link' rel='noopener'>
-              Soniox
-            </a>
-          ) : (
-            <a href='https://elevenlabs.io/' target='_blank' class='text-link' rel='noopener'>
-              ElevenLabs
-            </a>
-          )}{' '}
+          <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
+            {PROVIDER_META[provider].label}
+          </a>{' '}
           注册账号并获取 API Key
         </div>
       </div>
@@ -501,9 +538,6 @@ export function SttTab() {
                 {d.label || `麦克风 ${i + 1}`}
               </option>
             ))}
-            {/* Surface a stale id so the user can see *something* is selected
-                and switch away — without this the <select> would silently fall
-                back to "系统默认" while the underlying stored id stays put. */}
             {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
           </NativeSelect>
           {!hasMicLabels && (
@@ -516,67 +550,38 @@ export function SttTab() {
           </Button>
         </div>
 
-        {isSoniox ? (
+        {usesModelFetch ? (
           <>
             <div class={ROW_CLASS}>
-              <Label htmlFor='sonioxModel'>模型</Label>
+              <Label htmlFor='sttModel'>模型</Label>
               <Combobox
-                id='sonioxModel'
+                id='sttModel'
                 className='min-w-37.5 flex-1'
-                value={sonioxModel.value}
-                // Display is id-only (the API has no pricing to show, and the
-                // name is often just a verbose restatement of the id). The
-                // friendly name still feeds searchText so filtering by it works.
-                options={sonioxModels.value.map(m => ({
-                  value: m.id,
-                  label: m.id,
-                  searchText: [m.id, m.name].filter(Boolean).join(' '),
-                }))}
+                value={modelSignal.value}
+                options={modelOptions}
                 onChange={v => {
-                  sonioxModel.value = v
+                  modelSignal.value = v
                 }}
                 placeholder='选择模型'
                 searchPlaceholder='输入关键词过滤模型…'
                 emptyText='未找到匹配模型'
                 unloadedText='请点击「刷新」获取模型列表'
-                // Stale-but-persisted sentinel — same pattern the device select
-                // uses for an unplugged mic: surface the saved id so the user
-                // can SEE what's selected and switch, rather than silently
-                // dropping to the placeholder.
                 missingLabel={v => `${v}（已保存，不在当前列表中）`}
               />
               <Button
                 variant='outline'
                 size='sm'
-                disabled={modelFetching.value || !sonioxApiKey.value.trim()}
-                onClick={() => void refreshSonioxModels()}
+                disabled={modelFetching.value || !apiKeySignal.value.trim()}
+                onClick={() => void refreshModels()}
               >
                 {modelFetching.value ? '加载中…' : '刷新'}
               </Button>
             </div>
             {modelFetchStatus.value && (
-              // Status colour cycles neutral / success / error driven by the
-              // fetch state machine; inline color matches the recording status
-              // line below so the same visual language repeats.
               <div class='mb-2' style={{ color: modelFetchStatusColor.value }}>
                 {modelFetchStatus.value}
               </div>
             )}
-            <div class={ROW_CLASS}>
-              <span>语言提示：</span>
-              {['zh', 'en', 'ja', 'ko'].map(lang => {
-                const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
-                return (
-                  <Checkbox
-                    key={lang}
-                    id={`stt-lang-${lang}`}
-                    checked={hints.includes(lang)}
-                    onChange={e => updateLangHints(lang, e.currentTarget.checked)}
-                    label={labels[lang]}
-                  />
-                )
-              })}
-            </div>
           </>
         ) : (
           <div class={ROW_CLASS}>
@@ -584,16 +589,38 @@ export function SttTab() {
             {/* Read-only: scribe_v2_realtime is the only realtime Scribe model
                 and ElevenLabs has no API to list STT models, so it's fixed. */}
             <span class='text-ga6'>{ELEVENLABS_DEFAULT_MODEL}</span>
-            <Label htmlFor='elevenLabsLanguage'>语言</Label>
+          </div>
+        )}
+
+        {isSoniox ? (
+          <div class={ROW_CLASS}>
+            <span>语言提示：</span>
+            {['zh', 'en', 'ja', 'ko'].map(lang => {
+              const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
+              return (
+                <Checkbox
+                  key={lang}
+                  id={`stt-lang-${lang}`}
+                  checked={hints.includes(lang)}
+                  onChange={e => updateLangHints(lang, e.currentTarget.checked)}
+                  label={labels[lang]}
+                />
+              )
+            })}
+          </div>
+        ) : (
+          <div class={ROW_CLASS}>
+            <Label htmlFor='sttLanguage'>语言</Label>
             <NativeSelect
-              id='elevenLabsLanguage'
-              className='min-w-20 pr-5'
-              value={elevenLabsLanguageCode.value}
+              id='sttLanguage'
+              className='min-w-25 pr-5'
+              value={provider === 'deepgram' ? deepgramLanguage.value : elevenLabsLanguageCode.value}
               onChange={e => {
-                elevenLabsLanguageCode.value = e.currentTarget.value
+                if (provider === 'deepgram') deepgramLanguage.value = e.currentTarget.value
+                else elevenLabsLanguageCode.value = e.currentTarget.value
               }}
             >
-              {ELEVENLABS_LANGUAGES.map(l => (
+              {(provider === 'deepgram' ? DEEPGRAM_LANGUAGES : ELEVENLABS_LANGUAGES).map(l => (
                 <option key={l.value || 'auto'} value={l.value}>
                   {l.label}
                 </option>
@@ -637,8 +664,8 @@ export function SttTab() {
         </div>
       </div>
 
-      {/* Realtime translation is Soniox-only — ElevenLabs Scribe transcribes
-          but doesn't translate, so we hide the whole section for it. */}
+      {/* Realtime translation is Soniox-only — ElevenLabs Scribe and Deepgram
+          transcribe but don't translate, so the section is hidden for them. */}
       {isSoniox && (
         <>
           <Separator />
@@ -686,9 +713,6 @@ export function SttTab() {
           >
             {btnText}
           </Button>
-          {/* statusColor cycles through three values driven by external SDK
-              callbacks (stopped/info, running/success, error). Keeping it as
-              an inline color avoids enumerating the states as classes. */}
           <span style={{ color: statusColor.value }}>{statusText.value}</span>
         </div>
         <div class='my-2'>
@@ -703,9 +727,7 @@ export function SttTab() {
       <Separator />
 
       {/* AI Chat lives downstream of STT — it consumes the same final
-          transcript stream that the captions above render — so we mount it
-          inside this tab rather than burning a top-level tab slot. The
-          component owns its own enable / mode toggles; this tab just hosts it. */}
+          transcript stream the captions above render. */}
       <AiChatSection />
     </>
   )

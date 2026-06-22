@@ -60,6 +60,24 @@ export const ELEVENLABS_WS_URL = 'wss://api.elevenlabs.io/v1/speech-to-text/real
 export const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1'
 
 /**
+ * Deepgram realtime speech-to-text WebSocket endpoint. The engine appends
+ * `?model=&language=&encoding=linear16&sample_rate=16000&channels=1&
+ * interim_results=true&...` and authenticates via the `Sec-WebSocket-Protocol`
+ * subprotocol (`['token', apiKey]`) — the browser-blessed way to pass the key
+ * without an `Authorization` header, so no token mint and no CORS in play.
+ */
+export const DEEPGRAM_WS_URL = 'wss://api.deepgram.com/v1/listen'
+
+/**
+ * Deepgram REST API root. We hit `${DEEPGRAM_API_BASE}/models` to list the
+ * realtime (`streaming: true`) STT models for the picker. Deepgram doesn't send
+ * CORS headers for third-party origins, so that fetch must go through
+ * `GM_xmlhttpRequest` (declared via `@connect api.deepgram.com`); the WebSocket
+ * stream above needs neither.
+ */
+export const DEEPGRAM_API_BASE = 'https://api.deepgram.com/v1'
+
+/**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
  * to `window.mpegts` at runtime, picked up via the shared
  * `loadUmdScript()` probe path.

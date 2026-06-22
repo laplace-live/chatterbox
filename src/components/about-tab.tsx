@@ -65,6 +65,14 @@ const EXTERNAL_SERVICES: ExternalService[] = [
       '通过 WebSocket 连接 ElevenLabs Scribe 实时语音识别服务，将麦克风音频流实时转换为文字。连接前会先用 API Key 申请一个有效期 15 分钟的一次性令牌（避免在 WebSocket 上暴露 API Key）。需要提供 ElevenLabs API Key。',
   },
   {
+    name: 'Deepgram 语音识别',
+    host: 'api.deepgram.com',
+    url: 'https://deepgram.com',
+    trigger: '将同传供应商切换为 Deepgram 并使用同传功能时',
+    description:
+      '通过 WebSocket 连接 Deepgram 实时语音识别服务，将麦克风音频流实时转换为文字。API Key 通过 WebSocket 子协议（Sec-WebSocket-Protocol）在握手时传递，不经过普通请求头，也无需令牌兑换。需要提供 Deepgram API Key。',
+  },
+  {
     name: 'mpegts.js',
     host: 'unpkg.com',
     url: 'https://github.com/xqq/mpegts.js',

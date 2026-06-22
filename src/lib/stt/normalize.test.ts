@@ -5,6 +5,8 @@ import type { SttChunk } from './types'
 import {
   elevenLabsTextToChunk,
   isSingleUseTokenResponse,
+  parseDeepgramModels,
+  parseDeepgramResult,
   readStringField,
   reduceChunks,
   sonioxResultToChunks,
@@ -107,5 +109,56 @@ describe('readStringField', () => {
     expect(readStringField('str', 'x')).toBeUndefined()
     expect(readStringField({}, 'x')).toBeUndefined()
     expect(readStringField({ x: 5 }, 'x')).toBeUndefined()
+  })
+})
+
+describe('parseDeepgramResult', () => {
+  const build = (transcript: string, isFinal: boolean, speechFinal: boolean) => ({
+    type: 'Results',
+    is_final: isFinal,
+    speech_final: speechFinal,
+    channel: { alternatives: [{ transcript, confidence: 0.9 }] },
+  })
+
+  test('reads an interim result', () => {
+    expect(parseDeepgramResult(build('hello', false, false))).toEqual({
+      transcript: 'hello',
+      isFinal: false,
+      speechFinal: false,
+    })
+  })
+
+  test('reads a final + speech_final result', () => {
+    expect(parseDeepgramResult(build('done', true, true))).toEqual({
+      transcript: 'done',
+      isFinal: true,
+      speechFinal: true,
+    })
+  })
+
+  test('ignores non-Results messages and malformed shapes', () => {
+    expect(parseDeepgramResult({ type: 'Metadata' })).toBeNull()
+    expect(parseDeepgramResult({ type: 'Results', channel: { alternatives: [] } })).toBeNull()
+    expect(parseDeepgramResult({ type: 'Results', channel: { alternatives: [{ confidence: 1 }] } })).toBeNull()
+    expect(parseDeepgramResult(null)).toBeNull()
+  })
+})
+
+describe('parseDeepgramModels', () => {
+  test('keeps only streaming models, ids from canonical_name, sorted', () => {
+    const models = parseDeepgramModels({
+      stt: [
+        { canonical_name: 'nova-3', name: 'nova-3', streaming: true, batch: true },
+        { canonical_name: 'whisper-cloud', name: 'Whisper Cloud', streaming: false, batch: true },
+        { canonical_name: 'nova-2-general', name: 'Nova 2 General', streaming: true, batch: true },
+      ],
+    })
+    expect(models).toEqual([{ id: 'nova-2-general', name: 'Nova 2 General' }, { id: 'nova-3' }])
+  })
+
+  test('returns [] for a missing/non-array stt list', () => {
+    expect(parseDeepgramModels({})).toEqual([])
+    expect(parseDeepgramModels({ stt: 'nope' })).toEqual([])
+    expect(parseDeepgramModels(null)).toEqual([])
   })
 })
