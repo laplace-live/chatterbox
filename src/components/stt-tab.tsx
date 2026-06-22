@@ -16,6 +16,8 @@ import {
   deepgramModels,
   elevenLabsApiKey,
   elevenLabsLanguageCode,
+  gladiaApiKey,
+  gladiaLanguage,
   sonioxApiKey,
   sonioxLanguageHints,
   sonioxModel,
@@ -55,6 +57,7 @@ const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
 const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
 const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
+const GLADIA_DEFAULT_MODEL = 'solaria-1'
 
 // Per-provider display label + signup link, so the API-key section renders
 // generically instead of branching per provider.
@@ -62,6 +65,7 @@ const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> =
   soniox: { label: 'Soniox', signupUrl: 'https://soniox.com/' },
   elevenlabs: { label: 'ElevenLabs', signupUrl: 'https://elevenlabs.io/' },
   deepgram: { label: 'Deepgram', signupUrl: 'https://deepgram.com/' },
+  gladia: { label: 'Gladia', signupUrl: 'https://gladia.io/' },
 }
 
 // Single-value language pickers for the providers that take one language code
@@ -78,6 +82,15 @@ const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: 'multi', label: '多语种' },
   { value: 'en', label: 'English' },
   { value: 'zh', label: '中文' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+]
+// Gladia takes BCP-47 codes; '' = auto-detect (with code-switching). Same short
+// list as the others — Gladia supports many more, but these cover our streamers.
+const GLADIA_LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: '', label: '自动检测' },
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
@@ -313,7 +326,13 @@ export function SttTab() {
   const isSoniox = provider === 'soniox'
   // The api key signal for the active provider — bound directly to the input.
   const apiKeySignal =
-    provider === 'soniox' ? sonioxApiKey : provider === 'elevenlabs' ? elevenLabsApiKey : deepgramApiKey
+    provider === 'soniox'
+      ? sonioxApiKey
+      : provider === 'elevenlabs'
+        ? elevenLabsApiKey
+        : provider === 'deepgram'
+          ? deepgramApiKey
+          : gladiaApiKey
   const activeApiKey = apiKeySignal.value.trim()
 
   // Validate the saved device is still present at the moment we'd use it. If
@@ -342,6 +361,13 @@ export function SttTab() {
         ...base,
         model: ELEVENLABS_DEFAULT_MODEL,
         languageHints: elevenLabsLanguageCode.value ? [elevenLabsLanguageCode.value] : [],
+      }
+    }
+    if (provider === 'gladia') {
+      return {
+        ...base,
+        model: GLADIA_DEFAULT_MODEL,
+        languageHints: gladiaLanguage.value ? [gladiaLanguage.value] : [],
       }
     }
     return {
@@ -475,12 +501,20 @@ export function SttTab() {
             disabled={state.value !== 'stopped'}
             onChange={e => {
               const next = e.currentTarget.value
-              sttProvider.value = next === 'elevenlabs' ? 'elevenlabs' : next === 'deepgram' ? 'deepgram' : 'soniox'
+              sttProvider.value =
+                next === 'elevenlabs'
+                  ? 'elevenlabs'
+                  : next === 'deepgram'
+                    ? 'deepgram'
+                    : next === 'gladia'
+                      ? 'gladia'
+                      : 'soniox'
             }}
           >
             <option value='soniox'>Soniox</option>
             <option value='elevenlabs'>ElevenLabs</option>
             <option value='deepgram'>Deepgram</option>
+            <option value='gladia'>Gladia</option>
           </NativeSelect>
         </div>
       </div>
@@ -586,9 +620,9 @@ export function SttTab() {
         ) : (
           <div class={ROW_CLASS}>
             <Label>模型</Label>
-            {/* Read-only: scribe_v2_realtime is the only realtime Scribe model
-                and ElevenLabs has no API to list STT models, so it's fixed. */}
-            <span class='text-ga6'>{ELEVENLABS_DEFAULT_MODEL}</span>
+            {/* Read-only: ElevenLabs and Gladia each expose a single fixed
+                realtime model with no list endpoint. */}
+            <span class='text-ga6'>{provider === 'gladia' ? GLADIA_DEFAULT_MODEL : ELEVENLABS_DEFAULT_MODEL}</span>
           </div>
         )}
 
@@ -614,13 +648,25 @@ export function SttTab() {
             <NativeSelect
               id='sttLanguage'
               className='min-w-25 pr-5'
-              value={provider === 'deepgram' ? deepgramLanguage.value : elevenLabsLanguageCode.value}
+              value={
+                provider === 'deepgram'
+                  ? deepgramLanguage.value
+                  : provider === 'gladia'
+                    ? gladiaLanguage.value
+                    : elevenLabsLanguageCode.value
+              }
               onChange={e => {
                 if (provider === 'deepgram') deepgramLanguage.value = e.currentTarget.value
+                else if (provider === 'gladia') gladiaLanguage.value = e.currentTarget.value
                 else elevenLabsLanguageCode.value = e.currentTarget.value
               }}
             >
-              {(provider === 'deepgram' ? DEEPGRAM_LANGUAGES : ELEVENLABS_LANGUAGES).map(l => (
+              {(provider === 'deepgram'
+                ? DEEPGRAM_LANGUAGES
+                : provider === 'gladia'
+                  ? GLADIA_LANGUAGES
+                  : ELEVENLABS_LANGUAGES
+              ).map(l => (
                 <option key={l.value || 'auto'} value={l.value}>
                   {l.label}
                 </option>

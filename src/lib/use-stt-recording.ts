@@ -29,6 +29,7 @@ import type {
 
 import { createDeepgramEngine } from './stt/deepgram-engine'
 import { createElevenLabsEngine } from './stt/elevenlabs-engine'
+import { createGladiaEngine } from './stt/gladia-engine'
 import { createSonioxEngine } from './stt/soniox-engine'
 
 export interface UseSttRecordingConfig {
@@ -66,6 +67,7 @@ const ENGINE_FACTORIES: Record<SttProvider, SttEngineFactory> = {
   soniox: createSonioxEngine,
   elevenlabs: createElevenLabsEngine,
   deepgram: createDeepgramEngine,
+  gladia: createGladiaEngine,
 }
 
 export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingReturn {

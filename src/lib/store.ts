@@ -335,6 +335,13 @@ export const deepgramModels = gmSignal<SttModelOption[]>('deepgramModels', [])
 // code. (Deepgram has no "auto"; `multi` is the closest for mixed-language streams.)
 export const deepgramLanguage = gmSignal('deepgramLanguage', 'multi')
 
+// --- Gladia (provider-specific) ---
+export const gladiaApiKey = gmSignal('gladiaApiKey', '')
+// Gladia realtime is one model family (`solaria-1`) with no list endpoint, so
+// the id is hardcoded in the engine — no model signal, like ElevenLabs. Single
+// language code ('' = auto-detect with code-switching).
+export const gladiaLanguage = gmSignal('gladiaLanguage', '')
+
 // --- Shared output / capture (every provider) ---
 // These were Soniox-prefixed before multi-provider support; migrate the
 // persisted values to neutral keys one time. Idempotent and sentinel-guarded

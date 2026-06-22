@@ -73,6 +73,17 @@ export function isSingleUseTokenResponse(value: unknown): value is { token: stri
 }
 
 /**
+ * Type guard for the Gladia `POST /v2/live` init response. The only field the
+ * engine needs is the session `url` (the per-session WebSocket URL with an
+ * embedded token). `in`-narrowing keeps it sound under the no-`as` rule.
+ */
+export function isGladiaLiveResponse(value: unknown): value is { url: string } {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('url' in value)) return false
+  return typeof value.url === 'string'
+}
+
+/**
  * Reads a property off an unknown value (e.g. a parsed JSON WebSocket message)
  * as `unknown`, without an `as` cast. `Object.getOwnPropertyDescriptor` lets us
  * read a dynamic key while keeping the result typed `unknown` until checked.
@@ -109,6 +120,21 @@ export function parseDeepgramResult(
     isFinal: readField(value, 'is_final') === true,
     speechFinal: readField(value, 'speech_final') === true,
   }
+}
+
+/**
+ * Parse a Gladia realtime `transcript` message into the utterance text plus its
+ * finality flag. Returns `null` for non-transcript messages (speech_start,
+ * speech_end, lifecycle) or malformed shapes. The text lives at
+ * `data.utterance.text`; `data.is_final` marks a finalized utterance, which the
+ * engine also treats as the endpoint.
+ */
+export function parseGladiaResult(value: unknown): { transcript: string; isFinal: boolean } | null {
+  if (readStringField(value, 'type') !== 'transcript') return null
+  const data = readField(value, 'data')
+  const transcript = readStringField(readField(data, 'utterance'), 'text')
+  if (transcript === undefined) return null
+  return { transcript, isFinal: readField(data, 'is_final') === true }
 }
 
 /**

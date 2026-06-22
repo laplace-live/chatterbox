@@ -77,7 +77,7 @@ export function Configurator() {
       // lose nothing by ceding one tick.
       className={cn(
         'fixed right-1 bottom-[calc(34px)] z-2147483646 text-[13px]',
-        'min-w-12.5 rounded ring ring-ga6/30 bg-bg1 shadow-md',
+        'min-w-12.5 rounded bg-bg1 shadow-md ring ring-ga6/30',
         !visible && 'hidden',
         visible && optimized && 'flex h-[calc(100vh-110px)] flex-col overflow-hidden',
         visible && !optimized && 'block max-h-[calc(100vh-110px)] overflow-y-auto'

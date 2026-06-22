@@ -1,0 +1,80 @@
+/**
+ * Opens a Gladia realtime live session and returns its one-shot WebSocket URL.
+ *
+ * Gladia's realtime flow starts with `POST /v2/live`: the API key rides the
+ * `x-gladia-key` header (browsers can't set it on a WebSocket), the body
+ * declares the audio format + model + language, and the response hands back a
+ * `url` carrying a per-session token. The client then opens exactly one
+ * WebSocket to that url — the key never travels on the socket.
+ *
+ * Plain `fetch` (like `mintElevenLabsToken`): the init endpoint sends permissive
+ * CORS headers (`access-control-allow-origin: *`, `x-gladia-key` allowed), so
+ * the cross-origin POST from bilibili.com works without `GM_xmlhttpRequest` / an
+ * `@connect` grant. The response is validated by a type guard (no `as` cast).
+ */
+
+import { GLADIA_API_BASE } from '../const'
+import { isGladiaLiveResponse } from './normalize'
+import { PCM_SAMPLE_RATE } from './pcm-capture'
+
+// 0.3 s of trailing silence ends an utterance — matches the Deepgram engine's
+// 300 ms endpointing so a phrase maps to roughly one danmaku. Gladia's own
+// default (0.05 s) fragments far too aggressively for that.
+const ENDPOINTING_SECONDS = 0.3
+
+export interface GladiaSessionConfig {
+  apiKey: string
+  model: string
+  /** BCP-47 language hints; `[]` = auto-detect. A single entry locks the language. */
+  languages: string[]
+}
+
+export async function initGladiaSession(config: GladiaSessionConfig): Promise<string> {
+  const key = config.apiKey.trim()
+  if (!key) throw new Error('请填写 Gladia API Key')
+
+  let res: Response
+  try {
+    res = await fetch(`${GLADIA_API_BASE}/live`, {
+      method: 'POST',
+      headers: { 'x-gladia-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        encoding: 'wav/pcm',
+        sample_rate: PCM_SAMPLE_RATE,
+        bit_depth: 16,
+        channels: 1,
+        model: config.model,
+        endpointing: ENDPOINTING_SECONDS,
+        // `[]` auto-detects; >1 hint (or none) allows mid-stream language switches.
+        language_config: { languages: config.languages, code_switching: config.languages.length !== 1 },
+      }),
+    })
+  } catch (err) {
+    // CORS rejection / DNS / network failures surface here as a TypeError.
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`网络请求失败：${msg}`)
+  }
+
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const text = await res.text()
+      detail = text ? `：${text.slice(0, 200)}` : ''
+    } catch {
+      // status code alone is enough
+    }
+    throw new Error(`HTTP ${res.status} ${res.statusText}${detail}`)
+  }
+
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`会话响应不是合法 JSON：${msg}`)
+  }
+  if (!isGladiaLiveResponse(body)) {
+    throw new Error('Gladia 会话响应格式不正确（缺少 url 字段）')
+  }
+  return body.url
+}

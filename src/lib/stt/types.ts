@@ -12,7 +12,7 @@
  * to import from anywhere (including Bun tests).
  */
 
-export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram'
+export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram' | 'gladia'
 
 /**
  * A selectable STT model in a picker. `id` is the value sent to the provider

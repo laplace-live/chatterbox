@@ -78,6 +78,17 @@ export const DEEPGRAM_WS_URL = 'wss://api.deepgram.com/v1/listen'
 export const DEEPGRAM_API_BASE = 'https://api.deepgram.com/v1'
 
 /**
+ * Gladia realtime speech-to-text. Unlike the others there's no fixed WebSocket
+ * URL: the engine first does `POST ${GLADIA_API_BASE}/live` (header
+ * `x-gladia-key`, JSON audio config) and the response returns a one-shot
+ * WebSocket URL with an embedded session token. That init endpoint sends
+ * permissive CORS (`access-control-allow-origin: *`, `x-gladia-key` allowed),
+ * so a plain cross-origin `fetch` from bilibili works — no `GM_xmlhttpRequest` /
+ * `@connect` grant — and the socket itself carries no auth header.
+ */
+export const GLADIA_API_BASE = 'https://api.gladia.io/v2'
+
+/**
  * mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns its exports
  * to `window.mpegts` at runtime, picked up via the shared
  * `loadUmdScript()` probe path.

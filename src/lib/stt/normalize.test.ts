@@ -4,9 +4,11 @@ import type { SttChunk } from './types'
 
 import {
   elevenLabsTextToChunk,
+  isGladiaLiveResponse,
   isSingleUseTokenResponse,
   parseDeepgramModels,
   parseDeepgramResult,
+  parseGladiaResult,
   readStringField,
   reduceChunks,
   sonioxResultToChunks,
@@ -160,5 +162,42 @@ describe('parseDeepgramModels', () => {
     expect(parseDeepgramModels({})).toEqual([])
     expect(parseDeepgramModels({ stt: 'nope' })).toEqual([])
     expect(parseDeepgramModels(null)).toEqual([])
+  })
+})
+
+describe('parseGladiaResult', () => {
+  const build = (text: string, isFinal: boolean) => ({
+    type: 'transcript',
+    session_id: 's',
+    data: { id: 'u1', is_final: isFinal, utterance: { text, start: 0.1, end: 1.2, language: 'en' } },
+  })
+
+  test('reads a partial transcript', () => {
+    expect(parseGladiaResult(build('hello', false))).toEqual({ transcript: 'hello', isFinal: false })
+  })
+
+  test('reads a final transcript', () => {
+    expect(parseGladiaResult(build('done', true))).toEqual({ transcript: 'done', isFinal: true })
+  })
+
+  test('ignores non-transcript messages and malformed shapes', () => {
+    expect(parseGladiaResult({ type: 'speech_start' })).toBeNull()
+    expect(parseGladiaResult({ type: 'transcript', data: { is_final: true, utterance: {} } })).toBeNull()
+    expect(parseGladiaResult({ type: 'transcript', data: { is_final: true } })).toBeNull()
+    expect(parseGladiaResult({ type: 'transcript' })).toBeNull()
+    expect(parseGladiaResult(null)).toBeNull()
+  })
+})
+
+describe('isGladiaLiveResponse', () => {
+  test('accepts an object with a string url', () => {
+    expect(isGladiaLiveResponse({ id: 'x', url: 'wss://api.gladia.io/v2/live/abc' })).toBe(true)
+  })
+
+  test('rejects non-objects, null, and missing/non-string url', () => {
+    expect(isGladiaLiveResponse(null)).toBe(false)
+    expect(isGladiaLiveResponse('wss://x')).toBe(false)
+    expect(isGladiaLiveResponse({})).toBe(false)
+    expect(isGladiaLiveResponse({ url: 123 })).toBe(false)
   })
 })
