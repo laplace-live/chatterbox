@@ -2,7 +2,7 @@
  * PCM audio helpers for the raw ElevenLabs Scribe WebSocket.
  *
  * Pure and dependency-free (no DOM, no SDK) so they're unit-testable under
- * Bun. The engine captures mic audio as Float32 frames via a ScriptProcessor
+ * Bun. The engine captures mic audio as Float32 frames via an AudioWorklet
  * and uses these to produce the base64 PCM16 the wire protocol expects.
  */
 

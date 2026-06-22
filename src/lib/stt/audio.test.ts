@@ -4,7 +4,7 @@ import { floatTo16, int16ToBase64 } from './audio'
 
 /**
  * The raw ElevenLabs engine streams mic audio as base64 PCM16. These helpers
- * are the conversion core: floats from the ScriptProcessor → clamped s16le →
+ * are the conversion core: floats from the AudioWorklet → clamped s16le →
  * base64. Byte order matters (Scribe expects little-endian), so the base64
  * test decodes and checks the exact bytes.
  */
