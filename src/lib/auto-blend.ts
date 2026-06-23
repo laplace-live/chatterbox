@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals'
+import { computed, signal } from '@preact/signals'
 
 import { ensureRoomId, getCsrfToken, getDedeUid, setRandomDanmakuColor } from './api'
 import { subscribeDanmaku } from './danmaku-stream'
@@ -11,6 +11,7 @@ import {
 } from './emoticon'
 import { isLlmReady, polishWithLlm } from './llm-tasks'
 import { appendLog } from './log'
+import { compileMessageBlacklist, testMessageBlacklist } from './message-blacklist'
 import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
@@ -234,6 +235,12 @@ function emitStatus(now: number): void {
   autoBlendStatus.value = { candidates, cooldownRemainingSec, chatsPerMinute, cooldownEffectiveSec }
 }
 
+// Compiled message-blacklist matcher. A `computed` so the `/pattern/flags`
+// entries are compiled to `RegExp` objects ONCE per blacklist edit rather
+// than on every incoming danmaku — `recordDanmaku` runs in the chat hot path.
+// Recomputes only when `autoBlendMessageBlacklist` changes; reads are cached.
+const messageBlacklistMatcher = computed(() => compileMessageBlacklist(Object.keys(autoBlendMessageBlacklist.value)))
+
 function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, hasLargeEmote: boolean): void {
   if (!autoBlendEnabled.value) return
 
@@ -273,15 +280,13 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
     if (uid in autoBlendUserBlacklist.value) return
   }
 
-  // Message-level blacklist (exact match on the same trimmed text the
-  // counters key off). Drop before any counter / leaderboard work so a
-  // blacklisted line never appears as a candidate even at 1/N progress.
-  // `Object.hasOwn` (not `in`) — keys are arbitrary user text, and `in`
-  // walks the prototype chain so it would falsely match every danmaku
-  // whose text happens to be `Object.prototype` property name (e.g.
-  // "toString", "constructor", "valueOf"), silently filtering them
-  // forever even when the blacklist is empty.
-  if (Object.hasOwn(autoBlendMessageBlacklist.value, text)) return
+  // Message blacklist. Literal entries match the whole trimmed text exactly
+  // (the same key the counters use); `/pattern/flags` entries match anywhere
+  // in it, so one pattern catches evasion variants (口交 / 口***交 / 口 活 交).
+  // Dropped before any counter / leaderboard work so a blacklisted line never
+  // appears as a candidate even at 1/N progress. The matcher is a `computed`
+  // (see above) so patterns compile once per blacklist edit, not per danmaku.
+  if (testMessageBlacklist(messageBlacklistMatcher.value, text)) return
 
   // Locked emotes (fan-club / 舰长 / 提督 / 总督 etc.) can never be
   // auto-sent, so keep them out of `counters` entirely. This stops a popular

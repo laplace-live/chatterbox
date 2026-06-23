@@ -6,6 +6,7 @@ import { cn } from '../lib/cn'
 import { BASE_URL } from '../lib/const'
 import { fetchLlmModels, formatLlmPricing } from '../lib/llm'
 import { appendLog, maxLogLines } from '../lib/log'
+import { isRegexEntry, validateRegexEntry } from '../lib/message-blacklist'
 import { buildReplacementMap } from '../lib/replacement'
 import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/settings-io'
 import {
@@ -600,6 +601,14 @@ export function SettingsTab() {
       appendLog('⚠️ 消息黑名单内容不能为空')
       return
     }
+    // A `/pattern/flags` entry is a regex; reject a malformed pattern up front
+    // so it never reaches the matcher (which would otherwise silently skip it,
+    // leaving the user thinking it's active). Literals always validate.
+    const validation = validateRegexEntry(text)
+    if (!validation.ok) {
+      appendLog(`⚠️ 正则表达式无效：${validation.error}`)
+      return
+    }
     // `Object.hasOwn` (not `in`) — see auto-blend.ts for the prototype-chain
     // gotcha. Without this, typing e.g. "toString" would always claim the
     // entry already exists and silently swallow the input.
@@ -609,7 +618,7 @@ export function SettingsTab() {
       return
     }
     autoBlendMessageBlacklist.value = { ...autoBlendMessageBlacklist.value, [text]: 1 }
-    appendLog(`🚲 已加入融入消息黑名单：${text}`)
+    appendLog(`🚲 已加入融入消息黑名单${isRegexEntry(text) ? '（正则）' : ''}：${text}`)
     messageBlacklistInput.value = ''
   }
 
@@ -1162,8 +1171,9 @@ export function SettingsTab() {
               )}
             </div>
             <div class={HINT_CLASS}>
-              与名单中弹幕完全一致的消息不会计入「自动融入」统计（精确匹配）。在弹幕框点击弹幕可将该消息加入 /
-              移出名单，或在下方手动添加。
+              与名单中弹幕完全一致的消息不会计入「自动融入」统计（精确匹配）。用 <code>/正则/</code>{' '}
+              包裹则按正则匹配弹幕中任意位置，如 <code>/口.*交/i</code> 可拦截「口交」「口***交」等变体（
+              <code>i</code> 表示忽略大小写）。在弹幕框点击弹幕可将该消息加入 / 移出名单，或在下方手动添加。
             </div>
             <div class='mb-2 max-h-50 overflow-y-auto'>
               {messageBlacklistEntries.length === 0 ? (
@@ -1172,6 +1182,7 @@ export function SettingsTab() {
                 messageBlacklistEntries.map(text => (
                   <div key={text} class={LIST_ROW_CLASS}>
                     <span class={LIST_ROW_TEXT}>{text}</span>
+                    {isRegexEntry(text) && <span class='shrink-0 font-mono text-brand text-sm'>正则</span>}
                     <Button
                       variant='ghost'
                       size='sm'
@@ -1186,7 +1197,7 @@ export function SettingsTab() {
             </div>
             <div class={ADD_ROW_CLASS}>
               <Input
-                placeholder='输入弹幕内容（精确匹配）'
+                placeholder='精确匹配，或 /正则/i'
                 className={FILL_INPUT_CLASS}
                 value={messageBlacklistInput.value}
                 onInput={e => {
