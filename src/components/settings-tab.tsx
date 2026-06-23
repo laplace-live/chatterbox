@@ -1172,7 +1172,7 @@ export function SettingsTab() {
             </div>
             <div class={HINT_CLASS}>
               与名单中弹幕完全一致的消息不会计入「自动融入」统计（精确匹配）。用 <code>/正则/</code>{' '}
-              包裹则按正则匹配弹幕中任意位置，如 <code>/口.*交/i</code> 可拦截「口交」「口***交」等变体（
+              包裹则按正则匹配弹幕中任意位置，如 <code>/口.*交/i</code> 可拦截「口交」「口灰泽满交」等变体（
               <code>i</code> 表示忽略大小写）。在弹幕框点击弹幕可将该消息加入 / 移出名单，或在下方手动添加。
             </div>
             <div class='mb-2 max-h-50 overflow-y-auto'>
