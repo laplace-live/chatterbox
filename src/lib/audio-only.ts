@@ -79,7 +79,7 @@ import { ensureRoomId } from './api'
 import { MPEGTS_CDN_URL } from './const'
 import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
-import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR } from './player-dom'
+import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR, resolveLivePlayer } from './player-dom'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost } from './utils'
 
@@ -152,11 +152,16 @@ interface LivePlayerLike {
 }
 
 function getLivePlayer(): LivePlayerLike | null {
-  // `livePlayer` is bilibili's own global. In Tampermonkey, our code
-  // runs in an isolated sandbox; `unsafeWindow` reaches the page's real
-  // window where bilibili's player module installs itself.
-  const candidate = (unsafeWindow as unknown as { livePlayer?: LivePlayerLike }).livePlayer
-  return candidate ?? null
+  // `livePlayer` is bilibili's own global, installed by its player bundle.
+  // In Tampermonkey our code runs in an isolated sandbox; `unsafeWindow`
+  // reaches the page's real window where it lives.
+  //
+  // On a normal room that's our own window. On promotion / activity pages
+  // the room (and this script) runs in a same-origin `/blanc/<id>` iframe
+  // while bilibili's micro-frontend shell installs `livePlayer` on the TOP
+  // frame instead — so `resolveLivePlayer` walks up the ancestor chain to
+  // find it. See `resolveLivePlayer` in `player-dom.ts` for the full why.
+  return resolveLivePlayer(unsafeWindow)
 }
 
 /**
