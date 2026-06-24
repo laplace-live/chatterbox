@@ -175,6 +175,17 @@ const DEBOUNCE_AFTER_GEN_VIEWER_MS = 3_000
 const SENTENCE_END_REGEX = /[。.！!？?]$/
 const READY_BUFFER_LEN = 200
 
+/**
+ * Hard cap on a single AI-chat LLM call. `runGeneration` clears the `inflight`
+ * latch only in its `finally`, which cannot run until the `await` settles — so
+ * a stalled fetch (server accepts the socket but never sends a response, common
+ * over a long-running stream) would leave `inflight` stuck `true` forever. Once
+ * that happens every trigger short-circuits on the `inflight` guard and the
+ * status pill sits at 等待中 while viewer messages pile up but nothing
+ * generates. Bounding the call guarantees the await always settles.
+ */
+const LLM_CALL_TIMEOUT_MS = 45_000
+
 // ===========================================================================
 // Self-send dedupe
 // ===========================================================================
@@ -341,6 +352,11 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
       },
     },
   }
+  // Bound the request so a stalled fetch can't wedge the engine (see
+  // LLM_CALL_TIMEOUT_MS). chatCompletion forwards this signal to fetch and
+  // re-throws the AbortError untouched, so a timeout settles the await here.
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
   try {
     const content = await chatCompletion({
       base,
@@ -352,12 +368,19 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
       ],
       temperature: aiChatTemperature.value,
       responseFormat,
+      signal: controller.signal,
     })
     return parseDecision(content, maxLen)
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      appendLog(`⏱️ [AI 陪聊] LLM 调用超时（${Math.round(LLM_CALL_TIMEOUT_MS / 1000)} 秒），已跳过本次生成`)
+      return null
+    }
     const msg = err instanceof Error ? err.message : String(err)
     appendLog(`❌ [AI 陪聊] LLM 调用失败：${msg}`)
     return null
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -480,7 +503,14 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
     }
   } finally {
     inflight = false
-    aiChatStatus.value = scheduledTimer ? 'waiting' : 'idle'
+    // Don't resurrect the pill out of 'disabled' if the engine was torn down
+    // (or restarted) while this generation was still in flight — the timeout
+    // now guarantees this `finally` eventually runs even for a stalled call.
+    // `peek()` reads the current value without the control-flow narrowing the
+    // `'generating'` assignment above would otherwise impose.
+    if (aiChatStatus.peek() !== 'disabled') {
+      aiChatStatus.value = scheduledTimer ? 'waiting' : 'idle'
+    }
   }
 }
 
@@ -600,6 +630,13 @@ export function startAiChatEngine(): void {
   pendingCandidates.value = []
   aiChatViewerCount.value = 0
   recentOutgoingTexts.clear()
+  // Clear transient generation state so a restart recovers an engine that a
+  // previous in-flight (e.g. stalled) LLM call left wedged. Without this, an
+  // `inflight` left stuck `true` survives the restart and every trigger keeps
+  // short-circuiting on the `inflight` guard — the user toggling AI 陪聊 off/on
+  // (the natural "unstick it" reflex) would otherwise have no effect.
+  inflight = false
+  clearScheduled()
   // Clear any stale STT-side state so we don't immediately fire on
   // content accumulated while the engine was off.
   sttTranscriptBuffer.value = ''
