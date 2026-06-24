@@ -234,7 +234,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
       }}
       // `block` overrides the Popover wrapper's default `inline-block` so the
       // combobox keeps the block / flex-1 sizing it gets from `className`.
-      className={cn('block', className)}
+      className={cn('block min-w-0', className)}
     >
       <PopoverTrigger>
         <button

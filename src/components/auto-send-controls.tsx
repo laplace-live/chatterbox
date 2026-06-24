@@ -102,7 +102,6 @@ export function AutoSendControls() {
             {sendMsg.value ? '停车' : '开车'}
           </Button>
           <Combobox
-            className='w-full'
             value={String(idx)}
             options={templates.map((t, i) => ({
               value: String(i),
