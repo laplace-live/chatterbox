@@ -20,6 +20,23 @@ const SLOWDOWN_LADDER: ReadonlyArray<readonly [number, number]> = [
   [0.6, 0.6],
 ]
 
+// Top of the slowdown ladder: below this buffer level we actively slow
+// playback to dodge a stall, irrespective of the user's target.
+const SLOWDOWN_CEILING = SLOWDOWN_LADDER[SLOWDOWN_LADDER.length - 1][0]
+// Width of the comfortable 1x band kept between the slowdown ceiling and the
+// speedup floor. Without a gap the two bands meet and the controller can never
+// rest at 1x.
+const STABLE_DEAD_BAND = 0.2
+/**
+ * Lowest latency target that still yields a stable (non-oscillating)
+ * controller. A target at/below the slowdown ceiling puts the speedup floor
+ * inside the slowdown zone, collapsing the 1x dead-band so playbackRate
+ * oscillates 0.6x ↔ 1.1x forever (slow → buffer grows → speed up → buffer
+ * drains → slow…). Targets are floored to this so a real dead-band survives.
+ * Exported so the settings UI advertises the same minimum it will honor.
+ */
+export const MIN_STABLE_THRESHOLD = SLOWDOWN_CEILING + STABLE_DEAD_BAND
+
 /**
  * Decide the playbackRate to apply from the current buffer state. Returns
  * the target rate, or `null` to mean "make no decision — leave the
@@ -44,6 +61,12 @@ export function decidePlaybackRate(bufferLen: number, threshold: number, duratio
 
   if (!Number.isFinite(threshold) || threshold <= 0) return null
 
+  // Floor the target above the slowdown ceiling so a comfortable 1x dead-band
+  // always exists. A target at/below the ceiling makes the speedup band
+  // (over > 0) overlap the slowdown band, leaving no buffer level that holds
+  // 1x — the controller then oscillates 0.6x ↔ 1.1x indefinitely.
+  const effectiveThreshold = Math.max(threshold, MIN_STABLE_THRESHOLD)
+
   // Slowdown takes priority: a draining buffer (imminent stall) is more
   // user-visible than a slightly over-target buffer (slightly higher
   // latency).
@@ -51,7 +74,7 @@ export function decidePlaybackRate(bufferLen: number, threshold: number, duratio
     if (bufferLen < bufThres) return rate
   }
 
-  const over = bufferLen - threshold
+  const over = bufferLen - effectiveThreshold
   for (const [delta, rate] of SPEEDUP_LADDER) {
     if (over > delta) return rate
   }

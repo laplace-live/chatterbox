@@ -2,6 +2,7 @@ import { useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../lib/api'
+import { MIN_STABLE_THRESHOLD } from '../lib/auto-seek-rate'
 import { cn } from '../lib/cn'
 import { BASE_URL } from '../lib/const'
 import { fetchLlmModels, formatLlmPricing } from '../lib/llm'
@@ -1500,7 +1501,7 @@ export function SettingsTab() {
               <Input
                 id='autoSeekBufferThreshold'
                 type='number'
-                min='0.3'
+                min={String(MIN_STABLE_THRESHOLD)}
                 max='10'
                 step='0.1'
                 className='w-20'
@@ -1517,7 +1518,7 @@ export function SettingsTab() {
                   // states (empty, "1.", ".5") are kept in the draft
                   // but don't overwrite the threshold yet.
                   const v = parseFloat(raw)
-                  if (Number.isFinite(v) && v >= 0.3 && v <= 10) {
+                  if (Number.isFinite(v) && v >= MIN_STABLE_THRESHOLD && v <= 10) {
                     autoSeekBufferThreshold.value = v
                   }
                 }}
@@ -1527,7 +1528,7 @@ export function SettingsTab() {
                   // value so the field always reads back exactly what's
                   // persisted.
                   let v = parseFloat(autoSeekThresholdDraft.value)
-                  if (!Number.isFinite(v) || v < 0.3) v = 0.3
+                  if (!Number.isFinite(v) || v < MIN_STABLE_THRESHOLD) v = MIN_STABLE_THRESHOLD
                   else if (v > 10) v = 10
                   autoSeekBufferThreshold.value = v
                   autoSeekThresholdDraft.value = v.toString()

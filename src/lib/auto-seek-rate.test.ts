@@ -56,4 +56,24 @@ describe('decidePlaybackRate', () => {
       expect(decidePlaybackRate(5, threshold, Number.POSITIVE_INFINITY)).toBeNull()
     })
   })
+
+  // Regression: a low latency target must not oscillate. The slowdown ladder
+  // slows playback for any buffer < 0.6s; if the user's target sits at/below
+  // that ceiling, the speedup band (over = bufferLen - threshold > 0) overlaps
+  // the slowdown band, leaving NO buffer level that yields 1x — so playbackRate
+  // flaps 0.6x ↔ 1.1x forever. A stable 1x dead-band must exist above the
+  // slowdown ceiling regardless of how low the target is set.
+  describe('low latency target keeps a stable 1x dead-band (no oscillation)', () => {
+    test.each([
+      { label: 'just above slowdown ceiling holds 1x (was 1.1x → oscillated)', bufferLen: 0.65 },
+      { label: '0.7s buffer holds 1x', bufferLen: 0.7 },
+      { label: '0.8s buffer holds 1x', bufferLen: 0.8 },
+    ])('target 0.4s: $label', ({ bufferLen }) => {
+      expect(decidePlaybackRate(bufferLen, 0.4, Number.POSITIVE_INFINITY)).toBe(1)
+    })
+
+    test('still slows a genuinely draining buffer (stall avoidance intact)', () => {
+      expect(decidePlaybackRate(0.5, 0.4, Number.POSITIVE_INFINITY)).toBe(0.6)
+    })
+  })
 })
