@@ -1548,6 +1548,36 @@ export function SettingsTab() {
       </AccordionItem>
 
       <AccordionItem
+        open={settingsLogOpen.value}
+        onOpenChange={v => {
+          settingsLogOpen.value = v
+        }}
+        className={ACCORDION_ITEM_CLASS}
+      >
+        <AccordionTrigger>日志设置</AccordionTrigger>
+        <AccordionContent className={ACCORDION_CONTENT_CLASS}>
+          <div class='flex flex-wrap items-center gap-2'>
+            <Label htmlFor='maxLogLines'>最大日志行数:</Label>
+            <Input
+              id='maxLogLines'
+              type='number'
+              min='1'
+              max='1000'
+              className='w-20'
+              value={maxLogLines.value}
+              onChange={e => {
+                let v = parseInt(e.currentTarget.value, 10)
+                if (Number.isNaN(v) || v < 1) v = 1
+                else if (v > 1000) v = 1000
+                maxLogLines.value = v
+              }}
+            />
+            <span class='text-ga6'>(1-1000)</span>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+
+      <AccordionItem
         open={settingsUserNotesOpen.value}
         onOpenChange={v => {
           settingsUserNotesOpen.value = v
@@ -1580,36 +1610,6 @@ export function SettingsTab() {
                 if (file) void handleNotesImportFile(file)
               }}
             />
-          </div>
-        </AccordionContent>
-      </AccordionItem>
-
-      <AccordionItem
-        open={settingsLogOpen.value}
-        onOpenChange={v => {
-          settingsLogOpen.value = v
-        }}
-        className={ACCORDION_ITEM_CLASS}
-      >
-        <AccordionTrigger>日志设置</AccordionTrigger>
-        <AccordionContent className={ACCORDION_CONTENT_CLASS}>
-          <div class='flex flex-wrap items-center gap-2'>
-            <Label htmlFor='maxLogLines'>最大日志行数:</Label>
-            <Input
-              id='maxLogLines'
-              type='number'
-              min='1'
-              max='1000'
-              className='w-20'
-              value={maxLogLines.value}
-              onChange={e => {
-                let v = parseInt(e.currentTarget.value, 10)
-                if (Number.isNaN(v) || v < 1) v = 1
-                else if (v > 1000) v = 1000
-                maxLogLines.value = v
-              }}
-            />
-            <span class='text-ga6'>(1-1000)</span>
           </div>
         </AccordionContent>
       </AccordionItem>
