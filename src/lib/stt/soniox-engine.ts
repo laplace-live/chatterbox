@@ -52,6 +52,10 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
           model: params.model,
           language_hints: params.languageHints,
           enable_endpoint_detection: true,
+          // Shave endpointing latency for snappier finals. Level 1 is the mildest
+          // of 0-3: higher levels finalize sooner but can split utterances and
+          // slightly lower accuracy (see @soniox/client SttSessionConfig).
+          endpoint_latency_adjustment_level: 1,
           ...(params.translation
             ? { translation: { type: 'one_way', target_language: params.translation.targetLanguage } }
             : {}),
