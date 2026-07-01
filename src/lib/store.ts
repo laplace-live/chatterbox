@@ -71,11 +71,10 @@ export const settingsImportExportOpen = gmSignal('settingsImportExportOpen', fal
 // Floating panel width in CSS px. Resize handle clamps writes to [DIALOG_MIN_WIDTH, viewport-aware max] so a corrupted GM value can't render an off-screen dialog.
 export const dialogWidth = gmSignal('dialogWidth', 300)
 
-// Auto-blend (自动融入): when x distinct users send the same danmaku z+ times within y seconds, auto-send it a times, then freeze the detector for b seconds.
+// Auto-blend (自动融入): when x distinct users send the same danmaku z+ times within y seconds, auto-send it once, then freeze the detector for b seconds.
 export const autoBlendUniqueUsers = gmSignal('autoBlendUniqueUsers', 3) // x
 export const autoBlendWindowSec = gmSignal('autoBlendWindowSec', 15) // y
 export const autoBlendMinOccurrences = gmSignal('autoBlendMinOccurrences', 3) // z
-export const autoBlendSendCount = gmSignal('autoBlendSendCount', 1) // a
 export const autoBlendCooldownSec = gmSignal('autoBlendCooldownSec', 10) // b
 // When true, b is derived from chat velocity (CPM), clamped 2–60 s, and the fixed `autoBlendCooldownSec` is ignored.
 export const autoBlendCooldownAuto = gmSignal('autoBlendCooldownAuto', false)

@@ -8,7 +8,6 @@ import {
   autoBlendEnabled,
   autoBlendMinOccurrences,
   autoBlendPanelOpen,
-  autoBlendSendCount,
   autoBlendUniqueUsers,
   autoBlendUseReplacements,
   autoBlendWindowSec,
@@ -201,18 +200,6 @@ export function AutoBlendControls() {
             次
           </Label>
 
-          <Label className={'inline-flex items-center gap-1'}>
-            跟车
-            <NumberInput
-              value={autoBlendSendCount.value}
-              min={1}
-              max={20}
-              onChange={v => {
-                autoBlendSendCount.value = v
-              }}
-            />
-            次
-          </Label>
           <Label className={'inline-flex items-center gap-1'}>
             自动融入冷却
             <NumberInput

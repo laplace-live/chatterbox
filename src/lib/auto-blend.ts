@@ -21,7 +21,6 @@ import {
   autoBlendEnabled,
   autoBlendMessageBlacklist,
   autoBlendMinOccurrences,
-  autoBlendSendCount,
   autoBlendUniqueUsers,
   autoBlendUseReplacements,
   autoBlendUserBlacklist,
@@ -61,8 +60,6 @@ export interface AutoBlendStatusValue {
 /** How many candidates to surface in the UI leaderboard. */
 export const CANDIDATE_LIMIT = 3
 const SNAPSHOT_INTERVAL_MS = 500
-// Fixed gap between 跟车 repeats; decoupled from 独轮车's msgSendInterval, which can be set to minutes.
-const AUTO_BLEND_REPEAT_DELAY_MS = 6000
 
 // CPM sampling window; short enough to catch surges, long enough to smooth noise.
 const CPM_WINDOW_SEC = 30
@@ -300,32 +297,24 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     // Drives the `→` arrow in the log when any transform (YOLO or replacement) changed the string.
     const wasReplaced = replaced !== originalText
 
-    const repeatCount = Math.max(1, autoBlendSendCount.value)
     const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
-    // Record before the loop so `autoBlendAvoidRepeat` holds even if some repeats fail.
+    // Record before sending so `autoBlendAvoidRepeat` holds even if the send fails.
     lastAutoSentText = originalText
 
-    for (let i = 0; i < repeatCount; i++) {
-      let toSend = replaced
-      if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend)
-      if (!isEmote) toSend = trimText(toSend, maxLength.value)[0] ?? toSend
+    let toSend = replaced
+    if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend)
+    if (!isEmote) toSend = trimText(toSend, maxLength.value)[0] ?? toSend
 
-      if (!isEmote && randomColor.value) {
-        await setRandomDanmakuColor(roomId, csrfToken)
-      }
-
-      const result = await enqueueDanmaku(toSend, roomId, csrfToken, SendPriority.AUTO)
-      const baseLabel = result.isEmoticon ? '自动融入(表情)' : '自动融入'
-      const label = repeatCount > 1 ? `${baseLabel} [${i + 1}/${repeatCount}]` : baseLabel
-      const display = wasReplaced || toSend !== originalText ? `${originalText} → ${toSend}` : toSend
-      appendLog(result, label, display)
-
-      if (i < repeatCount - 1) {
-        await new Promise(r => setTimeout(r, AUTO_BLEND_REPEAT_DELAY_MS))
-      }
+    if (!isEmote && randomColor.value) {
+      await setRandomDanmakuColor(roomId, csrfToken)
     }
+
+    const result = await enqueueDanmaku(toSend, roomId, csrfToken, SendPriority.AUTO)
+    const label = result.isEmoticon ? '自动融入(表情)' : '自动融入'
+    const display = wasReplaced || toSend !== originalText ? `${originalText} → ${toSend}` : toSend
+    appendLog(result, label, display)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     appendLog(`🔴 自动融入出错：${msg}`)
