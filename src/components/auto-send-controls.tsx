@@ -24,6 +24,7 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
+import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 
 function getPreview(template: string): string {
@@ -147,34 +148,38 @@ export function AutoSendControls() {
         />
 
         <div class='my-2 flex flex-wrap gap-2'>
-          <div>
-            <span>{msgCount} 条，</span>
-            <span>间隔</span>
-            <Input
-              type='number'
-              min='0'
-              autocomplete='off'
-              className='w-16'
-              value={msgSendInterval.value}
-              onInput={e => {
-                const v = parseInt(e.currentTarget.value, 10)
-                msgSendInterval.value = v >= 0 ? v : 0
-              }}
-            />
-            <span>秒，</span>
-            <span>超过</span>
-            <Input
-              type='number'
-              min='1'
-              autocomplete='off'
-              className='w-16'
-              value={maxLength.value}
-              onInput={e => {
-                const v = parseInt(e.currentTarget.value, 10)
-                maxLength.value = v >= 1 ? v : 1
-              }}
-            />
-            <span>字自动分段</span>
+          <div class='flex flex-wrap items-center gap-x-2 gap-y-1'>
+            <span>{msgCount} 条</span>
+            <Label className='inline-flex items-center gap-1'>
+              间隔
+              <Input
+                type='number'
+                min='0'
+                autocomplete='off'
+                className='w-16'
+                value={msgSendInterval.value}
+                onInput={e => {
+                  const v = parseInt(e.currentTarget.value, 10)
+                  msgSendInterval.value = v >= 0 ? v : 0
+                }}
+              />
+              秒
+            </Label>
+            <Label className='inline-flex items-center gap-1'>
+              超过
+              <Input
+                type='number'
+                min='1'
+                autocomplete='off'
+                className='w-16'
+                value={maxLength.value}
+                onInput={e => {
+                  const v = parseInt(e.currentTarget.value, 10)
+                  maxLength.value = v >= 1 ? v : 1
+                }}
+              />
+              字自动分段
+            </Label>
           </div>
           <Checkbox
             id='randomColor'
