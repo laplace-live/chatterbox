@@ -28,12 +28,10 @@ import {
   autoBlendWindowSec,
   autoBlendYolo,
   maxLength,
-  msgSendInterval,
   randomChar,
   randomColor,
-  randomInterval,
 } from './store'
-import { addRandomCharacter, resolveSendDelayMs, trimText } from './utils'
+import { addRandomCharacter, trimText } from './utils'
 
 interface Counter {
   uniqueUids: Set<string>
@@ -63,6 +61,8 @@ export interface AutoBlendStatusValue {
 /** How many candidates to surface in the UI leaderboard. */
 export const CANDIDATE_LIMIT = 3
 const SNAPSHOT_INTERVAL_MS = 500
+// Fixed gap between 跟车 repeats; decoupled from 独轮车's msgSendInterval, which can be set to minutes.
+const AUTO_BLEND_REPEAT_DELAY_MS = 6000
 
 // CPM sampling window; short enough to catch surges, long enough to smooth noise.
 const CPM_WINDOW_SEC = 30
@@ -323,7 +323,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       appendLog(result, label, display)
 
       if (i < repeatCount - 1) {
-        await new Promise(r => setTimeout(r, resolveSendDelayMs(msgSendInterval.value, randomInterval.value)))
+        await new Promise(r => setTimeout(r, AUTO_BLEND_REPEAT_DELAY_MS))
       }
     }
   } catch (err) {
