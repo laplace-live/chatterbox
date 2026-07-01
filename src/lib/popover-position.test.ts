@@ -3,17 +3,9 @@ import { describe, expect, test } from 'bun:test'
 import { computePopoverPosition } from './popover-position'
 
 /**
- * `computePopoverPosition` is the pure geometry behind the floating
- * Popover/Combobox content. The component measures the trigger and the
- * content with `getBoundingClientRect`, hands the rects here, and applies
- * the returned `left`/`top`/`maxHeight` as a `position: fixed` box. Fixed
- * positioning is what lets the popover escape the Configurator dialog's
- * `overflow` clip, so this function owns the "stay on screen" contract:
- * flip to the side with room, clamp horizontally into the viewport, and
- * cap the height so a tall popover scrolls instead of bleeding off-screen.
- *
- * GAP (4px) mirrors the old `mt-1`/`mb-1` trigger spacing; MARGIN (8px) is
- * the breathing room kept from every viewport edge.
+ * Pure geometry for the `position: fixed` popover; owns the "stay on screen"
+ * contract: flip to the side with room, clamp horizontally, cap the height.
+ * GAP (4px) is trigger spacing; MARGIN (8px) is kept from every viewport edge.
  */
 describe('computePopoverPosition', () => {
   const viewport = { width: 1000, height: 800 }

@@ -1,25 +1,17 @@
 /**
  * Opens a Gladia realtime live session and returns its one-shot WebSocket URL.
  *
- * Gladia's realtime flow starts with `POST /v2/live`: the API key rides the
- * `x-gladia-key` header (browsers can't set it on a WebSocket), the body
- * declares the audio format + model + language, and the response hands back a
- * `url` carrying a per-session token. The client then opens exactly one
- * WebSocket to that url — the key never travels on the socket.
- *
- * Plain `fetch` (like `mintElevenLabsToken`): the init endpoint sends permissive
- * CORS headers (`access-control-allow-origin: *`, `x-gladia-key` allowed), so
- * the cross-origin POST from bilibili.com works without `GM_xmlhttpRequest` / an
- * `@connect` grant. The response is validated by a type guard (no `as` cast).
+ * Key rides the `x-gladia-key` header (browsers can't set it on a WebSocket);
+ * the response `url` carries a per-session token so the key never hits the
+ * socket. Plain cross-origin `fetch` works — Gladia sends permissive CORS, no
+ * `GM_xmlhttpRequest` / `@connect` needed.
  */
 
 import { GLADIA_API_BASE } from '../const'
 import { isGladiaLiveResponse } from './normalize'
 import { PCM_SAMPLE_RATE } from './pcm-capture'
 
-// 0.3 s of trailing silence ends an utterance — matches the Deepgram engine's
-// 300 ms endpointing so a phrase maps to roughly one danmaku. Gladia's own
-// default (0.05 s) fragments far too aggressively for that.
+// 0.3 s trailing silence ends an utterance ≈ one danmaku; Gladia's 0.05 s default fragments too much.
 const ENDPOINTING_SECONDS = 0.3
 
 export interface GladiaSessionConfig {

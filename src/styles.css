@@ -1,9 +1,7 @@
 @import 'tailwindcss';
 
 @theme {
-  /* B站 host CSS variables. Fallbacks match the values used inline in the
-   * existing components, so behavior is identical when these vars aren't
-   * defined (e.g. on space.bilibili.com or in older themes). */
+  /* B站 host CSS variables; fallbacks keep behavior identical when the vars aren't defined. */
   --color-ga1: var(--Ga1, #f5f5f5);
   --color-ga1s: var(--Ga1_s, rgba(0, 0, 0, 0.04));
   --color-ga2: var(--Ga2, #eee);

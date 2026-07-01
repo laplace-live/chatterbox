@@ -7,18 +7,13 @@ const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
 const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
 const DELETED_SPACE_BANNER_ID = 'laplace-chatterbox-deleted-space-banner'
 
-// B站 API URLs whose JSON we transform on the fly. Match by `includes` so
-// a query string / version prefix doesn't matter.
+// Matched by `includes` so a query string / version prefix doesn't matter.
 const GET_INFO_BY_USER_PATTERN = '/xlive/web-room/v1/index/getInfoByUser'
 const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
 const ACC_INFO_PATTERN = '/x/space/wbi/acc/info'
 
-// `liveBlockObserver` lives at module scope so the toggle-off path
-// (`effect(...)` below) can cancel a pending injection: a MutationObserver
-// waiting for B站's late-mounted header could otherwise fire after the user
-// disables the feature and inject the pill anyway — the `remove*()` call finds
-// nothing in the DOM yet, so it can't undo it. The space-page banners keep
-// their observers inside `createSpaceBanner`'s closure for the same reason.
+// Module scope so the toggle-off `effect(...)` can cancel a pending injection
+// that would otherwise fire (and inject unremovably) after the feature is off.
 let liveBlockObserver: MutationObserver | null = null
 
 function disconnectLiveBlockObserver(): void {
@@ -32,14 +27,8 @@ function removeLiveBlockIndicator(): void {
 }
 
 /**
- * Pill-style indicator inside the livestream header's right cluster
- * (`.right-section`). Prepending INTO the cluster keeps the pill inside its
- * existing flex layout, so we don't have to mirror whatever justify/gap
- * rules the header is using in the parent.
- *
- * Self-healing: if `.right-section` isn't in the DOM yet (we run at
- * document-start, B站 mounts the header later), a one-shot MutationObserver
- * waits for it.
+ * Prepend the pill indicator into the livestream header's `.right-section`,
+ * or once B站 mounts it (one-shot observer, since we run at document-start).
  */
 function ensureLiveBlockIndicator(): void {
   if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
@@ -74,12 +63,7 @@ function ensureLiveBlockIndicator(): void {
   // Cancel any earlier pending observer so we keep at most one alive.
   disconnectLiveBlockObserver()
   liveBlockObserver = new MutationObserver(() => {
-    // The user can flip `unlockLiveBlock` off in the configurator
-    // between us setting up this observer and B站 finally mounting
-    // `.right-section`. Re-read the signal so we don't inject behind the
-    // user's back. The `effect(...)` below also disconnects on toggle-off
-    // — this check is a defensive fallback for cases where the observer
-    // fires before the effect microtask runs.
+    // Re-read: user may have toggled off while we waited for `.right-section`.
     if (!unlockLiveBlock.value) {
       disconnectLiveBlockObserver()
       return
@@ -93,17 +77,9 @@ function ensureLiveBlockIndicator(): void {
 }
 
 /**
- * Factory for a full-width banner inserted as a sibling immediately after B站's
- * top header on user space pages. Both space-page banners — the 拉黑 unlock and
- * the 注销/封禁 revival — share this; they differ only in element id, copy, and
- * whether a live signal can cancel a pending injection.
- *
- * Self-healing: B站 mounts `.header.space-header` after our document-start run,
- * so when it isn't in the DOM yet we wait with a one-shot MutationObserver. The
- * observer is kept in this closure (not at module scope) so `remove()` — called
- * from the toggle-off `effect(...)` or on SPA navigation — can cancel a
- * still-pending injection that would otherwise fire after the feature is
- * disabled / the user has moved to another profile.
+ * Factory for a full-width banner inserted after B站's space-page header.
+ * Observer is per-closure (not module scope) so each banner's `remove()` can
+ * cancel its own pending injection on toggle-off / SPA nav.
  */
 function createSpaceBanner(id: string) {
   const headerSelector = '.header.space-header'
@@ -139,8 +115,7 @@ function createSpaceBanner(id: string) {
     },
     /**
      * Inject the banner now, or once B站 mounts the header. `shouldInject` is
-     * re-checked inside the observer so a feature toggled off while we were
-     * waiting doesn't inject behind the user's back; always-on banners omit it.
+     * re-checked in the observer so a toggled-off feature doesn't inject late.
      */
     ensure(text: string, shouldInject: () => boolean = () => true): void {
       if (document.getElementById(id)) return
@@ -168,10 +143,7 @@ function createSpaceBanner(id: string) {
 const spaceBlockBanner = createSpaceBanner(SPACE_BLOCK_BANNER_ID)
 const deletedSpaceBanner = createSpaceBanner(DELETED_SPACE_BANNER_ID)
 
-// React to the configurator toggle in real time so disabling the feature
-// drops the indicator immediately, without forcing a reload. (Re-enabling
-// only re-shows it on the next fetch hit, which matches the existing
-// "刷新生效" UX of the toggle itself.)
+// Disabling drops the indicator immediately; re-enabling re-shows on next fetch.
 effect(() => {
   if (!unlockLiveBlock.value) removeLiveBlockIndicator()
 })
@@ -191,31 +163,12 @@ function midFromUrl(url: string): number {
 }
 
 /**
- * Synthetic `acc/info` `data` payload for a 注销 (self-deactivated) account,
- * whose real response is `code:-404` with no `data` at all.
- *
- * `name` is hard-coded to B站's canonical deactivated-account label — every
- * 注销 account renders as "账号已注销", and `x/web-interface/card` (the only
- * other identity source) returns the same tombstone, so there's nothing
- * user-specific to recover. `face` falls back to the default avatar; the
- * rest are inert zero/empty values. The real follower/like counts still show
- * — the space page sources those from `relation/stat` + `upstat`, not here.
- *
- * This is the *verified minimum* field set. The space SPA (Vue 3) guards
- * almost every profile field with optional chaining, so a partial object
- * renders — except four it dereferences UNGUARDED, each of which throws a
- * (B站-swallowed) TypeError mid-render if its parent is missing:
- *   - `profession.is_show`
- *   - `sys_notice.content`
- *   - `official.type`
- *   - `birthday` — read as a string via `.match(...)`
- * `elec` / `contract` / `fans_medal` / `top_photo_v2` get traversed into for
- * the header so they're kept too; the identity fields (mid/name/face/sex/
- * level/sign/…) are display-only. Everything else B站 normally sends (vip,
- * pendant, nameplate, live_room, user_honour_info, attestation, gaia_*, …)
- * is never read — proven with a logging Proxy against a real 注销 space.
- * Don't trim anything below without re-checking the console for new
- * `Cannot read properties of undefined (reading '…')` throws.
+ * Synthetic `acc/info` `data` for a 注销 account (real response is `code:-404`,
+ * no `data`). Verified-minimum field set: the Vue 3 SPA optional-chains almost
+ * everything, but dereferences four parents UNGUARDED, throwing mid-render if
+ * absent — `profession.is_show`, `sys_notice.content`, `official.type`, and
+ * `birthday` (read via `.match`). Don't trim without re-checking the console
+ * for new `Cannot read properties of undefined` throws.
  */
 function buildDeletedAccountProfile(mid: number) {
   return {
@@ -237,22 +190,14 @@ function shouldHijackUrl(url: string): boolean {
 }
 
 /**
- * Mutates parsed-JSON `data` in place to neutralize the relevant block
- * flags AND triggers the matching indicator/banner side effects.
- *
- * Idempotent: re-applying it on already-transformed data is a no-op
- * (`is_forbid` is already `false`, `attribute` is already `0`, and a revived
- * acc/info already reads `code: 0`), so it's safe even if B站's code clones a
- * Response and consumes it twice.
+ * Mutate parsed-JSON `data` in place to clear block flags and fire the matching
+ * indicator/banner. Idempotent, so re-consuming a cloned Response is safe.
  */
 // biome-ignore lint/suspicious/noExplicitAny: parsed JSON shape from B站
 function applyTransforms(url: string, data: any): void {
   if (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
-    // Clear the previous room's pill before deciding whether to inject
-    // one for the current room. Bilibili reuses `.right-section` across SPA
-    // navigations, so a stale "已解锁" pill would otherwise linger when
-    // the new room isn't blocking us.
+    // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
     removeLiveBlockIndicator()
     const forbid = data?.data?.forbid_live
     if (forbid) {
@@ -264,9 +209,7 @@ function applyTransforms(url: string, data: any): void {
     }
   } else if (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking acc/relation response:', url)
-    // Same SPA-navigation rationale as the livestream branch above:
-    // clear the previous user's banner before deciding whether the
-    // current user's relation needs one.
+    // Clear the previous user's stale banner (SPA nav) before re-deciding.
     spaceBlockBanner.remove()
     const beRel = data?.data?.be_relation
     if (beRel?.attribute === 128) {
@@ -275,19 +218,11 @@ function applyTransforms(url: string, data: any): void {
       spaceBlockBanner.ensure('✽ LAPLACE 直播助手已解除该用户的部分拉黑限制', () => unlockSpaceBlock.value)
     }
   } else if (url.includes(ACC_INFO_PATTERN)) {
-    // 注销 (self-deactivated) accounts answer acc/info with `code:-404` /
-    // "啥都木有" and no `data`, which makes B站's space SPA short-circuit to
-    // its "啥都木有" error page and never request the content tabs. The
-    // contributions themselves survive deactivation (arc/search, dynamics,
-    // navnum all still return them) — only the profile shell is gone — so we
-    // synthesize a minimal profile to get the SPA past its gate.
-    //
-    // Always-on (unlike the two block-unlocks above): the content is already
-    // public, B站 just refuses to render the page around a missing profile.
-    //
-    // `deletedSpaceBanner.remove()` runs unconditionally first so navigating
-    // (SPA-style) from a revived account to a normal one clears the stale
-    // banner; we only re-add it when this response was actually a 注销/封禁 one.
+    // 注销 accounts return `code:-404`/no `data`, so the SPA short-circuits to
+    // its error page and skips content tabs — but the contributions survive, so
+    // synthesizing a minimal profile gets it past the gate. Always-on: content
+    // is already public. Clear the stale banner first (SPA nav from a revived
+    // account); re-added only when this response was actually 注销/封禁.
     deletedSpaceBanner.remove()
     if (data?.code === -404) {
       const mid = midFromUrl(url)
@@ -297,10 +232,8 @@ function applyTransforms(url: string, data: any): void {
       data.data = buildDeletedAccountProfile(mid)
       deletedSpaceBanner.ensure('✽ LAPLACE 直播助手已恢复该注销账号的可见内容')
     } else if (data?.code === 0 && (data.data?.silence === 1 || data.data?.control === 1)) {
-      // 封禁 (banned) accounts DO return real data, but with silence/control set
-      // to 1 — the SPA renders the header then shows a "封禁中" screen instead of
-      // the content tabs. Both flags gate it (clearing only `silence` isn't
-      // enough), so reset both to reveal the still-intact contributions.
+      // 封禁 accounts return real data with silence/control=1; both gate the
+      // content tabs (clearing only `silence` isn't enough), so reset both.
       console.log('[LAPLACE Chatterbox] Reviving banned account space:', midFromUrl(url) || url)
       data.data.silence = 0
       data.data.control = 0
@@ -309,34 +242,11 @@ function applyTransforms(url: string, data: any): void {
   }
 }
 /**
- * Patches `Response.prototype.json` / `Response.prototype.text` so we
- * transform B站 API responses regardless of which fetch reference
- * produced the Response.
- *
- * Why this layer and not `window.fetch`?
- * --------------------------------------
- * Patching `window.fetch` only catches calls that go through the
- * post-patch reference. B站's bundled JS captures the original `fetch`
- * into a closure during module init:
- *
- *     // somewhere inside B站's bundle (one-time module setup)
- *     const _fetch = window.fetch
- *     export const apiFetch = (u, o) => _fetch(u, o)
- *
- * Whether `_fetch` is ours or theirs depends on a parse-time race
- * between the userscript injection and the bundle's first `<script>`
- * execution. With DevTools "Disable cache" ON the bundle takes a fresh
- * network roundtrip and we always win; with cache ON the bundle parses
- * synchronously from disk cache and frequently beats us, leaving every
- * subsequent API call on the unpatched closure. That race exactly
- * matches the reported flakiness.
- *
- * The prototype layer side-steps the race entirely: `response.json()`
- * looks up `.json` on `Response.prototype` at *call* time, and the call
- * cannot happen until the network roundtrip resolves — by which point
- * even a slow userscript injection has long since landed. As long as
- * our patch is in place before the *first response is consumed* (not
- * before the first fetch is *issued*), the hijack is deterministic.
+ * Patch `Response.prototype.json`/`.text` rather than `window.fetch`: B站's
+ * bundle captures the original `fetch` into a closure at module init, racing our
+ * injection (loses with disk cache). Prototype methods resolve at call time —
+ * after the network roundtrip — so the hijack is deterministic as long as we
+ * patch before the first response is *consumed*, not before the first fetch.
  */
 ;(() => {
   console.log('[LAPLACE Chatterbox] fetch-hijack loaded on', location.hostname)
@@ -357,9 +267,7 @@ function applyTransforms(url: string, data: any): void {
       return data
     }
 
-    // text() patch covers consumers that hand-roll JSON.parse (e.g.
-    // `const t = await r.text(); JSON.parse(t)`). For non-target URLs
-    // we pass the original string straight through — no parse cost.
+    // Covers consumers that hand-roll JSON.parse; non-target URLs pass through.
     const origText = ResponseProto.text
     ResponseProto.text = async function (this: Response): Promise<string> {
       const text = await origText.call(this)

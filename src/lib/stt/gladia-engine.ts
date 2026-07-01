@@ -1,25 +1,8 @@
 /**
- * Gladia realtime `SttEngine` — raw WebSocket implementation.
- *
- * Gladia's realtime flow needs a one-shot HTTP init before the socket (see
- * `gladia-session.ts`): POST the audio config, get back a per-session WebSocket
- * URL with an embedded token, then stream audio to it. Like ElevenLabs (and
- * unlike Deepgram's raw-binary protocol) audio rides as base64 inside JSON
- * `audio_chunk` messages, so we reuse the shared PCM pipeline + `int16ToBase64`.
- *
- * Flow:
- *   1. `POST /v2/live` → a session WebSocket URL (token embedded).
- *   2. Open the WS.
- *   3. On open, capture the mic via the shared PCM pipeline and stream base64
- *      PCM16 `audio_chunk` messages.
- *   4. Map `transcript` messages: non-final → a non-final chunk; final → a final
- *      chunk then `endpoint` (Gladia finalizes per its silence endpointing).
- *   5. `stop` sends `stop_recording` and lets Gladia flush its last transcript
- *      and close; a short fallback force-closes so a missing close can't hang.
- *
- * Gladia realtime is transcription-only here, so every chunk is 'original' and
- * `params.translation` is ignored. `pause`/`resume` gate sending; `finalize` is
- * a no-op (endpointing auto-commits, and the UI doesn't call it).
+ * Gladia realtime `SttEngine` — raw WebSocket. Needs a one-shot HTTP init
+ * (`gladia-session.ts`) for a per-session WS URL; audio rides as base64 in JSON
+ * `audio_chunk` messages. Transcription-only: every chunk is 'original';
+ * `finalize` is a no-op since silence endpointing auto-commits.
  */
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
@@ -30,8 +13,7 @@ import { initGladiaSession } from './gladia-session'
 import { parseGladiaResult } from './normalize'
 import { type PcmCapture, startPcmCapture } from './pcm-capture'
 
-// After `stop_recording`, Gladia flushes a final transcript and closes the
-// socket itself; force-close after this long if that close never arrives.
+// Force-close if Gladia's own close never arrives after `stop_recording`.
 const STOP_GRACE_MS = 2000
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
@@ -64,7 +46,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
     try {
       ws?.close()
     } catch {
-      // closing a socket that never opened can throw — nothing to do
+      // closing a socket that never opened can throw
     }
     onEvent({ type: 'error', error: toError(err) })
   }
@@ -73,7 +55,6 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
     const cap = await startPcmCapture({
       deviceId: params.audioDeviceId,
       onFrame: frame => {
-        // Gladia takes base64 PCM16 wrapped in a JSON `audio_chunk` (like ElevenLabs).
         if (paused || !ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify({ type: 'audio_chunk', data: { chunk: int16ToBase64(frame) } }))
       },
@@ -127,8 +108,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
         socket.onerror = () => fail(new Error('WebSocket 连接错误'))
         socket.onclose = () => {
           if (aborted || settled) return
-          // Never opened ⇒ the session URL was rejected (expired/invalid token);
-          // surface a hint rather than a silent "stopped".
+          // Never opened ⇒ session URL rejected (expired/invalid token).
           if (!opened) {
             fail(new Error('连接失败，请检查 Gladia API Key 或网络'))
             return
@@ -144,19 +124,15 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   const stop = async (): Promise<void> => {
     onEvent({ type: 'state', state: 'stopping' })
     stopCapture()
-    // Ask Gladia to flush the last transcript, then let it close the socket.
+    // Flush Gladia's last transcript, then let it close the socket.
     try {
       ws?.send(JSON.stringify({ type: 'stop_recording' }))
-    } catch {
-      // ignore
-    }
+    } catch {}
     const socket = ws
     setTimeout(() => {
       try {
         socket?.close()
-      } catch {
-        // ignore
-      }
+      } catch {}
     }, STOP_GRACE_MS)
   }
 
@@ -166,9 +142,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
     stopCapture()
     try {
       ws?.close()
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   const pause = (): void => {

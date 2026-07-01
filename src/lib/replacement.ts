@@ -7,10 +7,7 @@ import {
   replacementMap,
 } from './store'
 
-/**
- * Builds the replacement map from remote and local rules.
- * Priority: remote global < remote room < local global < local room.
- */
+/** Build the replacement map; priority: remote global < remote room < local global < local room. */
 export function buildReplacementMap(): void {
   const map = new Map<string, string>()
 
@@ -46,9 +43,7 @@ export function buildReplacementMap(): void {
   replacementMap.value = map
 }
 
-/**
- * Applies all replacement rules to the given text using the cached map.
- */
+/** Apply all replacement rules to the text using the cached map. */
 export function applyReplacements(text: string): string {
   if (replacementMap.value === null) {
     buildReplacementMap()

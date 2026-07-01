@@ -1,25 +1,10 @@
 /**
  * ElevenLabs Scribe v2 Realtime `SttEngine` — raw WebSocket implementation.
  *
- * We deliberately DON'T use `@elevenlabs/client`: it bundles `livekit-client`,
- * whose webrtc-adapter shim runs at import time and throws in the bilibili page
- * context, and Scribe realtime is a plain WebSocket that never needs WebRTC.
- * So we speak the documented protocol directly.
- *
- * Flow:
- *   1. Mint a single-use token over HTTP (browsers can't set `xi-api-key` on a
- *      WebSocket, so it rides the `?token=` query param).
- *   2. Open the WS with `model_id`, `audio_format=pcm_16000`,
- *      `commit_strategy=vad` (+ optional `language_code`).
- *   3. On open, capture the mic via the shared PCM pipeline and stream base64
- *      PCM16 `input_audio_chunk` messages.
- *   4. Map server messages onto normalized events: `partial_transcript` → a
- *      non-final chunk; `committed_transcript` → a final chunk then `endpoint`
- *      (VAD-driven); fatal `*_error` → error; socket close → finished.
- *
- * Scribe is transcription-only, so every chunk is 'original' and
- * `params.translation` is ignored. `pause`/`resume` gate chunk sending;
- * `finalize` is a no-op (VAD auto-commits, and the UI doesn't call it).
+ * Avoids `@elevenlabs/client`: it bundles `livekit-client`, whose webrtc-adapter
+ * shim runs at import time and throws in the bilibili page context. Token rides
+ * `?token=` since browsers can't set `xi-api-key` on a WebSocket. Transcription-
+ * only, so `params.translation` is ignored; `finalize` is a no-op (VAD auto-commits).
  */
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
@@ -30,9 +15,7 @@ import { mintElevenLabsToken } from './elevenlabs-token'
 import { elevenLabsTextToChunk, readStringField } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
 
-// Server message types that should end the session. Transient warnings
-// (commit_throttled, rate_limited, insufficient_audio_activity, …) are ignored
-// so a hiccup doesn't kill a live stream.
+// Fatal types end the session; transient warnings (commit_throttled, rate_limited, …) are ignored.
 const FATAL_MESSAGE_TYPES = new Set([
   'error',
   'auth_error',
@@ -72,7 +55,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
     try {
       ws?.close()
     } catch {
-      // closing a socket that never opened can throw — nothing to do
+      // closing a socket that never opened can throw
     }
     onEvent({ type: 'error', error: toError(err) })
   }
@@ -175,9 +158,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
     stopCapture()
     try {
       ws?.close()
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   const cancel = (): void => {
@@ -186,9 +167,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
     stopCapture()
     try {
       ws?.close()
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   const pause = (): void => {

@@ -4,13 +4,7 @@ import type { BilibiliEmoticon, BilibiliEmoticonPackage, FavoriteEmote } from '.
 
 import { isFavorite, resolveFavorite, toFavoriteSnapshot, toggleFavorite } from './emote-favorites'
 
-/**
- * `emote-favorites.ts` is the pure core behind the emote favorites feature — the
- * GM-persisted `favoriteEmotes` signal lives in `./store`, but every decision
- * (membership, add/remove, and the per-room availability that drives the
- * grayed-out state) is a pure function of (list, packages) so it can be tested
- * without a browser or GM storage. Mirrors the `auto-seek-rate` split.
- */
+/** Pure functions of (list, packages), so favorites logic is testable without a browser or GM storage. */
 
 function emote(over: Partial<BilibiliEmoticon> & { emoticon_unique: string }): BilibiliEmoticon {
   return {
@@ -35,9 +29,7 @@ describe('toFavoriteSnapshot', () => {
         url: 'https://x/u.png',
         emoji: '[A]',
         descript: 'A',
-        // Volatile fields that must NOT be frozen into the favorite — they're
-        // re-read from the live cache so a favorited locked emote unlocks
-        // correctly later.
+        // Volatile: re-read from live cache so a favorited locked emote unlocks later.
         perm: 0,
         emoticon_id: 99,
         unlock_show_text: '舰长',
@@ -103,9 +95,7 @@ describe('toggleFavorite', () => {
   })
 
   test('can remove a favorite given only its stored snapshot (the grayed-out case)', () => {
-    // In the favorites tab an unavailable (other-room) emote is rendered from
-    // its FavoriteEmote snapshot, not a live BilibiliEmoticon — un-favoriting
-    // it must still work.
+    // Un-favoriting must work from a stored snapshot, not just a live BilibiliEmoticon.
     const snap: FavoriteEmote = { emoticon_unique: 'room_999_1', url: 'u', emoji: '[X]' }
     const result = toggleFavorite([snap], snap)
 
@@ -123,8 +113,7 @@ describe('resolveFavorite', () => {
   })
 
   test('available — surfaces the LIVE permission state, not the frozen snapshot', () => {
-    // room_100_5 is locked (perm 0) in the live cache; resolve must hand back
-    // the live object so the cell can show the current lock badge.
+    // room_100_5 is locked (perm 0) live; resolve must return the live object for the current lock badge.
     const { live } = resolveFavorite('room_100_5', packages)
     expect(live?.perm).toBe(0)
   })

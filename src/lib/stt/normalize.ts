@@ -1,20 +1,8 @@
-/**
- * Pure transcript mappers + the ElevenLabs token-response guard.
- *
- * Deliberately free of any provider SDK or `$` (Greasemonkey) import so this
- * file is the unit-testable core of the STT layer — Bun can import it directly.
- * The engines depend on these functions; the functions depend on nothing that
- * needs a browser.
- */
+/** Pure transcript mappers + response guards; no SDK/browser deps so Bun can import it. */
 
 import type { SttChunk, SttModelOption } from './types'
 
-/**
- * Structural shape of the Soniox tokens we read. Narrower than the SDK's
- * `RealtimeResult` on purpose: a real `RealtimeResult` is assignable to it (it
- * has these fields plus more), but tests can construct one with a plain
- * literal and we never couple this module to `@soniox/client`.
- */
+/** Structural subset of Soniox tokens; `RealtimeResult` is assignable, avoids coupling to `@soniox/client`. */
 export interface SonioxTokenLike {
   text: string
   is_final: boolean
@@ -43,12 +31,7 @@ export function elevenLabsTextToChunk(text: string, isFinal: boolean): SttChunk 
   return { text, isFinal, kind: 'original' }
 }
 
-/**
- * Collapse a frame's chunks into the new final text and the current non-final
- * text for the stream the user is listening to. When translation is on we keep
- * only `translation` chunks; otherwise only `original` — so the two streams
- * never bleed into each other (Soniox sends both interleaved when translating).
- */
+/** Collapse chunks into new-final + non-final text; keeps only translation or original so Soniox's interleaved streams don't bleed. */
 export function reduceChunks(chunks: SttChunk[], translationEnabled: boolean): { newFinal: string; nonFinal: string } {
   let newFinal = ''
   let nonFinal = ''
@@ -61,33 +44,21 @@ export function reduceChunks(chunks: SttChunk[], translationEnabled: boolean): {
   return { newFinal, nonFinal }
 }
 
-/**
- * Type guard for the ElevenLabs single-use-token response (`{ token: string }`).
- * Uses `in`-narrowing instead of a cast so it stays sound under the no-`as`
- * rule.
- */
+/** Type guard for the ElevenLabs single-use-token response (`{ token: string }`). */
 export function isSingleUseTokenResponse(value: unknown): value is { token: string } {
   if (typeof value !== 'object' || value === null) return false
   if (!('token' in value)) return false
   return typeof value.token === 'string'
 }
 
-/**
- * Type guard for the Gladia `POST /v2/live` init response. The only field the
- * engine needs is the session `url` (the per-session WebSocket URL with an
- * embedded token). `in`-narrowing keeps it sound under the no-`as` rule.
- */
+/** Type guard for the Gladia `POST /v2/live` init response; `url` is the per-session WebSocket URL with embedded token. */
 export function isGladiaLiveResponse(value: unknown): value is { url: string } {
   if (typeof value !== 'object' || value === null) return false
   if (!('url' in value)) return false
   return typeof value.url === 'string'
 }
 
-/**
- * Reads a property off an unknown value (e.g. a parsed JSON WebSocket message)
- * as `unknown`, without an `as` cast. `Object.getOwnPropertyDescriptor` lets us
- * read a dynamic key while keeping the result typed `unknown` until checked.
- */
+/** Read a dynamic key off an unknown value as `unknown` (no `as` cast). */
 export function readField(value: unknown, key: string): unknown {
   if (typeof value !== 'object' || value === null) return undefined
   return Object.getOwnPropertyDescriptor(value, key)?.value
@@ -99,13 +70,7 @@ export function readStringField(value: unknown, key: string): string | undefined
   return typeof field === 'string' ? field : undefined
 }
 
-/**
- * Parse a Deepgram realtime `Results` message into the transcript text plus its
- * finality flags. Returns `null` for non-Results messages (Metadata,
- * UtteranceEnd, SpeechStarted) or malformed shapes. The transcript lives at
- * `channel.alternatives[0].transcript`; `is_final` marks a finalized segment,
- * `speech_final` marks the utterance boundary (our endpoint).
- */
+/** Parse a Deepgram `Results` message; `null` for other/malformed messages. `speech_final` marks the utterance boundary (our endpoint). */
 export function parseDeepgramResult(
   value: unknown
 ): { transcript: string; isFinal: boolean; speechFinal: boolean } | null {
@@ -122,13 +87,7 @@ export function parseDeepgramResult(
   }
 }
 
-/**
- * Parse a Gladia realtime `transcript` message into the utterance text plus its
- * finality flag. Returns `null` for non-transcript messages (speech_start,
- * speech_end, lifecycle) or malformed shapes. The text lives at
- * `data.utterance.text`; `data.is_final` marks a finalized utterance, which the
- * engine also treats as the endpoint.
- */
+/** Parse a Gladia `transcript` message; `null` for other/malformed messages. `data.is_final` is also the endpoint. */
 export function parseGladiaResult(value: unknown): { transcript: string; isFinal: boolean } | null {
   if (readStringField(value, 'type') !== 'transcript') return null
   const data = readField(value, 'data')
@@ -137,12 +96,7 @@ export function parseGladiaResult(value: unknown): { transcript: string; isFinal
   return { transcript, isFinal: readField(data, 'is_final') === true }
 }
 
-/**
- * Parse Deepgram's `GET /v1/models` response (`{ stt: [...] }`) into picker
- * options, keeping only realtime models (`streaming: true`) — the analogue of
- * Soniox's `transcription_mode === 'real_time'` filter. Ids come from
- * `canonical_name` (falling back to `name`); sorted, de-duplicated.
- */
+/** Parse Deepgram's `GET /v1/models` response into picker options; keeps only `streaming: true`, ids from `canonical_name` (fallback `name`), sorted + de-duped. */
 export function parseDeepgramModels(value: unknown): SttModelOption[] {
   const stt = readField(value, 'stt')
   if (!Array.isArray(stt)) return []

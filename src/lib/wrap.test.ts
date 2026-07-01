@@ -2,13 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { BRACKET_RESERVE, wrapSegment, wrapSplitLen } from './wrap'
 
-/**
- * `wrapSplitLen` / `wrapSegment` back the optional "use 【】 to wrap
- * content" toggle in both the 同传 and 常规发送 flows. The split length
- * MUST reserve the two wrapper graphemes so a wrapped segment still fits
- * the user's configured max length; the wrap itself MUST be a no-op when
- * the toggle is off so existing (unwrapped) behaviour is untouched.
- */
+/** Split length must reserve the two 【】 graphemes so a wrapped segment still fits maxLen. */
 describe('wrapSplitLen', () => {
   test('reserves the wrapper graphemes when wrapping', () => {
     expect(wrapSplitLen(40, true)).toBe(40 - BRACKET_RESERVE)

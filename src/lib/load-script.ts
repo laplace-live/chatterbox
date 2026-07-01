@@ -1,41 +1,13 @@
 /**
- * Shared lazy CDN-bundle loaders. Two mechanisms, one cache:
- *
- * - `loadUmdScript()` for UMD bundles (e.g. mpegts.js) that assign
- *   themselves to a `window.*` global as a side effect of running.
- *   Inject a plain `<script>`, then probe for that global.
- * - `loadEsmScript()` for ESM-only packages (e.g. @soniox/client)
- *   that never self-assign a global. Inject a `<script type="module">`
- *   shim that `import()`s the bundle, stashes the namespace on a
- *   `window` key we pick, and signals back across the userscript
- *   sandbox boundary once the *async* import settles.
- *
- * Why two functions rather than one with an `esm` flag: the two share
- * only the in-flight dedup + error-eviction bookkeeping (centralised
- * below in `inFlight`). Their injection and — crucially — their
- * *resolution* differ completely. A UMD `<script>`'s `onload` fires in
- * the sandbox and IS the completion signal; an ESM shim's `onload`
- * fires while `import()` is still pending, so there's no DOM event for
- * "the module finished" and we must hand a resolver into the page
- * context. A boolean would just switch between two disjoint bodies.
- *
- * Why we deliberately bypass the bundler's `externalGlobals` /
- * Tampermonkey `@require` path for these libs: that path fetches
- * eagerly at every userscript injection, even on pages where the
- * feature is never used. Lazy injection collapses that cost to zero
- * until the user actually toggles the feature on.
- *
- * The injected scripts run in the page context (not the userscript
- * sandbox), so any global lands on the real page window. Callers must
- * therefore probe via `unsafeWindow` rather than the sandboxed
- * `window` the userscript sees by default.
+ * Lazy CDN-bundle loaders sharing one in-flight cache. Lazy injection
+ * avoids the eager fetch of `externalGlobals`/`@require` on every page.
+ * Injected scripts run in the page context, so callers must probe via
+ * `unsafeWindow`, not the sandboxed `window`.
  */
 
 import { unsafeWindow } from '$'
 
-// Resolver slots the ESM shim calls back into. Keyed by a per-load id
-// so concurrent loads (shouldn't happen — the in-flight cache dedupes
-// — but defensively) don't step on each other's callback.
+// Resolver slots the ESM shim calls back into, keyed per-load id.
 declare global {
   interface Window {
     [slot: `__esmLoad_resolve_${number}`]: (() => void) | undefined
@@ -46,18 +18,12 @@ declare global {
 const inFlight = new Map<string, Promise<unknown>>()
 
 /**
- * Inject `url` as a UMD `<script>` tag and resolve once `getGlobal()`
- * reports the expected global is on the window. Safe to call
- * concurrently — callers for the same URL share a single fetch.
+ * Inject `url` as a UMD `<script>`, resolving once `getGlobal()` reports
+ * the global. Concurrent callers for the same URL share one fetch.
  *
- * @param url - Script URL (typically a version-pinned unpkg path).
- * @param getGlobal - Probe that returns the installed global, or
- *   `null` if it isn't on the window yet. Called BEFORE injection
- *   to short-circuit when something else on the page already loaded
- *   the same library, and AFTER `onload` to confirm the install
- *   actually took (script `onload` only proves the bytes downloaded,
- *   not that they did anything useful — a 200-with-empty-body would
- *   silently "succeed" otherwise).
+ * @param getGlobal - Probe for the installed global (`null` if absent).
+ *   Run after `onload` too, since `onload` proves only that bytes
+ *   downloaded — an empty-body 200 would otherwise silently succeed.
  */
 export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promise<T> {
   const existing = getGlobal()
@@ -69,9 +35,7 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
   const promise = new Promise<T>((resolve, reject) => {
     const script = document.createElement('script')
     script.src = url
-    // unpkg sets `access-control-allow-origin: *`, so anonymous
-    // CORS works and the browser doesn't gate the global assignment
-    // behind a credentialled CORS check.
+    // unpkg sends `access-control-allow-origin: *`, so anonymous CORS works.
     script.crossOrigin = 'anonymous'
     script.onload = () => {
       const g = getGlobal()
@@ -79,8 +43,7 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
       else reject(new Error(`script loaded but expected global not found: ${url}`))
     }
     script.onerror = () => {
-      // Evict so a subsequent caller can retry instead of being
-      // permanently locked into the failed promise.
+      // Evict so a later caller can retry instead of reusing the failed promise.
       inFlight.delete(url)
       reject(new Error(`failed to load script from ${url}`))
     }
@@ -92,14 +55,12 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
 
 /**
  * Inject `url` as an ESM `<script type="module">` shim, stash its
- * namespace on `unsafeWindow[globalKey]`, and resolve with it. Safe to
- * call concurrently — callers for the same URL share a single fetch.
+ * namespace on `unsafeWindow[globalKey]`, and resolve with it.
+ * Concurrent callers for the same URL share one fetch.
  *
- * @param url - ESM module URL (typically a version-pinned `.mjs`).
- * @param globalKey - Property on the page window where the shim parks
- *   the imported namespace. We choose it (unlike UMD, where the
- *   library dictates its own global), so an underscored prefix that
- *   won't collide with anything the host page assigns is wise.
+ * @param globalKey - Page-window property where the shim parks the
+ *   namespace; we pick it, so use an underscored prefix to avoid
+ *   colliding with the host page.
  */
 export function loadEsmScript<T>(url: string, globalKey: string): Promise<T> {
   const getGlobal = () => ((unsafeWindow as unknown as Record<string, unknown>)[globalKey] as T | undefined) ?? null
@@ -111,16 +72,12 @@ export function loadEsmScript<T>(url: string, globalKey: string): Promise<T> {
   if (cached) return cached as Promise<T>
 
   const promise = new Promise<T>((resolve, reject) => {
-    // Unique id so the shim's resolve/reject callbacks don't clash if
-    // two loads somehow run at once. We hand resolve/reject *into* the
-    // page context via temporary `window.*` slots because functions
-    // can't cross the userscript sandbox boundary directly — only the
-    // resolved namespace travels back, through `unsafeWindow[globalKey]`,
-    // which is a plain object.
+    // resolve/reject go through temporary `window.*` slots because
+    // functions can't cross the userscript sandbox boundary; only the
+    // plain namespace object travels back via `unsafeWindow[globalKey]`.
     const id = Date.now() + Math.floor(Math.random() * 1000)
-    // `as const` pins the literal type so these indexed assignments
-    // match the `__esmLoad_*_${number}` index signature on Window
-    // rather than widening to `string` and falling back to `any`.
+    // `as const` pins the literal to the `__esmLoad_*_${number}` index
+    // signature instead of widening to `string` (which falls back to `any`).
     const resolveKey = `__esmLoad_resolve_${id}` as const
     const rejectKey = `__esmLoad_reject_${id}` as const
     const win = unsafeWindow
@@ -144,12 +101,9 @@ export function loadEsmScript<T>(url: string, globalKey: string): Promise<T> {
 
     const script = document.createElement('script')
     script.type = 'module'
-    // The module body imports the bundled SDK, stashes the namespace
-    // on `window[globalKey]`, then signals back to the sandbox via the
-    // resolver we installed above. We catch import errors too — a CDN
-    // outage or a bad version pin would otherwise leave us hanging,
-    // since the script element's `onerror` only covers the shim itself,
-    // not the dynamic `import()` it kicks off.
+    // Catch inside the shim: the element's `onerror` covers the shim
+    // itself, not the dynamic `import()` it kicks off (which would
+    // otherwise hang on a CDN outage or bad version pin).
     script.textContent = `
       import(${JSON.stringify(url)})
         .then((mod) => {

@@ -1,39 +1,8 @@
 /**
- * AI Chat engine — the "viewer-persona" generation loop that backs the
- * AI 陪聊 section under the 同传 tab.
- *
- * Pipeline at a glance:
- *
- *   Soniox onPartialResult ──► sttTranscriptBuffer + sttEndpointReached
- *                                            │
- *   .chat-items MutationObserver ──► viewerBuffer (ring N≤aiChatViewerWindow)
- *                                            │
- *                                  scheduler (debounce 500ms / 8000ms,
- *                                  pulled forward on endpoint detection,
- *                                  sentence-final regex, or buffer > 200ch;
- *                                  viewer-only trigger every
- *                                  aiChatViewerInterval messages)
- *                                            ▼
- *                                runGeneration:
- *                                  - snapshot transcript + viewer buffer
- *                                  - build context summary
- *                                  - call chatCompletion with json_schema
- *                                  - parse {send, message, reason}
- *                                            ▼
- *                              aiChatAutoSend?
- *                                  yes ──► enqueueDanmaku (mark outgoing)
- *                                  no  ──► pendingCandidates signal
- *
- * Everything outside `start/stopAiChatEngine` is pure — the engine owns no
- * Preact component lifecycle; the App-level mount effect calls
- * start/stop based on the `aiChatEnabled` gmSignal so the engine cleanly
- * tears down its danmaku subscription, scheduled timers, and the
- * transcript-buffer effect when the user opts out.
- *
- * Self-send dedupe: every outgoing message is recorded in a 30-second
- * Set so the danmaku subscription can drop the echo of our own send
- * when Bilibili broadcasts it back through `.chat-items`. Robust to the
- * logged-in account changing mid-session — we don't need a stable uid.
+ * AI Chat engine — "viewer-persona" generation loop backing the AI 陪聊 section.
+ * Every outgoing message is recorded in a 30s Set so the danmaku subscription
+ * can drop the echo of our own send when Bilibili broadcasts it back (robust to
+ * the logged-in account changing mid-session — no stable uid needed).
  */
 
 import { effect, signal } from '@preact/signals'
@@ -58,10 +27,6 @@ import {
   sttEndpointReached,
   sttTranscriptBuffer,
 } from './store'
-
-// ===========================================================================
-// Public types
-// ===========================================================================
 
 export interface ViewerChatEntry {
   uname: string | null
@@ -97,73 +62,47 @@ export interface AiChatHistoryEntry {
 
 export type AiChatEngineStatus = 'idle' | 'waiting' | 'generating' | 'disabled'
 
-// ===========================================================================
-// UI-visible signals
-// ===========================================================================
-
-/** Candidates emitted in Review mode (`aiChatAutoSend === false`). User
- *  drives them via `acceptCandidate` / `editCandidateAndSend` / `skipCandidate`. */
+/** Candidates emitted in Review mode (`aiChatAutoSend === false`). */
 export const pendingCandidates = signal<AiChatCandidate[]>([])
 
-/** Decision log for both modes. Capped at FINISHED_HISTORY_CAP to keep the
- *  scrolling feed cheap; older entries fall off the back. */
+/** Decision log for both modes; capped at FINISHED_HISTORY_CAP. */
 export const aiChatHistory = signal<AiChatHistoryEntry[]>([])
 
 /** Coarse state for the status pill in the section header. */
 export const aiChatStatus = signal<AiChatEngineStatus>('disabled')
 
-/** Wall-clock of the most recent decided generation (used by "上次生成 N
- *  秒前" status text). null when nothing's happened this session yet. */
+/** Wall-clock ms of the most recent decided generation; null until first this session. */
 export const aiChatLastGenAt = signal<number | null>(null)
 
-/** Monotonic count of viewer messages observed since engine start. The UI
- *  divides this by `aiChatViewerInterval` to show "下次观众触发还差 N 条". */
+/** Monotonic count of viewer messages observed since engine start. */
 export const aiChatViewerCount = signal(0)
-
-// ===========================================================================
-// Module-local mutable state
-// ===========================================================================
 
 /** Most-recent N viewer messages (ring; trimmed to `aiChatViewerWindow`). */
 const viewerBuffer: ViewerChatEntry[] = []
 
-/** Rolling history of (transcript, what-we-emitted-or-skipped) pairs fed
- *  back into the LLM's context summary. Capped by entry count; the
- *  context summary itself enforces a char budget. */
+/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary. */
 const conversationHistory: { transcript: string; chat: string }[] = []
 
-/** Counter for the viewer-only trigger (reset on every generation). */
 let viewerReceivedSinceLastGen = 0
 
-/** Recent outgoing texts (text → enqueue timestamp). Used to drop the
- *  echo of our own send when it comes back through `.chat-items`. */
+/** Recent outgoing texts (text → enqueue ms); drops our own echo from `.chat-items`. */
 const recentOutgoingTexts = new Map<string, number>()
 
 const OUTGOING_TTL_MS = 30_000
 const OUTGOING_CAP = 64
 
-/** Max convHistory entries — kept small because the summary builder
- *  walks from newest to oldest and stops when it hits the char budget. */
 const HISTORY_ENTRIES_CAP = 50
-/** Pending-candidates cap; older candidates fall off when full. */
 const PENDING_CAP = 30
-/** Decision-log cap (UI feed). */
 const FINISHED_HISTORY_CAP = 50
 
-/** Strictly-increasing counter for candidate / history IDs. */
 let nextEntryId = 1
 
-// Disposers + scheduling state
 let unsubscribeDanmaku: (() => void) | null = null
 let stopBufferEffect: (() => void) | null = null
 let scheduledTimer: ReturnType<typeof setTimeout> | null = null
 let scheduledReason: 'transcript' | 'viewer' | null = null
 let inflight = false
 let startCount = 0
-
-// ===========================================================================
-// Debounce constants (ported from laplace-cap useAiChatter.ts)
-// ===========================================================================
 
 /** Buffer looks ready (endpoint detected / sentence-final / long). */
 const DEBOUNCE_READY_MS = 500
@@ -175,20 +114,8 @@ const DEBOUNCE_AFTER_GEN_VIEWER_MS = 3_000
 const SENTENCE_END_REGEX = /[。.！!？?]$/
 const READY_BUFFER_LEN = 200
 
-/**
- * Hard cap on a single AI-chat LLM call. `runGeneration` clears the `inflight`
- * latch only in its `finally`, which cannot run until the `await` settles — so
- * a stalled fetch (server accepts the socket but never sends a response, common
- * over a long-running stream) would leave `inflight` stuck `true` forever. Once
- * that happens every trigger short-circuits on the `inflight` guard and the
- * status pill sits at 等待中 while viewer messages pile up but nothing
- * generates. Bounding the call guarantees the await always settles.
- */
+/** Hard cap on one LLM call; a stalled fetch would leave `inflight` stuck true forever. */
 const LLM_CALL_TIMEOUT_MS = 45_000
-
-// ===========================================================================
-// Self-send dedupe
-// ===========================================================================
 
 function pruneRecentOutgoing(): void {
   const now = Date.now()
@@ -202,9 +129,7 @@ function markOutgoing(text: string): void {
   if (!trimmed) return
   pruneRecentOutgoing()
   recentOutgoingTexts.set(trimmed, Date.now())
-  // Cheap cap so a wide-open conversation can't grow this unbounded.
-  // Map iteration order is insertion order, so the first key is the
-  // oldest — safe to drop without a separate ordering structure.
+  // Map iteration is insertion order, so the first key is the oldest.
   if (recentOutgoingTexts.size > OUTGOING_CAP) {
     const oldest = recentOutgoingTexts.keys().next().value
     if (oldest !== undefined) recentOutgoingTexts.delete(oldest)
@@ -216,20 +141,11 @@ function isLikelySelfEcho(text: string): boolean {
   return recentOutgoingTexts.has(text.trim())
 }
 
-// ===========================================================================
-// Context summary (port of useAiChatter.ts buildContextSummary)
-// ===========================================================================
-
 /**
- * Compose the rolling context block passed to the LLM as part of the
- * user message. Newest history entries land at the bottom; the optional
- * viewer-chat block is prepended only if it fits in the first half of
- * the char budget (otherwise it would push too much history off the
- * top).
- *
- * Char-budget — not token — because the user actually configures it
- * in chars (`aiChatContextMaxChars`) and we don't want to drag in a
- * tokenizer for a fuzzy bound that providers don't enforce anyway.
+ * Compose the rolling context block for the LLM user message (newest history
+ * at the bottom). Viewer-chat block is prepended only if it fits the first half
+ * of the char budget, else it pushes off too much history. Budget is chars not
+ * tokens — that's what the user configures (`aiChatContextMaxChars`).
  */
 function buildContextSummary(
   history: typeof conversationHistory,
@@ -256,10 +172,6 @@ function buildContextSummary(
   return combined.join('\n\n')
 }
 
-// ===========================================================================
-// Readiness detection
-// ===========================================================================
-
 function isReadyForGen(buffer: string): boolean {
   if (sttEndpointReached.value) return true
   if (SENTENCE_END_REGEX.test(buffer.trim())) return true
@@ -267,28 +179,19 @@ function isReadyForGen(buffer: string): boolean {
   return false
 }
 
-// ===========================================================================
-// JSON-decision parsing (defensive — handles both pure-JSON and
-// embedded-JSON responses for vendors that ignore response_format)
-// ===========================================================================
-
 function parseDecision(content: string, maxLen: number): AiChatDecision {
   let obj: unknown = null
   try {
     obj = JSON.parse(content)
   } catch {
-    // Fall back: extract first balanced {…} block. Many providers that
-    // ignore `response_format` still emit valid JSON wrapped in a
-    // sentence ("Sure, here's the JSON: { … }"). lastIndexOf('}')
-    // pairs with the first '{' to grab the outermost block.
+    // Providers that ignore `response_format` may wrap JSON in prose;
+    // grab the outermost {…} block.
     const start = content.indexOf('{')
     const end = content.lastIndexOf('}')
     if (start >= 0 && end > start) {
       try {
         obj = JSON.parse(content.slice(start, end + 1))
-      } catch {
-        // give up — surfaces as the throw below
-      }
+      } catch {}
     }
   }
   if (!obj || typeof obj !== 'object') {
@@ -301,10 +204,6 @@ function parseDecision(content: string, maxLen: number): AiChatDecision {
   const reason = typeof o.reason === 'string' ? o.reason : ''
   return { send, message, reason }
 }
-
-// ===========================================================================
-// LLM call
-// ===========================================================================
 
 async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null> {
   const systemPrompt = getActiveLlmPrompt('aiChat')
@@ -320,8 +219,7 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
     return null
   }
   const maxLen = Math.max(1, aiChatMaxMessageLength.value)
-  // Snapshot the viewer buffer at call time. Slicing also guards
-  // against the buffer mutating while the LLM call is in flight.
+  // Snapshot guards against the buffer mutating mid-call.
   const viewerSnapshot = viewerBuffer.slice(-aiChatViewerWindow.value)
   const contextSummary = buildContextSummary(conversationHistory, aiChatContextMaxChars.value, viewerSnapshot)
   const decoratedSystem =
@@ -352,9 +250,7 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
       },
     },
   }
-  // Bound the request so a stalled fetch can't wedge the engine (see
-  // LLM_CALL_TIMEOUT_MS). chatCompletion forwards this signal to fetch and
-  // re-throws the AbortError untouched, so a timeout settles the await here.
+  // Bound the request so a stalled fetch can't wedge the engine (see LLM_CALL_TIMEOUT_MS).
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
   try {
@@ -384,10 +280,6 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
   }
 }
 
-// ===========================================================================
-// Sending
-// ===========================================================================
-
 async function sendAiChatDanmaku(message: string): Promise<boolean> {
   try {
     const roomId = await ensureRoomId()
@@ -396,8 +288,7 @@ async function sendAiChatDanmaku(message: string): Promise<boolean> {
       appendLog('❌ [AI 陪聊] 未找到登录信息，请先登录 Bilibili')
       return false
     }
-    // Record BEFORE the send so the danmaku-stream echo (which fires
-    // synchronously once Bilibili broadcasts it back) finds the entry.
+    // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO)
     appendLog(result, 'AI 陪聊', message)
@@ -408,10 +299,6 @@ async function sendAiChatDanmaku(message: string): Promise<boolean> {
     return false
   }
 }
-
-// ===========================================================================
-// History / candidate management
-// ===========================================================================
 
 function appendHistory(entry: AiChatHistoryEntry): void {
   const next = [...aiChatHistory.value, entry]
@@ -436,24 +323,15 @@ function addPendingCandidate(transcript: string, decision: AiChatDecision): void
   pendingCandidates.value = next
 }
 
-// ===========================================================================
-// Generation orchestration
-// ===========================================================================
-
 async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promise<void> {
   if (inflight) return
-  // Snapshot + clear the transcript atomically. Anything that lands
-  // during the await below accumulates into a fresh buffer and triggers
-  // the next round via the effect.
+  // Snapshot + clear atomically; content landing during the await starts the next round.
   const transcript = sttTranscriptBuffer.value
   sttTranscriptBuffer.value = ''
   sttEndpointReached.value = false
   viewerReceivedSinceLastGen = 0
 
-  // Bail when the caller can't meaningfully drive an LLM call:
-  // - transcript-driven runs need actual transcript content
-  // - viewer / manual runs may proceed even with empty transcript so
-  //   the LLM can react to observer-only context
+  // Transcript-driven runs need content; viewer/manual may proceed empty (observer-only context).
   if (reason === 'transcript' && !transcript.trim()) {
     return
   }
@@ -482,15 +360,13 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
           decidedAt: Date.now(),
         })
       } else {
-        // Review mode — surface to UI. Record in convHistory with a
-        // `[候选]` marker so the LLM understands "we already proposed
-        // this; don't immediately re-propose" even before the user
-        // clicks Send / Skip.
+        // Review mode — record with a `[候选]` marker so the LLM won't re-propose
+        // before the user acts.
         addPendingCandidate(transcript, decision)
         recordConvHistory(transcript, `[候选:${decision.message}]`)
       }
     } else {
-      // Skip — record so we don't loop on the same content
+      // Record the skip so we don't loop on the same content.
       recordConvHistory(transcript, `[跳过:${decision.reason || '无'}]`)
       appendHistory({
         id: nextEntryId++,
@@ -503,20 +379,13 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
     }
   } finally {
     inflight = false
-    // Don't resurrect the pill out of 'disabled' if the engine was torn down
-    // (or restarted) while this generation was still in flight — the timeout
-    // now guarantees this `finally` eventually runs even for a stalled call.
-    // `peek()` reads the current value without the control-flow narrowing the
-    // `'generating'` assignment above would otherwise impose.
+    // Don't resurrect the pill out of 'disabled' if torn down mid-flight.
+    // peek() avoids the narrowing the 'generating' assignment above would impose.
     if (aiChatStatus.peek() !== 'disabled') {
       aiChatStatus.value = scheduledTimer ? 'waiting' : 'idle'
     }
   }
 }
-
-// ===========================================================================
-// Scheduler
-// ===========================================================================
 
 function clearScheduled(): void {
   if (scheduledTimer) {
@@ -527,10 +396,8 @@ function clearScheduled(): void {
 }
 
 function scheduleGeneration(delay: number, reason: 'transcript' | 'viewer'): void {
-  // Gate at the scheduler so we don't queue work that callAiChatLlm
-  // would just refuse to do. Reads several signals — those become
-  // tracked by the parent effect, so a later LLM configure flips the
-  // gate without an engine restart.
+  // Gate here so a later LLM configure flips it via the parent effect's tracking,
+  // without an engine restart.
   if (!isLlmReady('aiChat')) return
   clearScheduled()
   scheduledReason = reason
@@ -543,14 +410,7 @@ function scheduleGeneration(delay: number, reason: 'transcript' | 'viewer'): voi
   }, delay)
 }
 
-// ===========================================================================
-// Public actions (UI-driven)
-// ===========================================================================
-
 export function triggerNow(): void {
-  // Cancel any pending schedule and run immediately. Even in Review
-  // mode this is useful when the user wants a fresh candidate on
-  // demand.
   clearScheduled()
   void runGeneration('manual')
 }
@@ -600,45 +460,26 @@ export function clearAiChatHistory(): void {
   aiChatHistory.value = []
 }
 
-// ===========================================================================
-// Engine lifecycle
-// ===========================================================================
-
 /**
- * Start the engine (idempotent + reference-counted). The first caller
- * sets up:
- * - a single shared `subscribeDanmaku` subscription feeding viewerBuffer
- *   and the viewer-interval counter
- * - a Preact `effect` that re-evaluates the debounce timer whenever
- *   `sttTranscriptBuffer` or `sttEndpointReached` changes
- *
- * Subsequent calls bump the ref count without re-subscribing. Pair with
- * `stopAiChatEngine` 1:1; the last `stopAiChatEngine` tears everything
- * down.
+ * Start the engine (idempotent + reference-counted). First caller wires the
+ * danmaku subscription and the debounce effect; pair 1:1 with `stopAiChatEngine`.
  */
 export function startAiChatEngine(): void {
   startCount++
   if (startCount > 1) return
 
-  // Fresh session state. We deliberately DON'T clear `aiChatHistory`
-  // here so a user toggling AI chat off / on doesn't lose their
-  // decision log. Pending candidates ARE cleared because they reference
-  // transcripts that may no longer be relevant.
+  // Deliberately keep `aiChatHistory` across off/on toggles; clear pending
+  // candidates since their transcripts may no longer be relevant.
   viewerBuffer.length = 0
   conversationHistory.length = 0
   viewerReceivedSinceLastGen = 0
   pendingCandidates.value = []
   aiChatViewerCount.value = 0
   recentOutgoingTexts.clear()
-  // Clear transient generation state so a restart recovers an engine that a
-  // previous in-flight (e.g. stalled) LLM call left wedged. Without this, an
-  // `inflight` left stuck `true` survives the restart and every trigger keeps
-  // short-circuiting on the `inflight` guard — the user toggling AI 陪聊 off/on
-  // (the natural "unstick it" reflex) would otherwise have no effect.
+  // Reset so a restart recovers an engine left wedged by a stalled in-flight call.
   inflight = false
   clearScheduled()
-  // Clear any stale STT-side state so we don't immediately fire on
-  // content accumulated while the engine was off.
+  // Clear stale STT state so we don't fire on content accumulated while off.
   sttTranscriptBuffer.value = ''
   sttEndpointReached.value = false
 
@@ -646,10 +487,7 @@ export function startAiChatEngine(): void {
     onMessage: (ev: DanmakuEvent) => {
       const text = ev.text.trim()
       if (!text) return
-      // Drop our own echoes and inline 大表情 emotes (which carry
-      // display names, not meaningful textual context for the LLM).
-      // @-replies are kept because their text content can still carry
-      // conversation signal.
+      // Drop our own echoes and 大表情 emotes (display names, not textual context).
       if (isLikelySelfEcho(text)) return
       if (ev.hasLargeEmote) return
       const entry: ViewerChatEntry = {
@@ -664,9 +502,7 @@ export function startAiChatEngine(): void {
       aiChatViewerCount.value = aiChatViewerCount.value + 1
       viewerReceivedSinceLastGen++
 
-      // Viewer-only trigger. Only fires when nothing else is queued —
-      // otherwise a busy transcript would race with viewer chatter and
-      // double-fire.
+      // Viewer-only trigger; only when nothing else is queued, else it double-fires.
       const interval = Math.max(1, aiChatViewerInterval.value)
       if (viewerReceivedSinceLastGen >= interval && !scheduledTimer && !inflight) {
         scheduleGeneration(DEBOUNCE_AFTER_GEN_VIEWER_MS, 'viewer')
@@ -675,8 +511,7 @@ export function startAiChatEngine(): void {
   })
 
   stopBufferEffect = effect(() => {
-    // Track both transcript signals so an endpoint marker can pull a
-    // scheduled gen forward when buffer text alone wouldn't have.
+    // Track both signals so an endpoint marker can pull a scheduled gen forward.
     const buffer = sttTranscriptBuffer.value
     const ep = sttEndpointReached.value
     if (!buffer.trim() && !ep) return
@@ -689,10 +524,8 @@ export function startAiChatEngine(): void {
 }
 
 /**
- * Decrement the engine's ref count and, when it reaches zero, tear down
- * subscriptions, the buffer effect, and any pending timer. Idempotent
- * past zero so a stray `stopAiChatEngine` from a remount can't drive
- * the count negative.
+ * Decrement the ref count; at zero, tear down subscriptions, effect, and timer.
+ * Idempotent past zero so a stray call can't drive the count negative.
  */
 export function stopAiChatEngine(): void {
   if (startCount === 0) return

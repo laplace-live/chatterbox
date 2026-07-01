@@ -1,68 +1,13 @@
 /**
  * Auto-seek (自动追帧): minimize live-stream latency by nudging
- * `mediaElement.playbackRate` so the buffered-ahead window stays close
- * to `autoSeekBufferThreshold` seconds.
+ * `mediaElement.playbackRate` to keep the buffered-ahead window near
+ * `autoSeekBufferThreshold` seconds. Ladder/defaults adapted from
+ * c-basalt's `Bilibili直播自动追帧` (GPL-3.0), reimplemented event-driven.
  *
- * Credits / prior art:
- *   Algorithm design (threshold ladder, slowdown-takes-priority,
- *   default values) is adapted from c-basalt's `Bilibili直播自动追帧`
- *   userscript — https://github.com/c-basalt/bilibili-live-seeker-script
- *   (greasyfork id 439875, GPL-3.0). We reimplemented it on an event
- *   loop instead of `setInterval(50ms)` polling (see below), share
- *   nothing of the original UI / GM-storage layer, and — because this
- *   project is AGPL-3.0 — are compatible downstream of GPL-3.0.
- *
- * Strategy — event-driven, not interval-polled:
- *
- * - We listen for the media element's native `progress`, `waiting`,
- *   `timeupdate`, and `playing` events. The browser already fires these
- *   whenever the buffer state changes meaningfully; piggy-backing on
- *   them means zero wakeups while paused / background / idle, and we
- *   react faster than a 50ms `setInterval` could (which is the cadence
- *   c-basalt's upstream uses for slowdown). A short throttle
- *   keeps us from doing redundant work when `timeupdate` and `progress`
- *   fire on the same tick.
- *
- * - Speed ladder mirrors c-basalt's field-tested values (default config
- *   in their `Bilibili直播自动追帧` userscript):
- *   speedup `[[2, 1.3], [1, 1.2], [0, 1.1]]`  — entries are
- *   `[extraSecondsOverThreshold, rate]`, evaluated in order; the first
- *   match wins. Slowdown ladder `[[0.2, 0.1], [0.3, 0.3], [0.6, 0.6]]`
- *   entries are `[bufferLenAbsolute, rate]`, used to back off as the
- *   buffer drains to avoid stalls.
- *
- * - **Round-play / 轮播 is left alone**: when the streamer is offline and
- *   bilibili plays a recording (`live_status === 2`), the player serves a
- *   finite-duration VOD that pre-buffers ~20s ahead — there's no live edge
- *   to chase, so the ladder would otherwise peg playback at 1.3x forever.
- *   The decision core (`auto-seek-rate.ts`) treats a finite `duration` as
- *   "not live" and holds 1x. A genuine live stream reports a non-finite
- *   duration (Infinity on the native player, NaN on mpegts.js audio-only),
- *   so this guard never touches real live playback.
- *
- * - **Audio-only mode works the same way**: when `audioOnlyEnabled` is
- *   true we target the hidden `<audio id='lc-audio-only-stream'>`
- *   element instead of `#live-player video`. `HTMLAudioElement` shares
- *   the `HTMLMediaElement` `buffered` / `currentTime` / `playbackRate`
- *   surface with `HTMLVideoElement`, so the seek logic is identical —
- *   and audio-only's mpegts.js pipeline writes into the element's
- *   MediaSource, exposing buffer info just like the native player does.
- *
- * - We **do not** touch the rate while `document.hidden` is true.
- *   Backgrounded tabs already throttle setInterval to ~1Hz, and the
- *   user can't perceive latency on a tab they aren't looking at.
- *   `visibilitychange` re-runs a tick on tab-foreground so we resync
- *   as soon as attention returns.
- *
- * - The media element gets replaced on quality switches, audio-only
- *   off→on→off cycles, and audio-only stream URL refreshes. A
- *   `MutationObserver` on `document.documentElement` re-attaches our
- *   listeners to whatever the current target is. We never hold a
- *   long-lived reference to an old element — every tick re-queries.
- *
- * Live metrics (buffer length, current rate, last-adjust timestamp,
- * total seek count) are exposed via signals so `SettingsTab` can render
- * a real-time "你当前的延迟" panel without polling us.
+ * - Event-driven (progress/waiting/timeupdate/playing), not interval-polled: zero wakeups while idle, throttled against event bursts.
+ * - Round-play/轮播 (`live_status === 2`) serves a finite-duration VOD; the core holds 1x on finite `duration` so the ladder doesn't peg it at 1.3x. Real live reports non-finite duration.
+ * - Skip while `document.hidden`; `visibilitychange` re-ticks on foreground to trim the buffer grown while hidden.
+ * - Target element is swapped by B站 (quality/roundplay) and by audio-only engage/refresh; a `MutationObserver` re-attaches, every tick re-queries.
  */
 
 import { effect } from '@preact/signals'
@@ -78,28 +23,20 @@ import {
   autoSeekEnabled,
 } from './store'
 
-// Throttle adjacent ticks so a burst of `progress` + `timeupdate` events
-// on the same animation frame doesn't translate into multiple
-// `playbackRate` writes. 150ms is well below the user-perceptible reaction
-// window (~150ms) but above typical event-burst spacing (<16ms).
+// Throttle adjacent ticks so a `progress`+`timeupdate` burst doesn't cause multiple
+// `playbackRate` writes. 150ms: below the ~150ms perceptible window, above burst spacing (<16ms).
 const TICK_THROTTLE_MS = 150
 
-// `playbackRate` reads/writes carry FP noise; comparing to 2 decimals
-// matches c-basalt's upstream and avoids spurious browser-side
-// "rate changed" work for sub-1% deltas.
+// `playbackRate` reads/writes carry FP noise; ignore sub-1% deltas to avoid spurious
+// browser-side "rate changed" work.
 const RATE_EPSILON = 0.005
 
 // === Element & listener tracking ========================================
 
-/** The media element we currently have listeners attached to (either the
- *  page's `<video>` or our hidden audio-only `<audio>`). Cleared by
- *  `detachListeners()`; replaced whenever B站 swaps the `<video>` (quality
- *  switch, audio-only toggle, etc.) or the audio-only module recreates
- *  its hidden `<audio>` (refresh cycle). */
+/** Media element we currently have listeners on (page `<video>` or hidden audio-only `<audio>`). */
 let attachedMedia: HTMLMediaElement | null = null
 
-/** DOM observer that re-attaches when the target media element mounts,
- *  swaps, or the audio-only mode toggles between video and audio. */
+/** DOM observer that re-attaches when the target media element mounts or swaps. */
 let containerObserver: MutationObserver | null = null
 
 /** Last tick timestamp for throttling. */
@@ -114,15 +51,8 @@ let stateEffectDispose: (() => void) | null = null
 // === Helpers ============================================================
 
 /**
- * Pick the right element to seek on based on the current mode. In
- * audio-only mode the `<video>` is hidden and the native player is
- * stopped, so the only stream actually flowing data is our hidden
- * `<audio>` — that's what we need to rate-adjust. Otherwise the native
- * `<video>` is the live source.
- *
- * Returns `null` during transitions (audio-only engaging but `<audio>`
- * not yet mounted, or quality-switch tearing down `<video>`); callers
- * just skip the tick and the next event will re-try.
+ * Pick the element to seek on: hidden `<audio>` in audio-only mode (native player stopped), else the `<video>`.
+ * @returns `null` during transitions (element not yet mounted / being torn down) — caller skips the tick.
  */
 function getMediaTarget(): HTMLMediaElement | null {
   if (audioOnlyEnabled.value) {
@@ -138,16 +68,14 @@ function getBufferLen(m: HTMLMediaElement): number | null {
     const len = m.buffered.end(m.buffered.length - 1) - m.currentTime
     return Number.isFinite(len) ? len : null
   } catch {
-    // `buffered.end(n)` can throw INDEX_SIZE_ERR if the source range
-    // shifted underneath us between the length read and the index read.
+    // `buffered.end(n)` can throw INDEX_SIZE_ERR if the range shifted between the length and index reads.
     return null
   }
 }
 
 function setRate(m: HTMLMediaElement, rate: number): void {
   if (Math.abs(m.playbackRate - rate) < RATE_EPSILON) {
-    // Still publish the current rate in case the signal got out of sync
-    // with reality (e.g. another script wrote `playbackRate` directly).
+    // Re-sync the signal in case another script wrote `playbackRate` directly.
     if (Math.abs(autoSeekCurrentRate.value - m.playbackRate) > RATE_EPSILON) {
       autoSeekCurrentRate.value = m.playbackRate
     }
@@ -159,28 +87,15 @@ function setRate(m: HTMLMediaElement, rate: number): void {
 
 // === Core tick logic ====================================================
 
-/**
- * Inspect the current media buffer and (maybe) adjust `playbackRate`.
- * Works the same for `<video>` (normal mode) and `<audio>` (audio-only
- * mode) because both inherit the `HTMLMediaElement` buffered/rate API.
- * Cheap — safe to call on every event, but throttled by `scheduleTick`
- * so we don't do redundant work on event bursts.
- */
+/** Inspect the current media buffer and maybe adjust `playbackRate`. */
 function tick(): void {
-  // Bail when the tab is backgrounded. The browser already throttles
-  // our event sources to ~1Hz here; touching `playbackRate` while
-  // hidden would just queue an `onratechange` for the foreground flush.
-  // (Audio-only is interesting on a backgrounded tab — the user is
-  // still listening — but the throttling means we wouldn't get reliable
-  // event ticks anyway, and the buffer growing to a few seconds extra
-  // while hidden is fine; we'll trim it on visibility change.)
+  // Backgrounded tabs throttle our event sources to ~1Hz; skip and trim on visibilitychange.
   if (document.hidden) return
 
   const m = getMediaTarget()
   if (!m) return
   if (m.paused) {
-    // Publish the at-rest values so the metrics panel reads true rather
-    // than showing stale numbers from a previous tick.
+    // Publish at-rest values so the metrics panel isn't stale.
     autoSeekCurrentRate.value = m.playbackRate
     const buf = getBufferLen(m)
     if (buf !== null) autoSeekCurrentBufferLen.value = buf
@@ -191,21 +106,14 @@ function tick(): void {
   if (bufferLen === null) return
   autoSeekCurrentBufferLen.value = bufferLen
 
-  // Delegate the speed decision to the pure core (`auto-seek-rate.ts`). It
-  // returns the target rate, or `null` when it declines (misconfigured
-  // threshold) — in which case we leave the rate alone and just surface it.
-  // The round-play guard lives in there too: when the streamer is offline
-  // and bilibili serves a recording (live_status === 2, finite `duration`),
-  // it resolves to 1x instead of the catch-up ladder, so a VOD's ~20s
-  // prebuffer no longer pins playback at 1.3x.
+  // `null` = core declines (misconfigured threshold); leave the rate alone. The core's
+  // round-play guard also holds 1x on finite `duration` (offline VOD, live_status === 2)
+  // so a recording's prebuffer doesn't pin playback at 1.3x.
   const target = decidePlaybackRate(bufferLen, autoSeekBufferThreshold.value, m.duration)
   if (target === null) {
     autoSeekCurrentRate.value = m.playbackRate
     return
   }
-  // `setRate` is a no-op write when already within epsilon of `target` (it
-  // just re-syncs the metric signal), so calling it for the comfortable /
-  // recording 1x case restores normal speed only when we'd nudged it.
   setRate(m, target)
 }
 
@@ -217,8 +125,7 @@ function scheduleTick(): void {
     tick()
     return
   }
-  // Coalesce: if a tick is already queued for this throttle window,
-  // do nothing — it'll pick up the latest state when it fires.
+  // Coalesce: a queued tick will pick up the latest state when it fires.
   if (pendingTickTimer !== null) return
   pendingTickTimer = setTimeout(() => {
     pendingTickTimer = null
@@ -230,22 +137,15 @@ function scheduleTick(): void {
 // === Listener (de)attach ================================================
 
 const EVENTS_OF_INTEREST: ReadonlyArray<keyof HTMLMediaElementEventMap> = [
-  // `progress` is the primary trigger: it fires whenever a media buffer
-  // grows. Live streams typically tick this 2-10 times/sec.
+  // primary trigger: fires as the buffer grows (2-10Hz on live streams)
   'progress',
-  // `waiting` = the player ran out of data and is stalling. Catches the
-  // edge case where buffer drained between two `timeupdate`s.
+  // stall — catches a buffer drained between two `timeupdate`s
   'waiting',
-  // `timeupdate` is our safety net — fires ~4Hz during playback even if
-  // no other event has, so a sustained out-of-target buffer can't sit
-  // unfixed.
+  // safety net: fires ~4Hz so a sustained out-of-target buffer can't sit unfixed
   'timeupdate',
-  // `playing` resyncs after a stall/seek so a paused→playing transition
-  // immediately reconsiders the rate.
+  // resync after stall/seek
   'playing',
-  // `ratechange` lets us reflect another script (or the user, via the
-  // player UI) overriding playback rate so the metrics panel doesn't
-  // lie about the current rate. Cheap; doesn't make us seek.
+  // reflect an external rate override in the metrics panel; doesn't seek
   'ratechange',
 ]
 
@@ -268,15 +168,7 @@ function detachListeners(): void {
   attachedMedia = null
 }
 
-/**
- * Watch the DOM for target media element swaps. B站 destroys and
- * recreates `<video>` on quality changes and roundplay transitions; the
- * audio-only module also creates / destroys its `<audio>` element on
- * engage / disengage and on stream URL refresh. Without this observer
- * we'd attach to a stale element on first call and never see live data
- * again. `getMediaTarget()` picks the right one based on current mode,
- * so a single observer handles both pipelines.
- */
+/** Watch the DOM for target media element swaps (quality/roundplay/audio-only) and re-attach. */
 function ensureContainerObserver(): void {
   if (containerObserver) return
   const apply = (): void => {
@@ -284,25 +176,15 @@ function ensureContainerObserver(): void {
     if (target && target !== attachedMedia) {
       attachListeners(target)
     } else if (!target && attachedMedia) {
-      // Target gone (e.g. audio-only engaging mid-cycle, or quality
-      // switch tearing down `<video>`) — drop our handle so we don't
-      // keep firing listeners against a detached element. The next
-      // MutationObserver hit will re-attach once the new element mounts.
+      // Target gone mid-cycle — drop the handle; the next observer hit re-attaches.
       detachListeners()
-      // Reset metrics so the panel doesn't show stale numbers from a
-      // since-destroyed element. The next attach's immediate tick will
-      // repopulate them.
       autoSeekCurrentBufferLen.value = 0
       autoSeekCurrentRate.value = 1
     }
   }
-  // Initial attach (covers the case where the target is already in the
-  // DOM by the time we start).
+  // Initial attach for a target already in the DOM.
   apply()
-  // Observe document-wide so we catch the new element regardless of
-  // which mode is active. Targeting `document.documentElement` also
-  // handles the cold-start case where neither `#live-player` nor the
-  // audio-only `<audio>` is mounted yet.
+  // Document-wide so we catch the new element in any mode, including cold start.
   containerObserver = new MutationObserver(apply)
   containerObserver.observe(document.documentElement, { childList: true, subtree: true })
 }
@@ -312,20 +194,12 @@ function destroyContainerObserver(): void {
   containerObserver = null
 }
 
-// React to mode flips between video and audio-only: detach the old
-// listener immediately rather than waiting for the next MutationObserver
-// tick. Without this the seeker could keep ticking against a `<video>`
-// element that the native player has already stopped feeding (or vice
-// versa), publishing misleading buffer numbers until the observer
-// fires.
+// Re-resolve the target on a video↔audio-only flip immediately, not on the next observer
+// tick: otherwise the seeker keeps ticking a `<video>` the native player already stopped
+// feeding (or vice versa), publishing misleading buffer numbers until the observer fires.
 effect(() => {
-  // Subscribe to the signal explicitly — the read itself is the
-  // dependency-tracking trigger; we don't need its value.
-  void audioOnlyEnabled.value
+  void audioOnlyEnabled.value // subscribe; read is the dependency trigger, value unused
   if (!autoSeekEnabled.value) return
-  // Force a re-resolve: the current attachedMedia may be on the wrong
-  // side of the mode flip now. `getMediaTarget()` picks the right one;
-  // `attachListeners` is a no-op if we're already on it.
   const target = getMediaTarget()
   if (target) {
     attachListeners(target)
@@ -336,20 +210,14 @@ effect(() => {
   }
 })
 
-// Tab visibility: when the user returns to the tab, run one tick
-// immediately so the buffer (which may have grown unbounded while
-// hidden because we didn't seek it down) gets resynced ASAP.
+// On tab-foreground, tick once to resync the buffer grown while hidden.
 function onVisibilityChange(): void {
   if (!document.hidden) scheduleTick()
 }
 
 // === Public entrypoints =================================================
 
-/**
- * Wire up the auto-seek feature. Idempotent — repeat calls are no-ops.
- * Listens to `autoSeekEnabled` so the user toggling the setting takes
- * effect immediately without needing a page reload.
- */
+/** Wire up auto-seek. Idempotent; tracks `autoSeekEnabled` so toggling takes effect without reload. */
 export function startAutoSeek(): void {
   if (stateEffectDispose) return
   stateEffectDispose = effect(() => {
@@ -365,15 +233,10 @@ export function startAutoSeek(): void {
         clearTimeout(pendingTickTimer)
         pendingTickTimer = null
       }
-      // Reset publish-only metrics so the panel doesn't look like the
-      // feature is still doing work after the user disabled it.
+      // Reset metrics so the panel doesn't look busy after disable.
       autoSeekCurrentBufferLen.value = 0
       autoSeekCurrentRate.value = 1
-      // Also restore the actual media element to 1x if we'd nudged it
-      // — a user disabling the feature expects normal playback to
-      // resume, not to inherit whatever last rate we wrote. Reset both
-      // possible targets (video AND audio) because either could be
-      // sitting at a non-1x rate when the user toggles off.
+      // Restore both possible targets to 1x — either could be sitting at a nudged rate.
       const v = getPlayerVideo()
       if (v && Math.abs(v.playbackRate - 1) > RATE_EPSILON) {
         v.playbackRate = 1

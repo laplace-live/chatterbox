@@ -1,13 +1,8 @@
 /**
  * Preact-native multi-provider STT recording hook.
  *
- * Replaces the Soniox-only `useSonioxRecording`. One hook, called
- * unconditionally (rules-of-hooks safe), that on `start()` instantiates the
- * engine for the currently-selected provider and pipes its normalized
- * `SttEngineEvent`s onto the consumer's callbacks + the reactive lifecycle
- * signals. The provider-specific SDK lifecycles live entirely inside the
- * engines (see `stt/soniox-engine.ts`, `stt/elevenlabs-engine.ts`); this hook
- * is the shared shell — state signals, callback refs, teardown.
+ * Shared shell (state signals, callback refs, teardown) around per-provider
+ * engines that own the SDK lifecycles; `start()` instantiates the selected one.
  *
  * A fresh engine is built per `start()` from a snapshot of `params`, so a
  * settings edit mid-session never reconfigures a live recording. Callbacks are
@@ -79,9 +74,7 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
   configRef.current = config
 
   const engineRef = useRef<SttEngine | null>(null)
-  // Bumped on every start/cancel/unmount so late events from a superseded
-  // engine (a previous session's socket closing after we've already moved on)
-  // are dropped instead of clobbering the current session's state.
+  // Bumped on start/cancel/unmount so late events from a superseded engine are dropped.
   const generationRef = useRef(0)
 
   const updateState = (next: SttRecordingState): void => {
@@ -95,14 +88,11 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
     engineRef.current = null
     const generation = ++generationRef.current
 
-    // Optimistic transition — immediate UI feedback while the SDK loads / the
-    // token mints. The engine's own state events take over once it connects.
+    // Optimistic transition for UI feedback while SDK loads; engine state events take over.
     updateState('starting')
 
     const cfg = configRef.current
     const engine = ENGINE_FACTORIES[cfg.provider](cfg.params, event => {
-      // Ignore events from a superseded engine — e.g. the previous session's
-      // WebSocket emitting CLOSE/finished after a restart has already begun.
       if (generationRef.current !== generation) return
       switch (event.type) {
         case 'state':
@@ -133,7 +123,7 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
   const stop = async (): Promise<void> => {
     const engine = engineRef.current
     if (!engine) {
-      // Nothing live — but we may still be mid-start (SDK load in flight).
+      // No engine yet, but may be mid-start (SDK load in flight).
       if (state.value === 'starting') updateState('idle')
       return
     }
@@ -159,7 +149,7 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
     engineRef.current?.finalize(options)
   }
 
-  // Teardown on unmount (e.g. the user closes the panel mid-session).
+  // Teardown on unmount.
   useEffect(() => {
     return () => {
       generationRef.current++

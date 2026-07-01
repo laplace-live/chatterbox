@@ -1,34 +1,8 @@
 /**
- * Hijacks Bilibili's left-click `.danmaku-menu` (the popover that opens when
- * clicking a username, danmaku text, or emoticon in the chat panel) to add
- * two 自动融入 blacklist toggles:
- *
- *   1. "🟣 添加 / 解除融入黑名单"      — per-user (uid)
- *   2. "🟣 添加 / 解除融入消息黑名单"  — per-message-text
- *
- * IMPORTANT: B站 mounts a SINGLE `.danmaku-menu` element (under
- * `.chat-history-panel`) and reuses it across opens — each open just toggles
- * inline `style.display`, repositions via `style.left/top`, and rewrites the
- * username text. There's no element insertion to observe.
- *
- * Therefore the design is purely click-driven:
- *
- * 1. A capture-phase `click` listener on `document` fires before any of B站's
- *    own handlers. It walks up from the click target via `.open-menu` (the
- *    class B站 itself uses as the menu trigger) to the chat item, stashing
- *    `data-uid` / `data-uname` / `data-danmaku` and refreshing both toggles
- *    inside the menu.
- * 2. Each toggle is RE-INJECTED on every open so its click handler closure
- *    captures the CURRENT user / text — not whoever / whatever was clicked
- *    the very first time.
- * 3. Toggles are built by deep-cloning an existing menu item so they inherit
- *    all of B站's styling automatically (padding, cursor, hover state, Vue
- *    scoped CSS). The clone is inert because Vue's `@click` handlers live on
- *    vnodes, not on the DOM element, so they don't survive `cloneNode`.
- * 4. The message toggle is only injected when the chat-item carries
- *    `data-danmaku` — gift / welcome / system events have user data but no
- *    message text, so a "blacklist this message" option there would be
- *    meaningless.
+ * Adds 自动融入 blacklist toggles to B站's `.danmaku-menu` popover.
+ * B站 reuses a SINGLE persistent menu element (toggled via inline display),
+ * so this is purely click-driven: toggles are re-injected on every open so
+ * their click closures capture the current user/text.
  */
 
 import { appendLog } from './log'
@@ -45,7 +19,6 @@ let clickHandler: ((e: MouseEvent) => void) | null = null
 function captureFromClick(e: MouseEvent): void {
   const target = e.target
   if (!(target instanceof HTMLElement)) return
-  // Only care about clicks B站 itself uses to open the menu.
   if (!target.closest('.open-menu')) return
   const item = target.closest<HTMLElement>('[data-uid]')
   if (!item) {
@@ -56,9 +29,8 @@ function captureFromClick(e: MouseEvent): void {
   }
   pendingUid = item.dataset.uid ?? null
   pendingUname = item.dataset.uname ?? null
-  // `data-danmaku` is only present on actual danmaku rows; gift / welcome /
-  // system rows have user data but no text. Trim to match the same key
-  // `auto-blend` uses when reading from the danmaku stream.
+  // `data-danmaku` only on danmaku rows (not gift/welcome/system); trim to
+  // match the key `auto-blend` uses.
   const raw = item.dataset.danmaku
   pendingText = raw !== undefined ? raw.trim() : null
   if (pendingText === '') pendingText = null
@@ -70,14 +42,11 @@ function captureFromClick(e: MouseEvent): void {
 function buildUserToggleItem(template: HTMLElement, uid: string, uname: string | null): HTMLElement {
   const isBlacklisted = uid in autoBlendUserBlacklist.value
 
-  // Deep-clone an existing item so we inherit ALL of B站's styling — padding,
-  // cursor, hover state, scoped CSS — without having to chase the rules
-  // (which live in a CORS-isolated stylesheet we can't enumerate). Vue's
-  // @click handlers live on vnodes, not on DOM elements, so the cloned node
-  // is inert until we wire our own listener.
+  // Deep-clone to inherit B站's scoped styling; Vue @click lives on vnodes,
+  // so the clone is inert until we wire our own listener.
   const div = template.cloneNode(true) as HTMLElement
   div.classList.add(USER_INJECTED_CLASS)
-  // The first item (`.go-space`) carries `target="_blank"`; we're not a link.
+  // First item (`.go-space`) carries `target="_blank"`; we're not a link.
   div.removeAttribute('target')
   for (const a of Array.from(div.querySelectorAll('a'))) {
     a.removeAttribute('href')
@@ -86,8 +55,7 @@ function buildUserToggleItem(template: HTMLElement, uid: string, uname: string |
   if (span) span.textContent = isBlacklisted ? '🟣 解除融入黑名单' : '🟣 添加融入黑名单'
 
   div.addEventListener('click', e => {
-    // Stop propagation so we don't re-trigger the click listener that opens
-    // the menu and so this click isn't treated as outside the menu.
+    // Don't re-trigger the menu-open listener or count as an outside click.
     e.stopPropagation()
 
     const next = { ...autoBlendUserBlacklist.value }
@@ -101,8 +69,7 @@ function buildUserToggleItem(template: HTMLElement, uid: string, uname: string |
     }
     autoBlendUserBlacklist.value = next
 
-    // Mirror B站's own dismiss: hide via inline display:none. Don't remove
-    // the menu element — it's persistent and reused on the next open.
+    // Hide, don't remove: the menu is persistent and reused on next open.
     const menu = div.closest<HTMLElement>('.danmaku-menu')
     if (menu) menu.style.display = 'none'
   })
@@ -112,14 +79,11 @@ function buildUserToggleItem(template: HTMLElement, uid: string, uname: string |
 
 /**
  * Build a menu item that toggles `text` in `autoBlendMessageBlacklist`.
- * Same cloning trick as `buildUserToggleItem`; only the wired action and
- * the injected class differ.
+ * Same cloning trick as `buildUserToggleItem`; only the action and class differ.
  */
 function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElement {
-  // `Object.hasOwn` (not `in`) because message keys are arbitrary user
-  // text — `in` walks the prototype chain and would report e.g. "toString"
-  // as already-blacklisted on a fresh object, mislabeling the toggle and
-  // making `delete` a no-op (since the inherited property persists).
+  // `Object.hasOwn` not `in`: keys are arbitrary user text, and `in` would
+  // match prototype props like "toString".
   const isBlacklisted = Object.hasOwn(autoBlendMessageBlacklist.value, text)
 
   const div = template.cloneNode(true) as HTMLElement
@@ -160,17 +124,14 @@ function ensureTogglesInMenu(): void {
   const template = list.firstElementChild
   if (!(template instanceof HTMLElement)) return
 
-  // Always remove any existing toggles and re-inject with the CURRENT
-  // pending values so the click handler closures reference what was just
-  // clicked, not a previous selection.
+  // Re-inject with current pending values so click closures reference the
+  // just-clicked row, not a previous selection.
   list.querySelector(`.${USER_INJECTED_CLASS}`)?.remove()
   list.querySelector(`.${MESSAGE_INJECTED_CLASS}`)?.remove()
 
   if (pendingUid) {
     list.appendChild(buildUserToggleItem(template, pendingUid, pendingUname))
   }
-  // Only offer the message toggle when the click was on an actual danmaku
-  // row (not a gift / welcome / system event).
   if (pendingText) {
     list.appendChild(buildMessageToggleItem(template, pendingText))
   }
@@ -182,9 +143,8 @@ export function startUserBlacklistHijack(): void {
   clickHandler = e => {
     captureFromClick(e)
     if (!pendingUid && !pendingText) return
-    // The menu element exists already (just hidden). Refresh our toggles in
-    // place; rAF gives Vue a tick to flush the username/position update so
-    // the menu we read is the one B站 just (re)showed.
+    // rAF lets Vue flush the username/position update first, so we read the
+    // menu B站 just (re)showed.
     requestAnimationFrame(() => ensureTogglesInMenu())
   }
   document.addEventListener('click', clickHandler, true)

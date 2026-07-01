@@ -3,16 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import { decidePlaybackRate } from './auto-seek-rate'
 
 /**
- * Regression focus: when the streamer is offline and bilibili plays a
- * recording (round-play / 轮播, `live_status === 2`), the `<video>` is a
- * finite-duration VOD that pre-buffers ~20s ahead. The speed ladder must
- * NOT treat that prebuffer as live latency — otherwise it pins playbackRate
- * at 1.3x for the entire recording. A genuine live stream reports a
- * non-finite duration (Infinity on the native player, NaN on mpegts.js
- * before duration metadata) and must still be chased as before.
+ * Regression: a finite-duration recording (round-play, `live_status === 2`) pre-buffers ~20s
+ * ahead and must NOT be chased (else pinned at 1.3x); genuine live reports non-finite duration
+ * (Infinity native, NaN on mpegts.js before metadata) and must be.
  */
 
-// The script's default buffered-ahead target, in seconds.
+// Default buffered-ahead target, seconds.
 const T = 1.7
 
 describe('decidePlaybackRate', () => {
@@ -26,9 +22,7 @@ describe('decidePlaybackRate', () => {
     })
   })
 
-  // Same ladder must apply whether the live stream is the native player
-  // (duration === Infinity) or our mpegts.js audio-only pipeline before
-  // duration metadata arrives (duration === NaN).
+  // Live duration is Infinity (native player) or NaN (mpegts.js before metadata); same ladder.
   describe.each([
     { kind: 'native player (duration=Infinity)', duration: Number.POSITIVE_INFINITY },
     { kind: 'audio-only mpegts.js (duration=NaN)', duration: Number.NaN },
@@ -57,12 +51,8 @@ describe('decidePlaybackRate', () => {
     })
   })
 
-  // Regression: a low latency target must not oscillate. The slowdown ladder
-  // slows playback for any buffer < 0.6s; if the user's target sits at/below
-  // that ceiling, the speedup band (over = bufferLen - threshold > 0) overlaps
-  // the slowdown band, leaving NO buffer level that yields 1x — so playbackRate
-  // flaps 0.6x ↔ 1.1x forever. A stable 1x dead-band must exist above the
-  // slowdown ceiling regardless of how low the target is set.
+  // Regression: with target ≤ the 0.6s slowdown ceiling the speedup band overlaps slowdown,
+  // leaving no 1x level so playbackRate flaps 0.6x ↔ 1.1x; a 1x dead-band above the ceiling fixes it.
   describe('low latency target keeps a stable 1x dead-band (no oscillation)', () => {
     test.each([
       { label: 'just above slowdown ceiling holds 1x (was 1.1x → oscillated)', bufferLen: 0.65 },

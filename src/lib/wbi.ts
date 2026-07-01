@@ -58,9 +58,7 @@ function setCachedWbiKeys(keys: BilibiliWbiKeys) {
   }
 })()
 
-/**
- * Waits for WBI keys to become available via XHR interception.
- */
+/** Waits for WBI keys to become available via XHR interception. */
 export async function waitForWbiKeys(timeout = 5000, interval = 100): Promise<boolean> {
   const startTime = Date.now()
   while (!cachedWbiKeys) {
@@ -86,9 +84,7 @@ function getMixinKey(orig: string): string {
     .slice(0, 32)
 }
 
-/**
- * Adds wts and w_rid to request parameters (WBI signature).
- */
+/** Adds wts and w_rid to request parameters (WBI signature). */
 export function encodeWbi(params: Record<string, string | number>, wbiKeys: BilibiliWbiKeys): string {
   const mixin_key = getMixinKey(wbiKeys.img_key + wbiKeys.sub_key)
   const currentTime = Math.round(Date.now() / 1000)

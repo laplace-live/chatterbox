@@ -2,11 +2,7 @@ import type { HTMLAttributes } from 'preact'
 
 import { cn } from '../../lib/cn'
 
-// === Accordion ============================================================
-//
-// Optional outer wrapper for grouping multiple AccordionItems vertically.
-// Each AccordionItem manages its own open state; the wrapper is purely
-// layout. For a single collapsible panel, use AccordionItem directly.
+// Optional layout-only wrapper; each AccordionItem owns its open state.
 
 type AccordionBase = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'className'>
 
@@ -22,13 +18,8 @@ export function Accordion({ className, children, ...props }: AccordionProps) {
   )
 }
 
-// === AccordionItem ========================================================
-//
-// Renders a native <details> element. Controlled via `open` + `onOpenChange`
-// — the existing codebase pattern of a Signal-backed boolean maps to it as
-// `<AccordionItem open={sig.value} onOpenChange={v => sig.value = v}>`.
-// If `open` is undefined the element is uncontrolled (browser handles the
-// toggle, `onOpenChange` still fires).
+// Native <details>; controlled via `open`+`onOpenChange`. Undefined `open` =
+// uncontrolled, but `onOpenChange` still fires.
 
 type AccordionItemBase = Omit<HTMLAttributes<HTMLDetailsElement>, 'class' | 'className' | 'open' | 'onToggle'>
 
@@ -53,12 +44,7 @@ export function AccordionItem({ open, onOpenChange, className, children, ...prop
   )
 }
 
-// === AccordionTrigger =====================================================
-//
-// Renders a <summary> with the children on the left and a chevron on the
-// right. The chevron rotates 180° when the parent <details> has the `open`
-// attribute, expressed as the arbitrary variant `[details[open]_&]:` —
-// which compiles to the CSS selector `details[open] .chevron`.
+// The `[details[open]_&]:` variant compiles to `details[open] .chevron`.
 
 type AccordionTriggerBase = Omit<HTMLAttributes<HTMLElement>, 'class' | 'className'>
 
@@ -73,8 +59,7 @@ export function AccordionTrigger({ className, children, ...props }: AccordionTri
         'sticky top-0 z-10 flex items-center justify-between gap-2',
         'cursor-pointer select-none font-bold',
         'rounded-sm bg-ga1 px-1 py-0.5',
-        // Hide the disclosure triangle two ways: `list-style: none` for browsers
-        // that respect it, and the WebKit-specific pseudo-element for Safari.
+        // Hide disclosure triangle: list-none plus WebKit pseudo-element for Safari.
         'list-none',
         '[&::-webkit-details-marker]:hidden',
         className
@@ -101,11 +86,7 @@ export function AccordionTrigger({ className, children, ...props }: AccordionTri
   )
 }
 
-// === AccordionContent =====================================================
-//
-// Plain wrapper for the body. Kept as a separate component so consumers can
-// add padding / spacing in one place if they want, without touching the
-// trigger.
+// Separate body wrapper so consumers can add padding/spacing in one place.
 
 type AccordionContentBase = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'className'>
 

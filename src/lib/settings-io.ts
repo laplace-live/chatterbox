@@ -1,8 +1,7 @@
 import { GM_deleteValue, GM_getValue, GM_listValues, GM_setValue } from '$'
 import { VERSION } from './version'
 
-/** Schema version of the export file format itself. Bumped only if the
- *  structure changes in a non-backwards-compatible way. */
+/** Export file format version; bump only on non-backwards-compatible changes. */
 const FILE_VERSION = 1
 const FILE_PREFIX = 'laplace-chatterbox-settings'
 
@@ -18,9 +17,7 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-// Filesystem-safe local timestamp, e.g. "2026-05-01-23-43-00". We avoid
-// `:` because Windows / macOS Finder reject it in filenames, and we use
-// the local clock so the filename matches what the user just clicked.
+// Local-clock timestamp, no `:` (rejected in filenames on Windows / macOS Finder).
 function buildTimestamp(d = new Date()): string {
   return [
     d.getFullYear(),
@@ -32,11 +29,7 @@ function buildTimestamp(d = new Date()): string {
   ].join('-')
 }
 
-/**
- * Snapshots every key in GM storage into a JSON file and triggers a browser
- * download named `laplace-chatterbox-settings-<timestamp>.json`. Returns
- * the number of keys written.
- */
+/** Snapshot all GM storage keys to a downloaded JSON file; returns keys written. */
 export function exportSettings(): number {
   const keys = GM_listValues()
   const data: Record<string, unknown> = {}
@@ -62,10 +55,7 @@ export function exportSettings(): number {
   return keys.length
 }
 
-/**
- * Validates that `text` is a JSON-encoded SettingsFile and returns the
- * parsed value. Throws with a user-facing message if malformed.
- */
+/** Parse `text` into a SettingsFile; throws a user-facing message if malformed. */
 export function parseSettingsFile(text: string): SettingsFile {
   let parsed: unknown
   try {
@@ -90,12 +80,8 @@ export function parseSettingsFile(text: string): SettingsFile {
 }
 
 /**
- * Replaces every value in GM storage with the contents of `file`. Keys that
- * exist in storage but not in `file.data` are deleted so the import acts as
- * a full restore (rather than a merge). Reactive signals from `gmSignal`
- * are *not* updated in place — callers are expected to reload the page
- * after applying so the signals re-initialise from the freshly written GM
- * values.
+ * Full restore of GM storage from `file`: keys absent from `file.data` are deleted, not merged.
+ * Signals aren't updated in place — callers must reload so they re-init from the new GM values.
  */
 export function applySettingsFile(file: SettingsFile): { imported: number; cleared: number } {
   const before = GM_listValues()

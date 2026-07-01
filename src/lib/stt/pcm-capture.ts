@@ -1,17 +1,8 @@
 /**
- * Shared microphone → PCM16 capture for the raw-WebSocket STT engines
- * (ElevenLabs, Deepgram).
- *
- * Pins an AudioContext to 16 kHz so the browser resamples the mic for us, taps
- * the stream with an AudioWorklet (off the main thread), and posts fixed-size
- * Float32 frames back for conversion to little-endian Int16 via `onFrame`. Each
- * engine decides what to do with a frame: base64-in-JSON for ElevenLabs, raw
- * binary for Deepgram.
- *
- * The worklet module is loaded from a runtime Blob URL — a single-file
- * userscript has no separate asset to point `addModule()` at. That's fine on
- * the Bilibili pages this script targets: none enforce a `script-src` CSP that
- * blocks blob modules (`live.`/`www.` send no CSP; `space.` is report-only).
+ * Shared mic → PCM16 capture for raw-WebSocket STT engines (ElevenLabs, Deepgram).
+ * AudioContext pinned to 16 kHz so the browser resamples; AudioWorklet blob-loaded
+ * (userscript has no separate asset for `addModule()`). Targeted Bilibili pages
+ * enforce no `script-src` CSP that would block the blob module.
  */
 
 import { floatTo16 } from './audio'
@@ -19,16 +10,11 @@ import { floatTo16 } from './audio'
 /** Sample rate the capture is pinned to; also what engines report to the server. */
 export const PCM_SAMPLE_RATE = 16000
 
-// 4096 samples ≈ 256 ms at 16 kHz — a good latency/overhead balance, and the
-// frame cadence the STT engines already stream at. The worklet accumulates to
-// this size so the wire behaviour matches the previous ScriptProcessor.
+// 4096 samples ≈ 256 ms at 16 kHz — the cadence the STT engines already stream at.
 const FRAME_SAMPLES = 4096
 
-// AudioWorklet processor source, blob-loaded at runtime (see file header). Kept
-// as a string so it stays self-contained and out of the typed/linted graph —
-// it runs in AudioWorkletGlobalScope, not the DOM. It only batches: collect
-// mono input into a fixed Float32 buffer and post each full frame to the main
-// thread (buffer transferred, zero-copy). All DSP stays in `floatTo16`.
+// AudioWorklet source (runs in AudioWorkletGlobalScope, not the DOM): batch mono
+// input into a fixed Float32 buffer, post each full frame (transferred, zero-copy).
 const PCM_TAP_PROCESSOR = `
 class PcmTapProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -70,8 +56,8 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
   const constraints: MediaStreamConstraints = {
     audio: {
       ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {}),
-      // DSP off — raw audio transcribes best, and pinning a device shouldn't
-      // silently re-enable the browser's echo-cancellation / NS / AGC defaults.
+      // DSP off explicitly: raw transcribes best, and pinning a device otherwise
+      // re-enables the browser's echo-cancellation / NS / AGC defaults.
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
@@ -96,15 +82,15 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
     node.port.onmessage = (event: MessageEvent<Float32Array>) => {
       opts.onFrame(floatTo16(event.data))
     }
-    // Muted sink: keep the node on a path to the destination so its processor
-    // keeps getting pulled, while a zero gain stops the mic playing back.
+    // Muted sink: node needs a path to destination to keep getting pulled; zero
+    // gain stops the mic playing back.
     const zeroGain = context.createGain()
     zeroGain.gain.value = 0
     source.connect(node)
     node.connect(zeroGain)
     zeroGain.connect(context.destination)
-    // A context created several awaits after the click gesture can start
-    // suspended under the autoplay policy; resume so the node pulls audio.
+    // Context created several awaits after the click gesture can start suspended
+    // under the autoplay policy; resume so the node pulls audio.
     void context.resume().catch(() => {})
 
     let stopped = false
@@ -121,9 +107,8 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
       },
     }
   } catch (err) {
-    // Worklet module load / node construction failed (e.g. an enforcing
-    // host-page CSP blocking the blob module). Release the mic + context so we
-    // don't leak them, then surface the failure like a getUserMedia rejection.
+    // Worklet load / node construction failed (e.g. enforcing host CSP blocks the
+    // blob module): release mic + context so they don't leak, then rethrow.
     for (const track of stream.getTracks()) track.stop()
     void context.close().catch(() => {})
     throw err

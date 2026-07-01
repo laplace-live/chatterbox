@@ -1,18 +1,6 @@
 /**
- * Per-feature LLM prompt accessors.
- *
- * The settings UI lets users author multiple prompt drafts per scope
- * (一份 shared "global" baseline + 常规发送 / 自动融入 / 独轮车) and pick
- * one per scope as "active". Future LLM call sites — chat-completions,
- * summarisation, danmaku rewriting, etc. — read the active prompt via
- * `getActiveLlmPrompt` so they stay decoupled from the underlying signal
- * pairs in `store.ts` and from the global-vs-feature concat policy
- * implemented here.
- *
- * Lives in its own module (rather than inside `llm.ts`) so the LLM API
- * client can avoid pulling in `store.ts` and the GM-storage runtime —
- * useful when we later want to reuse `llm.ts` from a worker or test
- * harness that doesn't have a GM context.
+ * Per-feature LLM prompt accessors. Separate from `llm.ts` so the API
+ * client needn't pull in `store.ts`/the GM-storage runtime.
  */
 
 import {
@@ -29,35 +17,16 @@ import {
 } from './store'
 import { getGraphemes, trimText } from './utils'
 
-/**
- * Discriminator for the features that own their own prompt list.
- * Mirrors the casing used by the corresponding signals so a future
- * codegen / Record-backed refactor can map mechanically.
- *
- * `aiChat` is the LLM "AI 陪聊" surface that lives inside the 同传 tab:
- * a viewer-persona system prompt fed STT transcripts + in-page danmaku
- * context to generate / send candidate danmaku.
- */
+/** Features that own their own prompt list; casing mirrors the signals. */
 export type LlmPromptFeature = 'normalSend' | 'autoBlend' | 'autoSend' | 'aiChat'
 
-/** Default cap on how many graphemes of the first line we surface as a
- *  preview. 24 fits comfortably in the full-width Settings PromptManager
- *  picker; inline pickers (e.g. the normal-send tab's quick switcher)
- *  pass a smaller value so the dropdown doesn't dominate the row. */
+/** Default preview cap in graphemes; inline pickers pass a smaller value. */
 const DEFAULT_PROMPT_PREVIEW_GRAPHEMES = 24
 
 /**
- * Build a short, human-readable preview of a prompt draft: the first
- * non-empty line, grapheme-trimmed with an ellipsis when longer than
- * `maxGraphemes`. Empty drafts surface as `(空)` so they remain
- * pickable in selectors rather than rendering as a blank row.
- *
- * Shared between the settings PromptManager and the inline prompt
- * switchers in feature tabs so the same draft reads identically
- * everywhere it's surfaced. Separate from `auto-send-controls`'
- * `getPreview` (which uses a 10-grapheme cap for the danmaku template
- * picker) — that helper predates this one and stays local to that
- * module to avoid bundling a refactor of an unrelated feature here.
+ * Preview of a prompt draft: first non-empty line, grapheme-trimmed with
+ * an ellipsis past `maxGraphemes`. Empty drafts return `(空)` so they stay
+ * pickable rather than rendering as a blank row.
  */
 export function getPromptPreview(prompt: string, maxGraphemes = DEFAULT_PROMPT_PREVIEW_GRAPHEMES): string {
   const firstLine = (prompt.split('\n')[0] ?? '').trim()
@@ -65,31 +34,12 @@ export function getPromptPreview(prompt: string, maxGraphemes = DEFAULT_PROMPT_P
   return getGraphemes(firstLine).length > maxGraphemes ? `${trimText(firstLine, maxGraphemes)[0]}…` : firstLine
 }
 
-// LLM prompts. Each scope (the shared "global" baseline + each feature)
-// owns an independent list of prompt drafts and an index into that list,
-// mirroring how `msgTemplates` + `activeTemplateIndex` work for the 独轮车
-// template editor — the user authored the same UX request for prompts.
-// Persisted as separate arrays (not a Record) so a corrupted entry for
-// one scope can't invalidate the others, and so individual signals can be
-// diffed cheaply inside the UI without recomputing untouched siblings.
-//
-// The "global" scope is prepended to every feature's prompt at call time
-// (see `getActiveLlmPrompt` in lib/prompts.ts), so call sites don't have
-// to know about the chain. The feature-specific prompt is what actually
-// triggers an LLM call — global alone never does, since the LLM wouldn't
-// know what task to perform.
+// Each scope persists a separate array (not a Record) so a corrupted
+// entry for one scope can't invalidate the others. Global is prepended to
+// every feature prompt at call time; the feature prompt is the trigger,
+// global alone never fires a call.
 
-// Shipped default for the global scope so the LLM section is useful out
-// of the box rather than presenting an empty editor with only a
-// placeholder for guidance. Goes through the standard PromptManager UI
-// — the user can edit it freely, add more, or delete it outright; the
-// seed-once migration below WON'T put it back if they delete it.
-//
-// Exported in case future UI (e.g. a "restore default" button) wants to
-// reference it. Authored as a multi-line string with bullet points
-// because the Bilibili 弹幕 use case has several independent constraints
-// (length, formatting, sensitive words) that are easier to scan as a
-// list than as run-on prose.
+/** Shipped default global prompt; seed-once migration won't restore it if deleted. */
 export const DEFAULT_GLOBAL_PROMPT = [
   '你是哔哩哔哩直播间的弹幕优化助手，根据用户的输入内容，完全遵循用户的修改提示，输出相应的内容，并遵循以下基本约定：',
   '',
@@ -99,40 +49,15 @@ export const DEFAULT_GLOBAL_PROMPT = [
 ].join('\n')
 
 /**
- * Shipped defaults for the AI Chat scope — a lineup of distinct viewer
- * personas the user can pick between (or copy + edit) instead of authoring
- * one from scratch. Index 0 is the shipped "active" persona; the rest are
- * alternative flavours the user can hot-swap to from the inline picker:
- *
- *   1. 杠精 — playful contrarian / nitpicker (the default; tonal guardrails
- *      in the prompt keep it out of toxic-troll territory)
- *   2. 吐槽役 — witty, light teasing
- *   3. 暖男 — considerate care (hydration / posture / pacing) without simp energy
- *   4. 互动派 — asks specific questions to drive engagement
- *
- * Same seed-once semantics as `DEFAULT_GLOBAL_PROMPT`: the migration in
- * `store.ts` runs additively (adds templates not already present) on
- * first run only, so users can freely delete / edit / reorder without
- * the migration putting things back.
- *
- * Each entry's FIRST LINE is the human-readable title that the
- * PromptManager picker uses as the preview label (see
- * `getPromptPreview`). Kept short enough to fit the inline picker's
- * 20-grapheme cap inside the AI 陪聊 section.
- *
- * Intentionally NOT mentioned in these prompts: the JSON output schema
- * (`send` / `message` / `reason`). The engine appends the structured
- * output contract automatically in `callAiChatLlm` so user-authored
- * prompts stay format-agnostic — they only describe the persona,
- * not the wire format.
+ * Shipped default AI Chat viewer personas; index 0 is the active one.
+ * Seed-once semantics like `DEFAULT_GLOBAL_PROMPT`. Each entry's first line
+ * is the picker's title label. The JSON output schema is deliberately
+ * absent — `callAiChatLlm` appends the structured-output contract itself,
+ * so these stay format-agnostic.
  */
 export const DEFAULT_AI_CHAT_PROMPTS: string[] = [
-  // Template 1 — 杠精（默认）: playful contrarian, finds something to push
-  // back on. Tonal guardrails are critical — line between "fun 杠精
-  // banter" and "toxic troll" is thin, so the prompt explicitly bans
-  // personal attacks, identity / regional jabs, and 阴阳怪气, and
-  // requires the rebuttal to ground in something the streamer
-  // actually just said.
+  // Tonal guardrails matter: the line between fun banter and toxic troll
+  // is thin, hence the explicit bans and the ground-in-what-was-said rule.
   [
     '杠精（默认）',
     '',
@@ -156,7 +81,6 @@ export const DEFAULT_AI_CHAT_PROMPTS: string[] = [
     '## 观众群体氛围：',
   ].join('\n'),
 
-  // Template 2 — 吐槽役: friendly snark, never mean.
   [
     '吐槽役',
     '',
@@ -178,10 +102,6 @@ export const DEFAULT_AI_CHAT_PROMPTS: string[] = [
     '## 观众群体氛围：',
   ].join('\n'),
 
-  // Template 3 — 暖男: considerate, focuses on physical / posture care
-  // (hydration, posture, voice, breaks) rather than emotional support.
-  // Distinct from "舔狗" — no creepy nicknames, no over-the-top
-  // declarations; the persona is the attentive friend, not the simp.
   [
     '暖男',
     '',
@@ -204,7 +124,6 @@ export const DEFAULT_AI_CHAT_PROMPTS: string[] = [
     '## 观众群体氛围：',
   ].join('\n'),
 
-  // Template 4 — 互动派: asks questions to keep the room moving.
   [
     '互动引导',
     '',
@@ -227,21 +146,10 @@ export const DEFAULT_AI_CHAT_PROMPTS: string[] = [
   ].join('\n'),
 ]
 
-/**
- * Joiner between the global prompt and the feature prompt. Double newline
- * reads as a paragraph break to most chat models, which is what we want:
- * the global prompt and the feature prompt are conceptually separate
- * blocks (system-style baseline + task-specific instructions) but should
- * arrive in the same message, not split into multiple turns.
- */
+/** Joiner between global and feature prompts; blank lines read as a paragraph break. */
 const PROMPT_SEPARATOR = '\n\n以下是用户的修改提示：\n\n'
 
-/**
- * Read the active feature-specific prompt with NO global prefix. Useful
- * for UIs that want to show just the feature's own draft (e.g. the
- * settings editor itself), or for call sites that need to introspect
- * the raw text without the shared baseline noise.
- */
+/** Read the active feature-specific prompt with no global prefix. */
 export function getActiveFeaturePrompt(feature: LlmPromptFeature): string {
   switch (feature) {
     case 'normalSend':
@@ -261,17 +169,10 @@ export function getActiveGlobalPrompt(): string {
 }
 
 /**
- * Read the full prompt to send to the LLM for `feature`: the active
- * global prompt prepended to the active feature prompt, separated by a
- * paragraph break.
- *
- * Returns empty when the feature has no active prompt — the feature
- * prompt is the trigger, since global alone never engages the LLM
- * (the model wouldn't know what task to perform). Whitespace-only
- * feature drafts also count as "no prompt", so a user accidentally
- * leaving a blank line in the active slot doesn't fire a useless API
- * call. Whitespace inside non-empty drafts is preserved verbatim — the
- * user may have intentional formatting.
+ * Full LLM prompt for `feature`: active global prefixed to active feature.
+ * Empty (whitespace-only counts) feature prompt returns '' since the
+ * feature prompt is the trigger. Whitespace inside non-empty drafts is
+ * preserved verbatim.
  */
 export function getActiveLlmPrompt(feature: LlmPromptFeature): string {
   const featurePrompt = getActiveFeaturePrompt(feature)

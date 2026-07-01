@@ -62,34 +62,24 @@ interface HasherState {
 const EMPTY_STATE = new Int32Array(4)
 
 export class Md5 {
-  /**
-   * Hash a UTF-8 string on the spot
-   * @param str String to hash
-   * @param raw Whether to return the value as an `Int32Array`
-   */
+  /** Hash a UTF-8 string on the spot. */
   public static hashStr(str: string, raw?: false): string
   public static hashStr(str: string, raw: true): Int32Array
   public static hashStr(str: string, raw: boolean = false) {
     return Md5.onePassHasher.start().appendStr(str).end(raw)
   }
 
-  /**
-   * Hash a ASCII string on the spot
-   * @param str String to hash
-   * @param raw Whether to return the value as an `Int32Array`
-   */
+  /** Hash a ASCII string on the spot. */
   public static hashAsciiStr(str: string, raw?: false): string
   public static hashAsciiStr(str: string, raw: true): Int32Array
   public static hashAsciiStr(str: string, raw: boolean = false) {
     return Md5.onePassHasher.start().appendAsciiStr(str).end(raw)
   }
-  // Private Static Variables
   private static stateIdentity = new Int32Array([1732584193, -271733879, -1732584194, 271733878])
   private static buffer32Identity = new Int32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   private static hexChars = '0123456789abcdef'
   private static hexOut: string[] = []
 
-  // Permanent instance is to use for one-call hashing
   private static onePassHasher = new Md5()
 
   private static _hex(x: Int32Array): string {
@@ -271,9 +261,7 @@ export class Md5 {
     this.start()
   }
 
-  /**
-   * Initialise buffer to be hashed
-   */
+  /** Initialise buffer to be hashed. */
   public start() {
     this._dataLength = 0
     this._bufferLength = 0
@@ -281,14 +269,9 @@ export class Md5 {
     return this
   }
 
-  // Char to code point to to array conversion:
-  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/charCodeAt
-  // #Example.3A_Fixing_charCodeAt_to_handle_non-Basic-Multilingual-Plane_characters_if_their_presence_earlier_in_the_string_is_unknown
+  // Char to code point to array conversion, handling non-BMP charCodeAt chars.
 
-  /**
-   * Append a UTF-8 string to the hash buffer
-   * @param str String to append
-   */
+  /** Append a UTF-8 string to the hash buffer. */
   public appendStr(str: string) {
     const buf8 = this._buffer8
     const buf32 = this._buffer32
@@ -328,10 +311,7 @@ export class Md5 {
     return this
   }
 
-  /**
-   * Append an ASCII string to the hash buffer
-   * @param str String to append
-   */
+  /** Append an ASCII string to the hash buffer. */
   public appendAsciiStr(str: string) {
     const buf8 = this._buffer8
     const buf32 = this._buffer32
@@ -355,10 +335,7 @@ export class Md5 {
     return this
   }
 
-  /**
-   * Append a byte array to the hash buffer
-   * @param input array to append
-   */
+  /** Append a byte array to the hash buffer. */
   public appendByteArray(input: Uint8Array) {
     const buf8 = this._buffer8
     const buf32 = this._buffer32
@@ -382,9 +359,7 @@ export class Md5 {
     return this
   }
 
-  /**
-   * Get the state of the hash buffer
-   */
+  /** Get the state of the hash buffer. */
   public getState(): HasherState {
     const s = this._state
 
@@ -396,10 +371,7 @@ export class Md5 {
     }
   }
 
-  /**
-   * Override the current state of the hash buffer
-   * @param state New hash buffer state
-   */
+  /** Override the current state of the hash buffer. */
   public setState(state: HasherState) {
     const buf = state.buffer
     const x = state.state
@@ -419,7 +391,7 @@ export class Md5 {
   }
 
   /**
-   * Hash the current state of the hash buffer and return the result
+   * Hash the current state of the hash buffer and return the result.
    * @param raw Whether to return the value as an `Int32Array`
    */
   public end(raw: boolean = false): Int32Array | string {
@@ -440,8 +412,7 @@ export class Md5 {
       buf32.set(Md5.buffer32Identity)
     }
 
-    // Do the final computation based on the tail and length
-    // Beware that the final length may not fit in 32 bits so we take care of that
+    // Beware the final length may not fit in 32 bits.
     if (dataBitsLen <= 0xffffffff) {
       buf32[14] = dataBitsLen
     } else {

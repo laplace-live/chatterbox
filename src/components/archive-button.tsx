@@ -1,16 +1,10 @@
 import { cn } from '../lib/cn'
 
 /**
- * "LAPLACE ICU 存档" button, shown in the bottom-right corner cluster on
- * `www.bilibili.com/video/*` pages.
+ * "LAPLACE ICU 存档" button linking to a bilibili video's archived copy on
+ * LAPLACE ICU (https://laplace.icu), keyed by BV id via `https://laplace.icu/v/:bvid`.
  *
- * LAPLACE ICU (https://laplace.icu) hosts archived copies of bilibili
- * videos keyed by BV id. The button just hands the current video's BV id
- * off to that service via the `https://laplace.icu/v/:bvid` URL template —
- * there's no live-room machinery involved, so this is a plain anchor
- * rather than a signal-wired toggle.
- *
- * Opens in a new tab so the user keeps their place on the video page.
+ * Plain anchor (no live-room machinery); opens in a new tab to keep the user's place.
  * Layout (fixed corner, z-index, spacing) is owned by `<CornerCluster />`.
  */
 export function ArchiveButton({ bvid }: { bvid: string }) {

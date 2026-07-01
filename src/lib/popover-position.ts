@@ -40,24 +40,10 @@ const DEFAULT_GAP = 4
 const DEFAULT_MARGIN = 8
 
 /**
- * Pure geometry for the floating Popover/Combobox content.
- *
- * The component renders the content as `position: fixed` (so it escapes the
- * Configurator dialog's `overflow` clip) and applies the `left`/`top`/
- * `maxHeight` returned here, computed from the trigger's and content's
- * `getBoundingClientRect`s in viewport coordinates.
- *
- * Contract:
- *   - Prefer `opts.side`, but FLIP to the opposite side when the content
- *     can't fit on the preferred side and the opposite side has more room.
- *     This is what fixes a trigger near the top edge opening upward into a
- *     clip — it now opens downward instead.
- *   - `maxHeight` is capped to the available space on the chosen side, so a
- *     popover taller than the room scrolls internally rather than running
- *     off-screen.
- *   - Horizontally, align to the trigger (start/center/end), then clamp the
- *     box inside the viewport margins. If the content is wider than the
- *     viewport, pin it to the left margin.
+ * Pure geometry for the floating Popover/Combobox content, in viewport coords.
+ * Flips to the opposite side when the preferred side is too cramped, caps
+ * `maxHeight` to the chosen side's room (so it scrolls, not bleeds off-screen),
+ * and clamps horizontally into the viewport margins.
  */
 export function computePopoverPosition(
   trigger: PopoverRect,
@@ -68,8 +54,6 @@ export function computePopoverPosition(
   const gap = opts.gap ?? DEFAULT_GAP
   const margin = opts.margin ?? DEFAULT_MARGIN
 
-  // --- Vertical: pick a side (flipping when the preferred one is cramped),
-  //     then cap the height to that side's available space. ---
   const spaceAbove = trigger.top - margin - gap
   const spaceBelow = viewport.height - (trigger.top + trigger.height) - margin - gap
 
@@ -85,7 +69,6 @@ export function computePopoverPosition(
   const height = Math.min(content.height, maxHeight)
   const top = side === 'top' ? trigger.top - gap - height : trigger.top + trigger.height + gap
 
-  // --- Horizontal: align to the trigger, then clamp into the viewport. ---
   let left: number
   if (opts.align === 'end') {
     left = trigger.left + trigger.width - content.width
@@ -97,9 +80,7 @@ export function computePopoverPosition(
 
   const minLeft = margin
   const maxLeft = viewport.width - margin - content.width
-  // When the content is wider than the available width (maxLeft < minLeft),
-  // there's nothing to clamp into — pin to the left margin and let the
-  // content's own width handling (truncate / scroll) take over.
+  // Content wider than viewport (maxLeft < minLeft): pin to left margin.
   left = maxLeft >= minLeft ? Math.min(Math.max(left, minLeft), maxLeft) : minLeft
 
   return { left, top, maxHeight, side }

@@ -70,13 +70,7 @@ export function AutoSendControls() {
     activeTemplateIndex.value = Math.max(0, idx - 1)
   }
 
-  // YOLO toggle gating + inline picker visibility — same logic shape
-  // as 常规发送 / 自动融入, scoped to the autoSend feature. Toggle is
-  // enabled only when the LLM is fully usable for autoSend (API +
-  // active autoSend prompt). Picker shows as soon as API is configured
-  // AND there's at least one autoSend draft, even when the active
-  // draft is empty (so the user can recover by switching without
-  // leaving the tab).
+  // Picker shows even when the active draft is empty, so the user can recover by switching.
   const llmGap = describeLlmGap('autoSend')
   const llmReady = llmGap === null
   const showPromptPicker = isLlmApiConfigured() && llmPromptsAutoSend.value.length > 0
@@ -88,10 +82,7 @@ export function AutoSendControls() {
         autoSendPanelOpen.value = v
       }}
     >
-      {/* Two independent run-state markers in the title: 🟢 = loop
-          actively sending, ⚡️ = YOLO polish active. Both can be on
-          at once; surfacing both in the trigger means the user can
-          see the state without expanding the panel. */}
+      {/* Title markers: 🟢 = loop sending, ⚡️ = YOLO polish active (both can be on). */}
       <AccordionTrigger>
         独轮车{sendMsg.value ? ' 🟢' : ''}
         {autoSendYolo.value ? ' ⚡️' : ''}
@@ -120,17 +111,10 @@ export function AutoSendControls() {
           </Button>
         </div>
 
-        {/* YOLO row sits on its own line under the start / template
-            controls so it doesn't crowd the already-packed first row
-            (which holds the danmaku template selector + add/delete).
-            Conceptually it's the LLM-side controls — orthogonal to
-            the template controls above — so a visual break helps
-            reinforce that distinction. */}
+        {/* Own line: LLM-side controls, orthogonal to the template controls above. */}
         <div class='my-2 flex items-center gap-1'>
           <Button
-            // Variant flip is the standard "is YOLO on?" affordance —
-            // mirrors 常规发送 / 自动融入 so the visual language is
-            // consistent across all three YOLO surfaces.
+            // Variant flip mirrors 常规发送 / 自动融入 as the "is YOLO on?" affordance.
             variant={autoSendYolo.value ? 'default' : 'outline'}
             size='sm'
             disabled={!llmReady}
@@ -141,11 +125,7 @@ export function AutoSendControls() {
             YOLO
           </Button>
           {showPromptPicker && (
-            // Inline switcher for the active 独轮车 prompt — the
-            // PromptManager in Settings is still the place to author
-            // / edit / reorder the list, this is just for hot-
-            // swapping which one feeds the YOLO polish without
-            // leaving this tab.
+            // Hot-swaps the active prompt only; author/edit/reorder lives in Settings.
             <PromptPicker
               className='min-w-10 truncate'
               title='切换 YOLO 使用的独轮车提示词'

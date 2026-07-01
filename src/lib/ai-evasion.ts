@@ -11,9 +11,7 @@ interface DetectionResult {
   categories?: string[]
 }
 
-/**
- * Calls Laplace chat-audit API to detect sensitive words.
- */
+/** Calls Laplace chat-audit API to detect sensitive words. */
 export async function detectSensitiveWords(text: string): Promise<DetectionResult> {
   try {
     const resp = await fetch(BASE_URL.LAPLACE_CHAT_AUDIT, {
@@ -53,9 +51,7 @@ export interface TryAiEvasionResult {
   error?: string
 }
 
-/**
- * Attempts AI evasion for a failed message by detecting and replacing sensitive words, then resending.
- */
+/** Attempts AI evasion for a failed message by detecting and replacing sensitive words, then resending. */
 export async function tryAiEvasion(
   message: string,
   roomId: number,

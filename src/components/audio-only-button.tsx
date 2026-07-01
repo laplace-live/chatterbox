@@ -2,27 +2,8 @@ import { cn } from '../lib/cn'
 import { audioOnlyEnabled } from '../lib/store'
 
 /**
- * Audio-only toggle, rendered as a sibling of `直播助手` in the bottom-
- * right corner of the page rather than inside bilibili's own player
- * controls.
- *
- * Why not inside the controls bar?
- *
- *  - `livePlayer.stopPlayback()` (the call that actually halts CDN
- *    bandwidth in audio-only mode) destroys the
- *    `.web-player-controller-wrap` subtree, taking any injected button
- *    with it.
- *  - Other userscripts in the wild (BLTH's auto-quality module, Pakku,
- *    etc.) also stomp on the controller subtree and would race with our
- *    MutationObserver re-injection.
- *  - Putting the button in OUR DOM means it's just a Preact component
- *    wired to `audioOnlyEnabled` directly — no clones, no observers,
- *    no Svelte-class chasing.
- *
- * The label flips with the signal so a single button serves both
- * directions: `仅音频` when in video mode (click to switch to audio),
- * `恢复视频` when in audio-only (click to come back to video). Same
- * pattern bilibili's mobile app uses on its audio-only toggle.
+ * Audio-only toggle; label flips with the signal so one button serves both directions.
+ * Lives in our DOM, not the player controls: `stopPlayback()` destroys the controller subtree.
  */
 export function AudioOnlyButton() {
   const active = audioOnlyEnabled.value
@@ -40,9 +21,7 @@ export function AudioOnlyButton() {
         'appearance-none border-none outline-none',
         'cursor-pointer select-none',
         'h-8 rounded px-2 text-white',
-        // Pink in audio-only mode (matches bilibili's brand accent and
-        // the icon-fill we use elsewhere); muted gray otherwise so the
-        // primary `直播助手` button keeps visual priority.
+        // Gray otherwise so the primary `直播助手` button keeps visual priority.
         active ? 'bg-[#FF6699]' : 'bg-ga6'
       )}
     >

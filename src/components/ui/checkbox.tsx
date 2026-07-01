@@ -6,11 +6,7 @@ import { Label } from './label'
 type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'class' | 'className'>
 
 export interface CheckboxProps extends CheckboxBase {
-  // Optional inline label. When provided, the input is rendered nested
-  // inside a <label>, so clicking the label text always toggles the
-  // checkbox even when no `id` is supplied (HTML allows both explicit
-  // `htmlFor` association and implicit nesting; we use both, which is
-  // valid and resolves to the same element).
+  // Inline label; nested in <label> so clicks toggle even without an `id`.
   label?: ComponentChildren
   className?: string
 }
@@ -26,12 +22,8 @@ export function Checkbox({ label, id, disabled, className, ...props }: CheckboxP
       class={cn(
         'm-0 accent-brand',
         'cursor-pointer disabled:cursor-not-allowed',
-        // Override the dialog-wide `input { border: 1px solid }` rule from
-        // app.tsx that would otherwise paint a black square around the native
-        // checkbox.
+        // Override app.tsx's dialog-wide `input { border }` that boxes the checkbox.
         'border-none',
-        // Replaces the previous `.lc-ui-checkbox:focus-visible` rule from
-        // styles.ts.
         'focus-visible:outline focus-visible:outline-brand focus-visible:outline-solid focus-visible:outline-offset-1',
         className
       )}

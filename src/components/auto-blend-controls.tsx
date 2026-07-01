@@ -57,21 +57,7 @@ function NumberInput({
   )
 }
 
-/**
- * Live "融入候选" leaderboard plus chat-velocity / cooldown readout. Shown
- * only while 自动融入 is running, so the user can see:
- *
- * - which danmaku are accumulating toward the trigger,
- * - the room's current CPM (chats per minute), which drives adaptive
- *   cooldown when it's enabled,
- * - what the next cooldown will be (or how much of the current one is
- *   left).
- *
- * Each candidate row colours `n/threshold` in `text-brand` once the
- * threshold is met, making it obvious at a glance which axis (人 vs 条) is
- * the bottleneck — since a candidate must hit BOTH thresholds before
- * triggering, you'll typically see one number green and the other neutral.
- */
+/** Live 融入候选 leaderboard plus chat-velocity / cooldown readout; a candidate must hit BOTH 人/条 thresholds to trigger. */
 function AutoBlendStatus() {
   const { candidates, cooldownRemainingSec, chatsPerMinute, cooldownEffectiveSec } = autoBlendStatus.value
   const userThreshold = autoBlendUniqueUsers.value
@@ -90,9 +76,7 @@ function AutoBlendStatus() {
               <span class='text-brand'>冷却中 {cooldownRemainingSec} 秒</span>
             </>
           ) : (
-            // Only surface the would-be cooldown when auto is on — the
-            // manual value is already visible in the input above, so
-            // restating it here would just be noise.
+            // Show the would-be cooldown only when auto is on; the manual value is already in the input above.
             auto && (
               <>
                 <span> · </span>
@@ -131,13 +115,7 @@ export function AutoBlendControls() {
     autoBlendEnabled.value = !autoBlendEnabled.value
   }
 
-  // YOLO toggle gating + inline picker visibility — same logic
-  // shape as 常规发送, scoped to the autoBlend feature instead. The
-  // toggle is enabled only when the LLM is fully usable for autoBlend
-  // (API + active autoBlend prompt). The picker shows as soon as API
-  // is configured AND there's at least one autoBlend draft, even when
-  // the active draft is empty (so the user can recover by switching
-  // to a non-empty draft without leaving the tab).
+  // Picker shows whenever API is configured and any draft exists, even if the active one is empty, so the user can recover by switching drafts.
   const llmGap = describeLlmGap('autoBlend')
   const llmReady = llmGap === null
   const showPromptPicker = isLlmApiConfigured() && llmPromptsAutoBlend.value.length > 0
@@ -149,10 +127,7 @@ export function AutoBlendControls() {
         autoBlendPanelOpen.value = v
       }}
     >
-      {/* Two independent run-state markers in the title: 🟣 = blend
-          detector running, ⚡️ = YOLO polish active. Both can be on
-          at once and the user wants to see both states without
-          expanding the panel. */}
+      {/* Independent markers: 🟣 = blend detector running, ⚡️ = YOLO polish active; both can be on at once. */}
       <AccordionTrigger>
         自动融入{autoBlendEnabled.value ? ' 🟣' : ''}
         {autoBlendYolo.value ? ' ⚡️' : ''}
@@ -163,10 +138,6 @@ export function AutoBlendControls() {
             {autoBlendEnabled.value ? '停止融入' : '开始融入'}
           </Button>
           <Button
-            // Variant flip mirrors the 常规发送 YOLO button — outline
-            // when off, brand-coloured fill when on. Same affordance
-            // pattern across every YOLO toggle so the visual language
-            // stays consistent.
             variant={autoBlendYolo.value ? 'default' : 'outline'}
             size='sm'
             disabled={!llmReady}
@@ -177,13 +148,7 @@ export function AutoBlendControls() {
             YOLO
           </Button>
           {showPromptPicker && (
-            // Inline switcher for the active 自动融入 prompt — the
-            // PromptManager in Settings is still the place to author
-            // / edit / reorder the list, this is just for hot-
-            // swapping which one feeds the YOLO polish without
-            // leaving this tab. Smaller grapheme cap than the
-            // Settings picker to keep the row readable in the
-            // narrowest dialog width.
+            // Inline hot-swap of the active 自动融入 prompt; authoring/reordering still lives in Settings.
             <PromptPicker
               className='min-w-10 truncate'
               title='切换 YOLO 使用的自动融入提示词'
@@ -200,10 +165,7 @@ export function AutoBlendControls() {
         <div
           class={cn(
             'my-2 flex flex-wrap items-center gap-x-2 gap-y-1',
-            // Grey out the field labels when blend is off — applied at the
-            // group level so the inline NumberInputs (which don't inherit
-            // because they style themselves explicitly) and the surrounding
-            // Chinese hint text both dim together.
+            // Dim at group level: the NumberInputs style themselves explicitly and won't inherit otherwise.
             !autoBlendEnabled.value && 'text-ga4'
           )}
         >

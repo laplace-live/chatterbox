@@ -24,50 +24,17 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Textarea } from './ui/textarea'
 
 /**
- * Read-only metadata popover, mounted in the bottom-right toggle cluster
- * next to the audio-only and 直播助手 buttons. Shows up to three remote
- * data categories — 魔法期 (fertility), 公会 (guild), MCN — each gated
- * by an independent settings toggle so the user can opt into exactly
- * what they want and never trigger the other endpoints. Plus a local
- * "用户备注" (user note) editor that's purely client-side and always
- * available (no enable toggle — it's local-only with zero network
- * cost, so there's nothing to opt into).
- *
- * The button is ALWAYS visible. Even with every remote info toggle off,
- * the user note editor needs a permanent entry point — otherwise there'd
- * be no way to add a first note to a uid with no existing note. The
- * per-category toggles only gate which SECTIONS render inside the
- * popover, not the popover's existence.
- *
- * The button face composes two layers:
- *   1. Primary icon: the fertility emoji when that category is on and
- *      data has loaded; otherwise a generic info icon.
- *   2. Note badge: rendered alongside (right of) the primary icon when
- *      the current uid has a stored note — so a viewer instantly sees
- *      "I've already written something about this person" without
- *      opening the popover. Tinted amber so it doesn't blend into the
- *      primary icon.
- *
- * Data resolution is uid-driven, with the uid coming from whichever
- * mount surface owns identity:
- *   - live.bilibili.com: `cachedStreamerUid` (set by `ensureRoomId`)
- *   - space.bilibili.com: parsed from the URL by `main.tsx` and written
- *     to `infoCurrentUid` directly
- * Both paths end up populating `infoCurrentUid`, which is what this
- * component reads. We mirror `cachedStreamerUid` into `infoCurrentUid`
- * on live pages here (rather than in `info-status.ts`) so the data
- * module stays surface-agnostic.
+ * Read-only metadata popover (魔法期/公会/MCN, each toggle-gated) plus an
+ * always-available local 用户备注 editor. Button stays visible even with
+ * every remote toggle off so notes always have an entry point; toggles
+ * only gate which sections render. uid comes from `infoCurrentUid`.
  */
 export function InfoButton() {
   const open = useSignal(false)
 
-  // Re-read on every render so toggle / note edits trigger re-paints.
   const anyRemoteEnabled = infoFertilityEnabled.value || infoGuildEnabled.value || infoMcnEnabled.value
 
-  // Live-page identity bridge: when `cachedStreamerUid` resolves, fan it
-  // into `infoCurrentUid`. On the space page main.tsx populates
-  // `infoCurrentUid` directly from the URL before mount, so this effect
-  // is a no-op there.
+  // Live-page identity bridge; no-op on space page (main.tsx sets infoCurrentUid before mount).
   useEffect(() => {
     const uid = cachedStreamerUid.value
     if (uid !== null && infoCurrentUid.value === null) {
@@ -75,29 +42,16 @@ export function InfoButton() {
     }
   }, [cachedStreamerUid.value])
 
-  // Kick off remote data fetches whenever the uid OR any remote toggle
-  // changes. `ensureInfoData` dedupes via its internal cache + in-flight
-  // map, so flipping a toggle on after the uid already resolved still
-  // fires exactly one request per endpoint. User notes are intentionally
-  // NOT a dep here — they live in GM storage, no fetch needed.
+  // `ensureInfoData` dedupes via cache + in-flight map, so one request per endpoint.
   useEffect(() => {
     if (!anyRemoteEnabled) return
     ensureInfoData(infoCurrentUid.value)
   }, [infoCurrentUid.value, infoFertilityEnabled.value, infoGuildEnabled.value, infoMcnEnabled.value])
 
-  // Touch `userNotes.value` so the note badge re-paints when the user
-  // saves / deletes a note. `hasUserNote` reads the same signal but
-  // referencing `.value` here is what registers the dep with the
-  // surrounding signal context.
+  // Touch `.value` to register the signal dep so the badge re-paints on note save/delete.
   void userNotes.value
   const noteExists = hasUserNote(infoCurrentUid.value)
 
-  // Button face composition: the main icon (fertility emoji when on +
-  // has data, otherwise the generic info icon) PLUS a note badge
-  // appended on the right when this uid has a stored note. The badge
-  // lives alongside the main icon (rather than replacing it) so a
-  // glance still tells the viewer what info categories are configured
-  // — the note is additional context, not the whole story.
   const fertilityEmoji =
     infoFertilityEnabled.value && fertilityData.value ? getFertilityDisplay(fertilityData.value.status).emoji : null
 
@@ -121,13 +75,7 @@ export function InfoButton() {
           ) : (
             <IconInfoCircle size={16} stroke={2} />
           )}
-          {noteExists && (
-            // Note badge sits to the right of the primary icon. Tinted
-            // amber (#ffd84d) so it's visually distinct from the white
-            // info / colored fertility icon and reads as "annotation"
-            // rather than another status category.
-            <IconNotes size={14} stroke={2.2} color='#ffd84d' aria-label='已有备注' />
-          )}
+          {noteExists && <IconNotes size={14} stroke={2.2} color='#ffd84d' aria-label='已有备注' />}
         </button>
       </PopoverTrigger>
       <PopoverContent side='top' align='end' className='w-100 p-3 text-[13px]'>
@@ -155,58 +103,30 @@ function InfoPopoverBody() {
       {infoFertilityEnabled.value && <FertilitySection uid={uid} />}
       {infoGuildEnabled.value && <GuildSection />}
       {infoMcnEnabled.value && <McnSection />}
-      {/* 用户备注 always renders — it's local-only with no network cost
-          and ungated by any toggle. */}
       <UserNoteSection uid={uid} />
     </div>
   )
 }
 
 /**
- * Local-only, multi-line note editor keyed by the popover's current
- * uid. Draft state is local to this component — we hydrate from
- * `getUserNote(uid)` whenever the uid changes.
- *
- * Auto-save model
- * ---------------
- * There is no 保存 button. Edits commit to GM storage on a 1.5s debounce
- * after the last keystroke, and are flushed immediately on textarea blur
- * and on popover close (the `[uid]` effect's cleanup, which also runs on
- * unmount). The cleanup captures the uid it ran for, so a draft is always
- * written under the correct uid even if the popover navigates between
- * uids while open. A flush is a no-op when the draft matches what's
- * stored, so focusing out without changes never bumps `updatedAt`.
- *
- * Inline status (正在保存… / 已保存) replaces the old button's feedback;
- * we intentionally drop the per-save log line that would otherwise fire
- * on every typing pause (delete still logs).
- *
- * Delete is a hard action (no soft "clear field then save" workflow) so
- * the indicator on the button face flips off instantly without an
- * intermediate "empty saved note" state. We rely on `setUserNote`'s
- * trim-to-delete semantic, so clearing the field and letting it auto-save
- * also deletes cleanly.
+ * Local-only note editor keyed by the popover's uid. Auto-saves on a 1.5s
+ * debounce, flushed on blur and on popover close (the `[uid]` cleanup,
+ * which captures its uid so drafts land under the right uid across nav).
+ * Flush no-ops when unchanged. `setUserNote` trim-deletes on empty. No
+ * per-save log line (delete still logs).
  */
 function UserNoteSection({ uid }: { uid: number }) {
-  // Re-read on every render so external mutations (settings import,
-  // notes import, another popover instance) reflect here too.
   const stored = getUserNote(uid)
   const draft = useSignal(stored?.note ?? '')
   const lastLoadedUid = useSignal<number | null>(null)
   const lastLoadedUpdatedAt = useSignal<number | null>(null)
   const saveStatus = useSignal<'idle' | 'saving' | 'saved'>('idle')
 
-  // Debounce timer for the auto-save; `savedTimer` clears the transient
-  // "已保存" label back to idle. Both are window timer ids (or null when
-  // not pending). Refs (not signals) because they're imperative timer
-  // handles, not rendered state.
+  // Refs, not signals: imperative timer handles, not rendered state.
   const debounceTimer = useRef<number | null>(null)
   const savedTimer = useRef<number | null>(null)
 
-  // Re-hydrate the draft whenever the uid changes (e.g. SPA navigation
-  // on the space page) OR the stored note's `updatedAt` shifts (e.g.
-  // an import happened while the popover was open). Without the
-  // updatedAt check, importing notes wouldn't refresh an open editor.
+  // Re-hydrate on uid change or `updatedAt` shift; the latter refreshes an open editor after an import.
   useEffect(() => {
     const incomingUpdatedAt = stored?.updatedAt ?? null
     if (lastLoadedUid.value === uid && lastLoadedUpdatedAt.value === incomingUpdatedAt) return
@@ -215,13 +135,7 @@ function UserNoteSection({ uid }: { uid: number }) {
     lastLoadedUpdatedAt.value = incomingUpdatedAt
   }, [uid, stored?.updatedAt])
 
-  // Flush-on-close / flush-on-uid-change. The cleanup runs when `uid`
-  // changes (before the new uid's effect) AND on unmount (popover close),
-  // and it captures the uid it ran for — so the draft always lands under
-  // the right uid even if the popover navigates between uids while open.
-  // We re-read `getUserNote(uid)` here (rather than closing over `stored`)
-  // so the dirty check uses live storage, and we cancel any pending
-  // timers to avoid them firing against a torn-down / switched editor.
+  // Flush on uid-change/unmount, keyed to the captured uid; re-read storage for a live dirty check.
   useEffect(() => {
     return () => {
       if (debounceTimer.current !== null) {
@@ -237,10 +151,7 @@ function UserNoteSection({ uid }: { uid: number }) {
     }
   }, [uid])
 
-  // Commit the draft for the CURRENT uid (debounce fire + textarea blur).
-  // No-op when unchanged so a focus-out without edits never bumps
-  // `updatedAt`. `setUserNote` trim-deletes on empty, so clearing the
-  // field auto-saves as a delete.
+  // No-op when unchanged so a focus-out without edits never bumps `updatedAt`.
   const commit = () => {
     if (debounceTimer.current !== null) {
       clearTimeout(debounceTimer.current)
@@ -335,19 +246,14 @@ function FertilitySection({ uid }: { uid: number }) {
   const data = fertilityData.value
   const loading = fertilityLoading.value
   const error = fertilityError.value
-  // `source` / `date` are only populated on /opus/* pages (null elsewhere),
-  // so off-opus the link carries just `?uid=…`.
+  // `source`/`date` only populated on /opus/* pages; off-opus the link carries just `?uid=…`.
   const opus = infoOpusMeta.value
   const contributeUrl = buildOvuContributeUrl(uid, { source: opus?.source, date: opus?.date })
 
   return (
     <section class='flex flex-col gap-1'>
       <SectionHeading>
-        魔法期{' '}
-        {/* Always available (independent of data state) so a viewer can
-          contribute precisely when there's no data yet. The uid is always
-          pre-filled; the opus permalink + post date ride along only on
-          /opus/* pages. */}
+        魔法期 {/* Shown regardless of data state so viewers can contribute when there's no data yet. */}
         <a href={contributeUrl} target='_blank' rel='noopener' className='text-brand no-underline'>
           贡献数据 ↗
         </a>
@@ -367,9 +273,7 @@ function FertilitySection({ uid }: { uid: number }) {
 
 function FertilityCard({ data }: { data: NonNullable<typeof fertilityData.value> }) {
   const display = getFertilityDisplay(data.status)
-  // `nextPeriod` is ISO YYYY-MM-DD; render in local-friendly form.
-  // Defensive parse: if the upstream ever returns a non-date we render
-  // the raw string rather than throwing.
+  // `nextPeriod` is ISO YYYY-MM-DD; fall back to the raw string if it won't parse.
   let nextPeriodText = data.nextPeriod
   const parsed = new Date(data.nextPeriod)
   if (!Number.isNaN(parsed.getTime())) {
@@ -377,9 +281,7 @@ function FertilityCard({ data }: { data: NonNullable<typeof fertilityData.value>
   }
 
   const cyclesElapsed = data.cyclesElapsedSinceObservation
-  // `cyclesElapsedSinceObservation` > 0 means the upstream is projecting
-  // from a stale observation — flag it so the viewer knows the status
-  // is inferred, not observed.
+  // > 0 means the status is projected from a stale observation, not observed.
   const stale = cyclesElapsed > 0
 
   return (
@@ -408,9 +310,7 @@ function GuildSection() {
   const data = bilibiliUserData.value
   const loading = bilibiliUserLoading.value
   const error = bilibiliUserError.value
-  // The guild section only renders the guild slice of `BilibiliUser`,
-  // but the loading / error state is shared with MCN — we just don't
-  // duplicate the spinner in both sections if one is on.
+  // Loading/error state is shared with MCN (same `BilibiliUser` fetch).
   return (
     <section class='flex flex-col gap-1'>
       <SectionHeading>公会</SectionHeading>
@@ -431,8 +331,7 @@ function GuildList({ history }: { history: { name: string; updatedAt: number }[]
   if (history.length === 0) {
     return <StatusLine color='var(--Ga6,#666)'>暂无公会记录</StatusLine>
   }
-  // History is upstream-sorted (newest first by convention). Show up to
-  // 5 most recent; anything older lives behind the "查看完整资料" link.
+  // Upstream-sorted newest-first; show the 5 most recent.
   const recent = history.slice(0, 5)
   return (
     <ul class='m-0 flex list-none flex-col gap-1 p-0'>
@@ -490,10 +389,8 @@ function McnList({ history }: { history: { mcnName: string; updatedAt: number }[
 }
 
 /**
- * Compact "X 天前 / X 月前 / X 年前" formatter for upstream Unix ms
- * timestamps. We don't need second-precision — the data updates on the
- * order of days, so "5 分钟前" precision would be visually noisy and
- * also misleading (it'd suggest the upstream is real-time).
+ * Compact "X 天前/月前/年前" for Unix-ms timestamps; day granularity since
+ * the data isn't real-time (finer precision would mislead).
  */
 function formatRelativeDate(ts: number): string {
   if (!Number.isFinite(ts) || ts <= 0) return '未知'

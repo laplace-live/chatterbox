@@ -1,21 +1,8 @@
 /**
- * Pure parsing / validation / matching for the 自动融入 message blacklist.
- *
- * Entries are stored as the keys of `autoBlendMessageBlacklist` (a
- * `Record<string, 1>`). A key carries its own kind:
- *
- *   - `口交`        → literal: matches a danmaku ONLY when the whole trimmed
- *                     text equals it (the historical, backward-compatible
- *                     behaviour; also what right-click adds capture).
- *   - `/口.*交/i`   → regex: `/pattern/flags`, matched as a SUBSTRING
- *                     (`.test`) so one pattern catches evasion variants like
- *                     `口交`, `口***交`, `口 活 交`, …
- *
- * This module is deliberately free of any signal / GM-storage / DOM imports
- * so the rules stay unit-testable in `bun test`. The reactive glue (a
- * `computed` over the store signal) lives at the single match site in
- * `auto-blend.ts`; the Settings UI imports the validation + `isRegexEntry`
- * helpers directly.
+ * Parsing / validation / matching for the 自动融入 message blacklist.
+ * A key is either a plain-text literal (exact whole-message match) or a
+ * `/pattern/flags` regex matched as a SUBSTRING. Deliberately import-free so
+ * rules stay unit-testable.
  */
 
 export interface RegexEntry {
@@ -32,16 +19,13 @@ export interface CompiledBlacklist {
   regexes: RegExp[]
 }
 
-// A key is a regex iff it's wrapped in slashes with a non-empty body and an
-// optional run of trailing flag letters. `(.+)` is greedy, so a pattern that
-// itself contains slashes (e.g. `/a\/b/`) keeps everything up to the LAST
-// slash as its source — the JS regex-literal convention.
+// Greedy `(.+)` keeps everything up to the LAST slash as source, so `/a\/b/`
+// parses per JS regex-literal convention.
 const REGEX_ENTRY_RE = /^\/(.+)\/([a-z]*)$/
 
 /**
- * Parse a blacklist key into `{ source, flags }` when it's a `/.../` regex
- * entry, or `null` when it's a plain-text literal. Purely syntactic — flag
- * and pattern VALIDITY is the job of `validateRegexEntry` / compilation.
+ * Parse a `/.../` regex key into `{ source, flags }`, or `null` for a literal.
+ * Purely syntactic — validity is checked at validation / compilation time.
  */
 export function parseRegexEntry(key: string): RegexEntry | null {
   const m = REGEX_ENTRY_RE.exec(key)
@@ -54,18 +38,15 @@ export function isRegexEntry(key: string): boolean {
   return REGEX_ENTRY_RE.test(key)
 }
 
-// `g` / `y` make `RegExp.test()` stateful (they advance `lastIndex` between
-// calls, so a reused instance alternates hit/miss on the same input). They're
-// meaningless for a boolean "does this match anywhere" check, so drop them
-// before compiling — both at add-time validation and at match-time.
+// Drop `g`/`y`: they make a reused `RegExp.test()` stateful (advancing
+// `lastIndex`), alternating hit/miss — meaningless for a boolean match check.
 function sanitizeFlags(flags: string): string {
   return flags.replace(/[gy]/g, '')
 }
 
 /**
- * Validate user input destined for the blacklist. Literals are always valid
- * (empty-input is the caller's concern); regex entries must compile. Returns
- * the `RegExp` error message on failure so the caller can surface it.
+ * Validate blacklist input: literals always pass, regex entries must compile.
+ * @returns the `RegExp` error message on failure so the caller can surface it.
  */
 export function validateRegexEntry(input: string): RegexValidation {
   const parsed = parseRegexEntry(input)
@@ -79,10 +60,9 @@ export function validateRegexEntry(input: string): RegexValidation {
 }
 
 /**
- * Compile a set of blacklist keys into a fast matcher. Literal keys go into a
- * `Set` (O(1) exact lookup); regex keys are compiled once. An invalid regex
- * (e.g. imported from a malformed config) is SKIPPED, never thrown — the
- * danmaku hot path must not be able to crash on bad user data.
+ * Compile blacklist keys into a matcher (literals in a `Set`, regexes compiled
+ * once). An invalid regex is SKIPPED, never thrown, so the danmaku hot path
+ * can't crash on bad user data.
  */
 export function compileMessageBlacklist(keys: Iterable<string>): CompiledBlacklist {
   const literals = new Set<string>()
@@ -103,8 +83,8 @@ export function compileMessageBlacklist(keys: Iterable<string>): CompiledBlackli
 }
 
 /**
- * True when `text` (an already-trimmed danmaku) hits the blacklist: an exact
- * literal match, or a substring match against any regex entry.
+ * True when `text` (an already-trimmed danmaku) hits the blacklist via exact
+ * literal or regex substring match.
  */
 export function testMessageBlacklist(compiled: CompiledBlacklist, text: string): boolean {
   if (compiled.literals.has(text)) return true

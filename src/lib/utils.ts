@@ -1,11 +1,4 @@
-/**
- * Sigma (1σ) of the send-interval jitter, expressed as a fraction of the
- * base interval. Used by `resolveSendDelayMs` when randomness is enabled.
- * 0.20 means ~68% of delays fall within ±20% of the user's configured
- * interval, and ~95% within ±40% (samples are clamped to ±2σ to bound the
- * worst case so a freak Gaussian draw can't, e.g., schedule a 5-minute
- * pause when the user set 1 second). Tune here.
- */
+/** 1σ of send-interval jitter as a fraction of the base interval; samples clamped to ±2σ. */
 const SEND_JITTER_SIGMA = 0.2
 
 /**
@@ -59,25 +52,9 @@ const SENTENCE_PUNCT = new Set(['.', '?', '!', '。', '？', '！', '…'])
 const CLAUSE_PUNCT = new Set([',', ';', ':', '、', '，', '；', '：'])
 
 /**
- * Length-bounded grapheme split that prefers natural break points over a
- * blind cut at `maxLen`.
- *
- * Strategy per chunk:
- *  1. If remaining text fits, emit it as the final chunk.
- *  2. Otherwise look for a sentence-ending punct (`。？！…` etc.) within the
- *     last `lookback` graphemes of the maxLen window; cut just after it.
- *  3. If none, fall back to clause punct (`，、；：` etc.) in the same window.
- *  4. If still none, fall back to whitespace (word boundary) in the same
- *     window — important for English/translated text. The whitespace
- *     grapheme itself is dropped so it doesn't appear as trailing space
- *     inside the chunk or leading space in the next.
- *  5. If still none, hard-cut at maxLen.
- *
- * Tail rebalance: if the final chunk would be smaller than `minTail`
- * graphemes, transfer just enough graphemes from the end of the previous
- * chunk so the tail reaches `minTail`. This avoids ugly orphan tails (e.g.
- * a single character on its own line) while preserving the `maxLen`
- * contract — no chunk grows beyond maxLen.
+ * Length-bounded grapheme split preferring natural breaks (sentence punct, then
+ * clause punct, then whitespace within `lookback`) over a blind cut at `maxLen`.
+ * Tail smaller than `minTail` steals graphemes from the previous chunk; `maxLen` still holds.
  */
 export function splitTextSmart(
   text: string,
@@ -89,8 +66,7 @@ export function splitTextSmart(
   if (graphemes.length <= maxLen) return [text]
 
   const lookback = opts.lookback ?? Math.max(4, Math.floor(maxLen / 3))
-  // Cap minTail at maxLen so the rebalance below can never grow a chunk past
-  // maxLen — the maxLen contract takes precedence over the no-orphan goal.
+  // Cap minTail at maxLen so the rebalance can't grow a chunk past maxLen.
   const minTail = Math.min(maxLen, opts.minTail ?? Math.max(3, Math.floor(maxLen / 8)))
 
   const isWs = (g: string): boolean => g.length === 1 && /\s/.test(g)
@@ -98,9 +74,7 @@ export function splitTextSmart(
   const parts: string[] = []
   let i = 0
   while (i < graphemes.length) {
-    // Skip leading whitespace from the start of each chunk so a cut after a
-    // punct that's followed by a space (e.g. "Hello, world") doesn't leave a
-    // stray leading space in the next chunk.
+    // Skip leading whitespace so a cut after "punct + space" leaves no stray leading space.
     while (i < graphemes.length && isWs(graphemes[i])) i++
     if (i >= graphemes.length) break
 
@@ -130,7 +104,7 @@ export function splitTextSmart(
     if (cut === -1) {
       for (let j = windowEnd - 1; j >= minBreak; j--) {
         if (isWs(graphemes[j])) {
-          // Cut at the space and consume it so neither chunk includes it.
+          // consume the whitespace so it lands in neither chunk
           cut = j
           skipNext = 1
           break
@@ -167,14 +141,8 @@ export function extractRoomNumber(url: string): string | undefined {
 }
 
 /**
- * Extracts the BV id from a Bilibili video URL (`www.bilibili.com/video/...`).
- *
- * The id is the first path segment shaped like a BV id — `BV` followed by a
- * run of base58 characters, e.g. `/video/BV1NbE866EK7` or
- * `/video/BV1NbE866EK7/?p=2`. Returns `undefined` when the path carries no BV
- * id (e.g. legacy `/video/av170001` short links), so callers can skip mounting
- * rather than build a broken archive URL. Case-sensitive: BV ids are base58, so
- * the canonical `BV` prefix is matched as-is.
+ * Extracts the BV id from a Bilibili video URL. Case-sensitive (base58).
+ * @returns undefined for paths with no BV id (e.g. legacy `/video/av170001`).
  */
 export function extractBvid(url: string): string | undefined {
   const urlObj = new URL(url)
@@ -182,53 +150,28 @@ export function extractBvid(url: string): string | undefined {
   return pathSegments.find(segment => /^BV[0-9A-Za-z]+$/.test(segment))
 }
 
-/**
- * SSR snapshot shape (`window.__INITIAL_STATE__`) for an opus page, narrowed
- * to just the two author-identity fields we read. B站 sends far more, but
- * this is the only slice `extractOpusAuthorUid` traverses.
- */
+/** Narrowed `window.__INITIAL_STATE__` shape for an opus page (author-identity fields only). */
 interface OpusInitialState {
   detail?: {
-    /** `basic.uid` is the author uid as a string (e.g. `"1802654492"`). */
+    /** Author uid as a string, e.g. `"1802654492"`. */
     basic?: { uid?: string | number }
-    /**
-     * Typed module list; the author lives in the `MODULE_TYPE_AUTHOR` entry.
-     * `pub_ts` is the publish time in Unix seconds (string in the snapshot).
-     */
+    /** Author lives in the `MODULE_TYPE_AUTHOR` entry; `pub_ts` is Unix seconds. */
     modules?: Array<{ module_type?: string; module_author?: { mid?: number; pub_ts?: string | number } }>
   }
 }
 
 /**
- * Extracts the author's UID from a `www.bilibili.com/opus/*` (图文动态 /
- * 专栏) page's SSR snapshot.
- *
- * Unlike the space page, an opus URL carries the POST id, not a uid, so we
- * can't parse identity from the path — it has to come from B站's
- * server-rendered `window.__INITIAL_STATE__.detail`, which holds the post's
- * data and is set by an inline script in the initial HTML (so it's present
- * by `whenDomReady`). Two equivalent sources live there; we prefer the
- * author module's numeric `mid` and fall back to `basic.uid` (a string):
- *   - `detail.modules[] → MODULE_TYPE_AUTHOR → module_author.mid` (number)
- *   - `detail.basic.uid` (string)
- *
- * The rendered DOM is deliberately NOT scraped: opus pages also link to
- * unrelated users (fav lists, recommendations), so picking a uid out of
- * `a[href*="space.bilibili.com"]` would frequently resolve the wrong person.
- *
- * Takes the raw global as `unknown` and traverses defensively so a shape
- * change upstream degrades to `undefined` (caller leaves `infoCurrentUid`
- * null) rather than throwing.
+ * Extracts the author's UID from an opus page's SSR snapshot (prefers module `mid`, falls back to `basic.uid`).
+ * The URL carries the post id not a uid, so identity comes from the global, not the path.
+ * DOM is deliberately not scraped: opus pages link to unrelated users (fav lists, recs). Traverses defensively.
  */
 export function extractOpusAuthorUid(initialState: unknown): number | undefined {
   const detail = (initialState as OpusInitialState | undefined)?.detail
   if (!detail) return undefined
 
-  // Primary: the author module's numeric mid.
   const authorMid = detail.modules?.find(m => m?.module_type === 'MODULE_TYPE_AUTHOR')?.module_author?.mid
   if (typeof authorMid === 'number' && Number.isFinite(authorMid) && authorMid > 0) return authorMid
 
-  // Fallback: basic.uid (a string in the SSR snapshot).
   const uid = Number(detail.basic?.uid)
   if (Number.isFinite(uid) && uid > 0) return uid
 
@@ -236,18 +179,8 @@ export function extractOpusAuthorUid(initialState: unknown): number | undefined 
 }
 
 /**
- * Extracts the opus post's publish date as `YYYY-MM-DD` from the SSR
- * snapshot, for the 魔法期 "贡献数据" link's `date` param.
- *
- * Source is `module_author.pub_ts` — the canonical publish Unix-seconds
- * timestamp. We deliberately do NOT parse `module_author.pub_time`: that's a
- * display string that reads "编辑于 …" once a post has been edited, so it
- * reflects the EDIT time, not the original post date. The date is formatted
- * in Asia/Shanghai because B站 timestamps are authored in Beijing time, so
- * the calendar date should match the streamer's context rather than the
- * viewer's locale (`en-CA` renders the parts as `YYYY-MM-DD`).
- *
- * Returns `undefined` when the snapshot lacks a usable pub_ts.
+ * Extracts the opus publish date as `YYYY-MM-DD` from the SSR snapshot, or undefined if no usable pub_ts.
+ * Uses `pub_ts` not `pub_time` (the latter reads "编辑于 …" after an edit). Asia/Shanghai: timestamps are Beijing time.
  */
 export function extractOpusPubDate(initialState: unknown): string | undefined {
   const detail = (initialState as OpusInitialState | undefined)?.detail
@@ -263,16 +196,8 @@ export function extractOpusPubDate(initialState: unknown): string | undefined {
 }
 
 /**
- * Builds the 魔法期 "贡献数据" link that pre-fills the laplace.live /ovu
- * contribution form:
- *
- *   https://laplace.live/ovu?uid=<uid>[&source=<url>][&date=<YYYY-MM-DD>]
- *
- * `uid` is always present. `source` (the opus permalink) and `date` (the
- * opus post date) are only known on `/opus/*` pages, so they're optional and
- * omitted on every other surface. Values are URL-encoded by `URLSearchParams`,
- * which is exactly what we want when embedding a full URL as the `source`
- * query value.
+ * Builds the laplace.live /ovu contribution link: `?uid=<uid>[&source=<url>][&date=<YYYY-MM-DD>]`.
+ * `source` and `date` are only known on `/opus/*` pages, so they're optional.
  */
 export function buildOvuContributeUrl(
   uid: number,
@@ -284,32 +209,15 @@ export function buildOvuContributeUrl(
   return `https://laplace.live/ovu?${params.toString()}`
 }
 
-/**
- * Runs `cb` once the DOM is parsed — immediately if parsing already finished,
- * otherwise on `DOMContentLoaded`. Used when a check needs the document's
- * inline scripts to have run (e.g. reading a server-rendered global).
- */
+/** Runs `cb` once the DOM is parsed — immediately if already done, else on `DOMContentLoaded`. */
 export function whenDomReady(cb: () => void): void {
   if (document.readyState !== 'loading') cb()
   else document.addEventListener('DOMContentLoaded', () => cb(), { once: true })
 }
 
 /**
- * Inserts a random soft hyphen (U+00AD) in the text for dedup-bypass /
- * evasion. Insertion is grapheme-safe (no splitting inside a combining
- * sequence or emoji ZWJ cluster) and bmote-safe: positions strictly
- * inside a B站 standard emote bracket — `[doge]`, `[花]`, `[OK]`,
- * `[捂脸2]`, etc. — are excluded so the soft hyphen can never land
- * between `[` and its matching `]` and break the emote rendering.
- *
- * Unbalanced single brackets (e.g. literal `[第3章` with no close) form
- * no emote and so don't restrict insertion. The outer ends of each
- * matched `[...]` pair stay valid: positions immediately before `[` or
- * immediately after `]` are fine.
- *
- * When every position is forbidden (only possible if the entire string
- * is one balanced bracket pair AND we somehow blocked the head/tail —
- * shouldn't happen in practice), falls back to appending at the end.
+ * Inserts a random soft hyphen (U+00AD) for dedup-bypass. Grapheme-safe and emote-safe:
+ * never lands inside a balanced `[...]` bracket (would break B站 emote rendering). Falls back to appending.
  */
 export function addRandomCharacter(text: string): string {
   if (!text || text.length === 0) return text
@@ -346,11 +254,8 @@ export function addRandomCharacter(text: string): string {
 }
 
 /**
- * Sample one value from a standard normal distribution (mean 0, variance 1)
- * via the Box-Muller transform. Only the cosine half is taken; the sine half
- * is discarded since we need a single sample per call. `u1 || 1e-9` guards
- * against the rare-but-possible `Math.random() === 0` (which would otherwise
- * produce `log(0) = -Infinity` and propagate NaN downstream).
+ * One sample from a standard normal (mean 0, variance 1) via Box-Muller (cosine half only).
+ * `u1 || 1e-9` guards `Math.random() === 0`, which would give `log(0)` and propagate NaN.
  */
 function sampleStandardNormal(): number {
   const u1 = Math.random() || 1e-9
@@ -359,16 +264,8 @@ function sampleStandardNormal(): number {
 }
 
 /**
- * Resolves the actual sleep duration (ms) between auto-send iterations.
- *
- * Base delay is `intervalSeconds * 1000`. When `random` is true, a Gaussian
- * (bell-curve) jitter is added with σ = `SEND_JITTER_SIGMA * baseMs` — most
- * delays cluster tightly around `baseMs` with rare ±2σ outliers, matching
- * human cadence better than uniform jitter (uniform "randomness" is itself a
- * fingerprint over a tight window). The sample is clamped to ±2σ so a freak
- * Gaussian draw can't blow past the user's expected cadence. Result is also
- * clamped to ≥ 0 so a 0-second interval with jitter doesn't pass a negative
- * argument down to `setTimeout`.
+ * Sleep duration (ms) between auto-send iterations: `intervalSeconds * 1000` plus optional
+ * Gaussian jitter (σ = `SEND_JITTER_SIGMA * baseMs`, clamped ±2σ). Result clamped ≥ 0 for `setTimeout`.
  */
 export function resolveSendDelayMs(intervalSeconds: number, random: boolean): number {
   const baseMs = intervalSeconds * 1000
@@ -405,15 +302,8 @@ export function processMessages(text: string, maxLength: number, addRandomChar =
 }
 
 /**
- * Detect whether a CDN `host` value points at a raw IP address rather
- * than a hostname. Accepts the full `host` field as returned by the
- * bilibili app endpoint — which is `https://<host>` with no path —
- * and inspects the authority portion.
- *
- * Matches both IPv4 (`https://1.2.3.4`, `https://1.2.3.4:8080`) and
- * bracketed IPv6 (`https://[2001:db8::1]`). Hostnames containing dots
- * but at least one non-numeric label (the normal CDN case like
- * `cn-jsnt-fx-01-12.bilivideo.com`) return false.
+ * Whether a CDN `host` (`https://<host>`, no path) points at a raw IP rather than a hostname.
+ * Matches IPv4 (with optional port) and bracketed IPv6; hostnames with a non-numeric label return false.
  */
 export function isIpHost(host: string): boolean {
   // Strip scheme + port + path so we're left with just the authority.

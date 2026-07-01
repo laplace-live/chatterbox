@@ -1,13 +1,7 @@
 /**
- * Soniox `SttEngine` — the realtime-recording half of the old
- * `useSonioxRecording` hook, lifted out so it sits behind the same
- * provider-agnostic contract as ElevenLabs.
- *
- * It owns one `@soniox/client` `Recording` per session: lazy-loads the SDK,
- * builds the client (api key inlined into the WS URL), wires the SDK's events
- * onto normalized `SttEngineEvent`s, and forwards lifecycle controls. An
- * `AbortController` tears down an in-flight CDN load if the session is
- * cancelled before the bundle lands.
+ * Soniox `SttEngine`: owns one lazy-loaded `@soniox/client` `Recording` per
+ * session. The `AbortController` tears down an in-flight CDN load if the
+ * session is cancelled before the bundle lands.
  */
 
 import type { Recording, SonioxClient } from '@soniox/client'
@@ -17,11 +11,7 @@ import type { SttEngine, SttEngineEventHandler, SttFinalizeOptions, SttSessionPa
 import { loadSoniox } from '../soniox'
 import { sonioxResultToChunks } from './normalize'
 
-/**
- * Raw mono 16 kHz, DSP off — Soniox recommends untouched audio for best
- * transcription, and pinning a `deviceId` shouldn't silently re-enable the
- * browser's default echo-cancellation / noise-suppression / AGC.
- */
+/** Raw mono 16 kHz, DSP off: Soniox wants untouched audio, and pinning a `deviceId` must not silently re-enable browser echo-cancel/noise-suppress/AGC. */
 function buildMicConstraints(deviceId: string): MediaTrackConstraints | undefined {
   if (!deviceId) return undefined
   return {
@@ -52,9 +42,7 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
           model: params.model,
           language_hints: params.languageHints,
           enable_endpoint_detection: true,
-          // Shave endpointing latency for snappier finals. Level 1 is the mildest
-          // of 0-3: higher levels finalize sooner but can split utterances and
-          // slightly lower accuracy (see @soniox/client SttSessionConfig).
+          // Range 0-3; level 1 is the mildest speedup. Higher finalizes sooner but can split utterances and lower accuracy.
           endpoint_latency_adjustment_level: 1,
           ...(params.translation
             ? { translation: { type: 'one_way', target_language: params.translation.targetLanguage } }

@@ -1,16 +1,9 @@
 /**
- * Mints a single-use ElevenLabs realtime-Scribe token.
+ * Mints a single-use ElevenLabs realtime-Scribe token (~15 min TTL).
  *
- * Browsers can't set the `xi-api-key` header on a WebSocket, so the client-side
- * flow is: POST the API key to the single-use-token endpoint over HTTP, get
- * back a short-lived (15 min) token, and pass it as the WebSocket's `?token=`
- * query param. The key never travels on the socket itself.
- *
- * Plain `fetch` (like `fetchSonioxModels`): ElevenLabs' token endpoint sends
- * permissive CORS headers (`access-control-allow-origin: *`,
- * `access-control-allow-headers: *`), so the cross-origin POST from bilibili.com
- * works without `GM_xmlhttpRequest` / an `@connect` grant. The response is
- * validated by a type guard (no `as` cast).
+ * Browsers can't set `xi-api-key` on a WebSocket, so mint over HTTP and pass the
+ * token as the `?token=` query param instead. Plain `fetch` works cross-origin:
+ * the endpoint sends permissive CORS, so no `GM_xmlhttpRequest`/`@connect` grant.
  */
 
 import { ELEVENLABS_API_BASE } from '../const'

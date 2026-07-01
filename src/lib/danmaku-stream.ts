@@ -1,12 +1,6 @@
 /**
- * Shared danmaku stream — a single MutationObserver on `.chat-items` that
- * fans out events to all subscribers. Both `danmaku-direct` (for inline
- * +1/steal buttons) and `auto-blend` (for trending detection) subscribe
- * here so we don't run multiple observers on the same DOM node.
- *
- * Lifecycle is reference-counted: the first subscribe attaches the observer
- * (waiting for `.chat-items` to appear if needed), and the last unsubscribe
- * tears everything down.
+ * Single MutationObserver on `.chat-items` fanned out to all subscribers so we
+ * don't run multiple observers on one node. Lifecycle is reference-counted.
  */
 
 export interface DanmakuEvent {
@@ -20,19 +14,7 @@ export interface DanmakuEvent {
   uid: string | null
   /** Whether `data-replymid` is non-zero (i.e. a reply danmaku). */
   isReply: boolean
-  /**
-   * True when B站 renders this danmaku as an inline "大表情" / fan-club
-   * cheering emote — DOM marker is `.danmaku-item-right.emoticon.bulge`
-   * containing an `<img>`. Distinct from regular cached emotes
-   * (`.emoticon` without `.bulge`), which carry an `emoticon_unique`
-   * matching `data-danmaku` and survive a faithful re-send.
-   *
-   * For 大表情 messages, `data-danmaku` is the emote's *display name*
-   * (e.g. "应援", "干杯") — NOT an `emoticon_unique` — so naïvely
-   * re-sending the text would land as plain text instead of the emote.
-   * Consumers (auto-blend) use this together with `isEmoticonUnique` to
-   * decide whether the message is faithfully reproducible from text alone.
-   */
+  /** Inline 大表情 (`.emoticon.bulge`); its `data-danmaku` is a display name, not an `emoticon_unique`, so it can't be re-sent from text alone. */
   hasLargeEmote: boolean
 }
 
@@ -71,19 +53,10 @@ export function extractDanmakuInfo(node: HTMLElement): DanmakuEvent | null {
   const text = node.dataset.danmaku
   const replymid = node.dataset.replymid
   if (text === undefined || replymid === undefined) return null
-  // B站 puts user data on the chat-item root itself (alongside `data-danmaku`
-  // / `data-replymid`), NOT on a descendant — `querySelector` would always
-  // miss them. Read from the node first, fall back to a descendant lookup so
-  // we still work on hypothetical future layouts where the attributes move.
+  // User data lives on the chat-item root, not a descendant; descendant lookup is a fallback.
   const uname = node.dataset.uname ?? node.querySelector<HTMLElement>('[data-uname]')?.dataset.uname ?? null
   const uid = node.dataset.uid ?? node.querySelector<HTMLElement>('[data-uid]')?.dataset.uid ?? null
-  // Specifically target `.bulge` (大表情 / cheering emotes) — NOT every
-  // emote rendering. Regular cached emotes (`.emoticon` without `.bulge`)
-  // also have an inline `<img>` but their `data-danmaku` is a real
-  // `emoticon_unique` so they re-send faithfully and shouldn't be
-  // flagged. Conflating the two would over-eagerly drop legitimate
-  // emote trends during the brief window before `cachedEmoticonPackages`
-  // loads (when `isEmoticonUnique` returns false for everything).
+  // Match `.bulge` only; regular `.emoticon` also has an inline img but re-sends faithfully.
   const hasLargeEmote = node.querySelector('.danmaku-item-right.emoticon.bulge img') !== null
   return {
     node,

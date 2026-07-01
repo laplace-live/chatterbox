@@ -56,84 +56,40 @@ export interface AutoBlendStatusValue {
   cooldownRemainingSec: number
   /** Rounded chats-per-minute of the room (excluding our own self-echoes). */
   chatsPerMinute: number
-  /**
-   * Cooldown that WOULD be engaged if `triggerSend` fired right now. Reflects
-   * the user's fixed `autoBlendCooldownSec` when auto-cooldown is off, or
-   * the live CPM-derived value when it's on.
-   */
+  /** Cooldown that would engage if `triggerSend` fired now (fixed or CPM-derived). */
   cooldownEffectiveSec: number
 }
 
 /** How many candidates to surface in the UI leaderboard. */
 export const CANDIDATE_LIMIT = 3
-/**
- * How often the UI snapshot is refreshed. 500 ms gives a snappy feel for the
- * leaderboard while keeping the cooldown countdown's per-second resolution
- * cheap (we re-emit at most twice per second).
- */
 const SNAPSHOT_INTERVAL_MS = 500
 
-// === CPM (chats-per-minute) tracking ====================================
-//
-// We sample the room's velocity over a sliding window so the user — and the
-// adaptive-cooldown formula — can react to bursts vs. lulls in close to real
-// time. 30 s is short enough that a sudden surge bumps CPM within a few
-// seconds, but long enough to smooth out the choppiness of single-message
-// noise.
+// CPM sampling window; short enough to catch surges, long enough to smooth noise.
 const CPM_WINDOW_SEC = 30
-// Floor on the extrapolation window: with a fresh tracker that's only seen
-// one or two messages we'd otherwise compute absurd CPMs (a single message
-// 100 ms in extrapolates to 600/min). 2 s caps the early-startup bias to a
-// sane upper bound while still giving useful readings before the full
-// 30 s window has filled.
+// Extrapolation floor: caps absurd CPMs from a fresh tracker (one msg 100 ms in → 600/min).
 const CPM_MIN_WINDOW_MS = 2000
 
-// === Adaptive cooldown bounds ===========================================
-//
-// COOLDOWN_FLOOR_SEC matches the user's "2 second a chat at most" intent —
-// even on the busiest rooms we won't fire more often than this. Ceiling
-// keeps quiet rooms from waiting forever between sends.
 const COOLDOWN_FLOOR_SEC = 2
 const COOLDOWN_CEILING_SEC = 60
-// "Stealth factor" K satisfies: at the chosen cooldown, exactly K/60 other
-// messages will land between our sends. K=300 → ~5 messages between sends
-// at any chat speed, which empirically reads as "blended in" without
-// monopolizing fast rooms or feeling robotic in slow ones.
+// Stealth factor: ~K/60 other messages land between our sends at any chat speed.
 const COOLDOWN_STEALTH_K = 300
 
 const counters = new Map<string, Counter>()
-/**
- * Monotonic timestamps (ms) of every non-self danmaku observed since
- * `startAutoBlend`. Pruned to the last `CPM_WINDOW_SEC` on every read.
- * We track even messages that don't qualify as candidates (blacklisted
- * users, locked emotes, replies, in-cooldown traffic) because CPM is a
- * proxy for ROOM activity, not for trigger-eligible activity.
- */
+// Timestamps (ms) of every non-self danmaku; tracks ROOM activity, so includes
+// messages that don't qualify as candidates. Pruned to `CPM_WINDOW_SEC` per read.
 const messageTimestamps: number[] = []
-// Global hard cooldown: while `Date.now() < cooldownUntil`, EVERY incoming
-// danmaku is discarded (not counted, not recorded). Engaged after a successful
-// trigger so post-trigger noise (echoes of our own send, copycat trends, the
-// pile-on after a popular line lands) cannot stack into another back-to-back
-// auto-send.
+// Global hard cooldown: while `Date.now() < cooldownUntil` every danmaku is
+// discarded, so post-trigger noise can't stack into a back-to-back auto-send.
 let cooldownUntil = 0
 
 let unsubscribe: (() => void) | null = null
 let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
 let isSending = false
-// Last trend text we successfully auto-sent (post-trim, pre-replacement —
-// i.e. the same string used as the counters Map key). When
-// `autoBlendAvoidRepeat` is on, identical incoming danmaku are dropped in
-// `recordDanmaku` so the trend can't re-fire. Cleared on stopAutoBlend;
-// overwritten on every successful trigger so consecutive distinct trends
-// fire normally.
+// Last auto-sent trend (the counters Map key); blocks re-fire when `autoBlendAvoidRepeat` is on.
 let lastAutoSentText: string | null = null
 
-/**
- * Live snapshot consumed by `AutoBlendControls` so the user can see which
- * danmaku are currently accumulating toward the trigger, the room's chat
- * velocity, and how long the post-trigger cooldown still has to run.
- */
+/** Live snapshot consumed by `AutoBlendControls`: candidates, CPM, cooldown countdown. */
 export const autoBlendStatus = signal<AutoBlendStatusValue>({
   candidates: [],
   cooldownRemainingSec: 0,
@@ -155,12 +111,7 @@ function pruneOldTimestamps(now: number): void {
   if (i > 0) messageTimestamps.splice(0, i)
 }
 
-/**
- * Current chats-per-minute. Extrapolates from the actual span of the
- * tracked timestamps so a fresh tracker reaches a realistic reading within
- * seconds rather than waiting the full 30 s window to fill — capped by
- * `CPM_MIN_WINDOW_MS` to prevent single-message readings from spiking.
- */
+/** Current chats-per-minute, extrapolated from the tracked span (floored by `CPM_MIN_WINDOW_MS`). */
 function getCurrentCpm(now: number): number {
   pruneOldTimestamps(now)
   const n = messageTimestamps.length
@@ -170,11 +121,7 @@ function getCurrentCpm(now: number): number {
   return Math.round((n * 60_000) / windowMs)
 }
 
-/**
- * Map a CPM reading to a cooldown in seconds via `K / cpm`, clamped to the
- * floor / ceiling. Quiet rooms (cpm == 0) get the ceiling so we don't
- * immediately re-fire when chat goes silent right after a trigger.
- */
+/** Map CPM to a cooldown (sec) via `K / cpm`, clamped to floor/ceiling; cpm 0 → ceiling. */
 function computeAutoCooldownSec(cpm: number): number {
   if (cpm <= 0) return COOLDOWN_CEILING_SEC
   const auto = Math.round(COOLDOWN_STEALTH_K / cpm)
@@ -197,11 +144,7 @@ function candidatesEqual(a: AutoBlendCandidate[], b: AutoBlendCandidate[]): bool
   return true
 }
 
-/**
- * Recompute the UI snapshot and write it to `autoBlendStatus`, but only if it
- * actually changed (to avoid spurious component re-renders during quiet
- * moments when the timer keeps ticking but no danmaku have arrived).
- */
+/** Recompute the UI snapshot; writes `autoBlendStatus` only on change to avoid spurious re-renders. */
 function emitStatus(now: number): void {
   const cooldownRemainingSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000))
   const chatsPerMinute = getCurrentCpm(now)
@@ -213,10 +156,7 @@ function emitStatus(now: number): void {
   for (const [text, c] of counters) {
     candidates.push({ text, uniqueUsers: c.uniqueUids.size, totalCount: c.totalCount })
   }
-  // Primary sort by total occurrences (the volume threshold), tie-broken by
-  // unique users (the diversity threshold), then by text for a stable order
-  // when both are equal — the leaderboard otherwise jitters between equal-
-  // weight entries on every tick.
+  // Sort by total, then unique users, then text for a stable order (else the leaderboard jitters).
   candidates.sort(
     (a, b) => b.totalCount - a.totalCount || b.uniqueUsers - a.uniqueUsers || a.text.localeCompare(b.text, 'zh-Hans-CN')
   )
@@ -235,88 +175,47 @@ function emitStatus(now: number): void {
   autoBlendStatus.value = { candidates, cooldownRemainingSec, chatsPerMinute, cooldownEffectiveSec }
 }
 
-// Compiled message-blacklist matcher. A `computed` so the `/pattern/flags`
-// entries are compiled to `RegExp` objects ONCE per blacklist edit rather
-// than on every incoming danmaku — `recordDanmaku` runs in the chat hot path.
-// Recomputes only when `autoBlendMessageBlacklist` changes; reads are cached.
+// `computed` so patterns compile once per blacklist edit, not per danmaku (hot path).
 const messageBlacklistMatcher = computed(() => compileMessageBlacklist(Object.keys(autoBlendMessageBlacklist.value)))
 
 function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, hasLargeEmote: boolean): void {
   if (!autoBlendEnabled.value) return
 
-  // Self-echo: always ignore. Our own auto-blend sends bounce back through
-  // the MutationObserver and would otherwise inflate CPM (skewing adaptive
-  // cooldown) and pollute candidate counters. Lifted above the cooldown
-  // gate so it's filtered even during the freeze. The post-send cooldown
-  // is the backup that catches echoes when uid extraction fails.
+  // Self-echo: filtered above the cooldown gate so our own sends never inflate CPM or counters.
   if (uid && myUid && uid === myUid) return
 
   const now = Date.now()
-  // Track every observed (non-self) message for CPM, including those that
-  // get filtered out below (blacklisted, locked emote, reply, in cooldown).
-  // CPM is meant to reflect ROOM activity, not trigger-eligible activity.
+  // CPM reflects ROOM activity, so record even messages filtered out below.
   messageTimestamps.push(now)
 
-  // Global hard cooldown: short-circuit BEFORE any further text work so the
-  // freeze is truly global — no counters touched, no echoes leaking through.
+  // Short-circuit the global freeze before any text work so nothing leaks through.
   if (now < cooldownUntil) return
 
   const text = rawText.trim()
   if (!text) return
-  // @ replies are directed at one user, so they're never a "trend" worth
-  // blending into — skip unconditionally.
+  // @ replies target one user, never a trend.
   if (isReply) return
 
-  // User opt-in: don't let an exact repeat of our last auto-send re-trigger
-  // us. Dropped before any counter updates so the blocked text also stays
-  // out of the candidate leaderboard — anything still matching is, by
-  // definition, the trend we just acted on.
+  // Don't let an exact repeat of our last auto-send re-trigger; dropped pre-counter so it stays off the leaderboard.
   if (autoBlendAvoidRepeat.value && lastAutoSentText !== null && text === lastAutoSentText) return
 
   if (uid) {
-    // User-level blacklist set via the right-click menu in chat. Discard
-    // entirely so the user neither contributes to unique-user counts nor
-    // bumps totalCount toward the threshold.
     if (uid in autoBlendUserBlacklist.value) return
   }
 
-  // Message blacklist. Literal entries match the whole trimmed text exactly
-  // (the same key the counters use); `/pattern/flags` entries match anywhere
-  // in it, so one pattern catches evasion variants (口交 / 口***交 / 口 活 交).
-  // Dropped before any counter / leaderboard work so a blacklisted line never
-  // appears as a candidate even at 1/N progress. The matcher is a `computed`
-  // (see above) so patterns compile once per blacklist edit, not per danmaku.
+  // Literal entries match the whole trimmed text; `/pattern/flags` catch evasion variants (口交 / 口***交 / 口 活 交).
   if (testMessageBlacklist(messageBlacklistMatcher.value, text)) return
 
-  // Locked emotes (fan-club / 舰长 / 提督 / 总督 etc.) can never be
-  // auto-sent, so keep them out of `counters` entirely. This stops a popular
-  // locked emote from (a) accumulating a trend we couldn't act on and
-  // (b) hijacking a `triggerSend` cycle — the global cooldown would
-  // otherwise engage and freeze legitimate plain-text trends for several
-  // seconds. The `triggerSend` safety net below still catches the rare race
-  // where the emoticon cache loads AFTER counters started accumulating.
+  // Locked emotes (fan-club / 舰长 / 提督 / 总督) can't be auto-sent; keep them out of `counters` so they
+  // don't accumulate an unactionable trend or waste a `triggerSend` cooldown. `triggerSend` re-checks the cache race.
   if (isLockedEmoticon(text)) return
 
-  // Cross-room emote IDs (`room_<otherRoom>_<id>`, etc.) seen as raw text
-  // in our chat — usually because a viewer pasted a unique-ID from another
-  // streamer's pack. Sending it would land as plain text, so the trend is
-  // unactionable; drop it from counters for the same reason as locked
-  // emotes (no wasted cooldown, no leaderboard pollution). `isUnavailable
-  // Emoticon` is a no-op until the emoticon cache loads, so legitimate
-  // current-room emote IDs aren't incorrectly filtered during the brief
-  // startup window — `triggerSend` re-checks once cache is reliably ready.
+  // Cross-room emote IDs (`room_<otherRoom>_<id>`) would land as plain text; drop like locked emotes.
+  // `isUnavailableEmoticon` is a no-op until the cache loads, so current-room IDs aren't filtered during startup.
   if (isUnavailableEmoticon(text)) return
 
-  // 大表情 / fan-club cheering emote (DOM marker `.bulge`). Always dropped
-  // — we can never re-send these faithfully. `data-danmaku` for a 大表情
-  // is its visible display name (e.g. "应援", "干杯"), which is the
-  // emoticon's `emoji` field — NOT its `emoticon_unique`. The send-time
-  // check `isEmoticonUnique(text)` keys off `emoticon_unique` (opaque
-  // IDs like `room_xxx_yyy`) so it always returns false for a 大表情
-  // display name, even when we DO have access to the package. So letting
-  // a 大表情 trend through would always fall back to plain-text send,
-  // surfacing in OUR chat as raw "应援" while everyone else sees the
-  // emote button — the bug this guard exists to prevent.
+  // 大表情 (DOM marker `.bulge`): `data-danmaku` is the display name (emoticon `emoji`, not `emoticon_unique`),
+  // so `isEmoticonUnique` always returns false and it would send as raw text (e.g. "应援") — drop it.
   if (hasLargeEmote) return
 
   pruneExpired(now)
@@ -330,10 +229,7 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   c.lastSeenAt = now
   if (uid) c.uniqueUids.add(uid)
 
-  // Require BOTH x distinct users AND z total occurrences within the window.
-  // Fallback: when uid extraction fails for every event we use totalCount as
-  // a stand-in for unique users, so the feature still works on an unfamiliar
-  // DOM (worst case: counts a single spammer as one "user").
+  // Require both distinct-user and total-occurrence thresholds; fall back to totalCount when uid extraction fails.
   const effectiveUniqueUsers = c.uniqueUids.size > 0 ? c.uniqueUids.size : c.totalCount
   if (effectiveUniqueUsers >= autoBlendUniqueUsers.value && c.totalCount >= autoBlendMinOccurrences.value) {
     void triggerSend(text, c.uniqueUids.size, c.totalCount)
@@ -341,26 +237,17 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
 }
 
 async function triggerSend(originalText: string, uniqueUsers: number, totalCount: number): Promise<void> {
-  // Claim the slot atomically. If another send is in-flight we bail WITHOUT
-  // engaging the cooldown so the trend keeps accumulating and naturally
-  // re-evaluates threshold on the next matching danmaku once we're free.
+  // Bail without engaging cooldown if a send is in-flight, so the trend keeps accumulating.
   if (isSending) return
 
-  // Safety net for the rare race where the emoticon cache loaded only AFTER
-  // this trend started accumulating in `recordDanmaku` (so the filter there
-  // missed it). Bail BEFORE engaging the cooldown / clearing counters, so
-  // we don't penalize legitimate plain-text trends for an emote we were
-  // never going to send. Drop the trend so it can't immediately re-fire.
+  // Safety net for the cache-load race that `recordDanmaku` missed; bail before cooldown/clear, drop so it can't re-fire.
   if (isLockedEmoticon(originalText)) {
     counters.delete(originalText)
     appendLog(formatLockedEmoticonReject(originalText, '自动融入(表情)'))
     return
   }
 
-  // Same race / same handling for cross-room emote IDs that slipped past
-  // the `recordDanmaku` filter while the cache was still loading. By the
-  // time we trigger (multiple matches over a multi-second window), the
-  // cache has reliably loaded and the unavailable-check is meaningful.
+  // Same race / handling for cross-room emote IDs; by trigger time the cache has reliably loaded.
   if (isUnavailableEmoticon(originalText)) {
     counters.delete(originalText)
     appendLog(formatUnavailableEmoticonReject(originalText, '自动融入(表情)'))
@@ -368,13 +255,8 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   }
 
   isSending = true
-  // Engage the global hard cooldown up front (before the await) and wipe all
-  // pending counters so nothing accumulates during the freeze and nothing
-  // fires the instant the freeze ends with stale, half-built trends.
-  // Cooldown duration is whatever the user-or-auto policy resolves to RIGHT
-  // NOW — read fresh (not from the snapshot signal) so a bursty room gets
-  // an aggressive cooldown the moment it actually triggers, even if the
-  // last 500 ms snapshot tick read a slower CPM.
+  // Engage the freeze and clear counters before the await; read cooldown fresh (not the snapshot signal)
+  // so a bursty room gets an aggressive cooldown the moment it triggers.
   const cooldownNow = Date.now()
   cooldownUntil = cooldownNow + getEffectiveCooldownSec(cooldownNow) * 1000
   counters.clear()
@@ -388,38 +270,19 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
 
     const isEmote = isEmoticonUnique(originalText)
 
-    // YOLO polish: rewrite the trend text via the configured LLM
-    // before replacements / send. Applied to the ORIGINAL trend (not
-    // the post-replacement string) so the LLM sees natural Chinese
-    // rather than a sensitive-word substitution like "草 → 曹"; the
-    // replacement pipeline below still gets to clean up anything the
-    // LLM emits that might trip 直播间 filters.
-    //
-    // One polish per trigger, NOT per repeat — preserves the existing
-    // "N identical sends per trigger" semantic and keeps cost bounded
-    // by triggers rather than `autoBlendSendCount`. If the user wants
-    // per-message variation they're better served by 常规发送 YOLO.
-    //
-    // Skipped for emotes (the LLM has nothing useful to do with an
-    // opaque `room_xxx_yyy` ID — output would be plain text and lose
-    // the emote rendering).
+    // Polish the ORIGINAL trend (not the post-replacement string) so the LLM sees natural Chinese;
+    // once per trigger (not per repeat) to bound cost. Skipped for emotes (opaque ID → useless plain text).
     let yoloed = originalText
     if (autoBlendYolo.value && !isEmote) {
       if (!isLlmReady('autoBlend')) {
-        // Cooldown is already engaged by this point — that's fine,
-        // it prevents log-spam from the same trend re-firing every
-        // window while the user is misconfigured. Next trigger after
-        // cooldown will retry with whatever config they fixed.
+        // Cooldown is already engaged — prevents log-spam re-firing while misconfigured.
         appendLog('🚲 自动融入 YOLO 已开启，但 LLM 配置不完整，本轮跳过')
         return
       }
       try {
         const polished = await polishWithLlm('autoBlend', originalText)
         if (!polished.trim()) {
-          // Empty / whitespace-only polish counts as a refusal — bail
-          // rather than sending an empty danmaku (Bilibili would
-          // reject it anyway, and re-emitting the unpolished trend
-          // would defeat the user's "polish before send" intent).
+          // Empty polish = refusal; bail rather than send an empty danmaku.
           appendLog('⚠️ 自动融入 AI 返回为空，本轮跳过')
           return
         }
@@ -434,21 +297,14 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
 
     const useReplacements = autoBlendUseReplacements.value && !isEmote
     const replaced = useReplacements ? applyReplacements(yoloed) : yoloed
-    // True when ANY transformation between the original trend and the
-    // pre-randomChar text changed the string — drives the `→` arrow
-    // in the per-send log so YOLO polish, sensitive-word replacement,
-    // or both are equally visible.
+    // Drives the `→` arrow in the log when any transform (YOLO or replacement) changed the string.
     const wasReplaced = replaced !== originalText
 
     const repeatCount = Math.max(1, autoBlendSendCount.value)
     const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
-    // Record what we're acting on BEFORE the loop so `autoBlendAvoidRepeat`
-    // takes effect even if some repeats inside the burst fail — the user's
-    // intent ("don't re-fire on this trend") doesn't depend on every send
-    // succeeding. Tracked unconditionally; only consulted when the option
-    // is on, so flipping it off doesn't require us to keep this updated.
+    // Record before the loop so `autoBlendAvoidRepeat` holds even if some repeats fail.
     lastAutoSentText = originalText
 
     for (let i = 0; i < repeatCount; i++) {
@@ -486,11 +342,7 @@ export function startAutoBlend(): void {
     onMessage: ev => recordDanmaku(ev.text, ev.uid, ev.isReply, ev.hasLargeEmote),
   })
 
-  // Single timer drives both the safety-net prune (in case the room goes
-  // quiet and no `recordDanmaku` calls fire to prune from the inside) AND
-  // the live UI snapshot. 500 ms is fast enough for a responsive
-  // leaderboard / cooldown countdown but slow enough that the per-tick
-  // sort+slice over a small Map is negligible.
+  // One timer drives both the safety-net prune (when the room is quiet) and the UI snapshot.
   if (snapshotTimer === null) {
     snapshotTimer = setInterval(() => {
       const now = Date.now()

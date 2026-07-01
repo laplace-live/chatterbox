@@ -2,16 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { volumeIconState } from './audio-only-volume'
 
-/**
- * The audio-only controls show a single speaker icon whose glyph reflects
- * the current state. `volumeIconState` is the pure mapping the component
- * uses to pick between muted / low / high — split out from the Preact
- * component so the threshold logic is unit-testable without a DOM.
- *
- * Contract: mute always wins (an explicit mute reads as muted regardless
- * of the underlying volume), volume 0 reads as muted, and any non-finite
- * / negative volume degrades to muted rather than throwing.
- */
+// Contract: mute wins over volume; 0 / non-finite / negative degrade to muted.
 describe('volumeIconState', () => {
   describe('muted (explicit or effective)', () => {
     test.each([

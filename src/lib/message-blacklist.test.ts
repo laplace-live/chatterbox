@@ -9,23 +9,8 @@ import {
 } from './message-blacklist'
 
 /**
- * The 自动融入 message blacklist accepts two kinds of entries through one
- * input: plain text (exact whole-message match — the historical behaviour)
- * and `/pattern/flags` regex entries (match ANYWHERE in the danmaku). These
- * pure helpers back the Settings add-input, the live-match hot path in
- * `auto-blend.ts`, and the list "正则" badge — split out from any signal /
- * GM-storage glue so the parsing, validation, and matching rules are
- * unit-testable without a DOM or the `$` userscript globals.
- *
- * Contract:
- * - A key wrapped in slashes (`/.../`, optional trailing flags) is a regex;
- *   anything else is a literal.
- * - Regex entries match as a substring (`.test`); literals must equal the
- *   whole trimmed message.
- * - `g` / `y` are stripped before compilation so repeated `.test()` calls
- *   can't desync via a shared `lastIndex`.
- * - An invalid pattern is rejected at add-time (`validateRegexEntry`) and
- *   skipped — never thrown — at match-time (`compileMessageBlacklist`).
+ * `/.../flags` keys are regex (substring match); anything else is a literal (whole trimmed message).
+ * `g`/`y` stripped before compile so repeated `.test()` can't desync via shared `lastIndex`; invalid patterns skipped at match-time, not thrown.
  */
 describe('parseRegexEntry', () => {
   test.each([
@@ -94,8 +79,7 @@ describe('compileMessageBlacklist + testMessageBlacklist', () => {
   })
 
   test('g flag does not desync across repeated tests', () => {
-    // Without stripping `g`, the shared `lastIndex` would make the 2nd call
-    // miss — this is the bug the strip guards against.
+    // Without stripping `g`, shared `lastIndex` makes the 2nd call miss.
     const c = compileMessageBlacklist(['/口/g'])
     expect(testMessageBlacklist(c, '口')).toBe(true)
     expect(testMessageBlacklist(c, '口')).toBe(true)
@@ -112,7 +96,7 @@ describe('compileMessageBlacklist + testMessageBlacklist', () => {
     const c = compileMessageBlacklist(['草', '/口.*交/i'])
     expect(testMessageBlacklist(c, '草')).toBe(true)
     expect(testMessageBlacklist(c, '口XX交')).toBe(true)
-    // The literal is exact, so a superstring of it does not match.
+    // Literal is exact: a superstring does not match.
     expect(testMessageBlacklist(c, '草泥马')).toBe(false)
   })
 })

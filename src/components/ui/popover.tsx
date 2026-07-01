@@ -10,31 +10,16 @@ import {
   type PopoverSide,
 } from '../../lib/popover-position'
 
-// === Popover ============================================================
-//
-// shadcn-style compound popover. <Popover> sets up a relative-positioned
-// wrapper that contains both the trigger and the content. <PopoverContent>
-// renders as `position: fixed`, with its coordinates computed from the
-// trigger's bounding rect (see `computePopoverPosition`).
-//
-// Why fixed and not absolute: inside the Configurator panel the dialog is
-// `overflow-hidden` (optimized) / `overflow-y-auto` (legacy). An absolutely
-// positioned child is clipped by that overflow, so a popover near the
-// dialog's top or bottom edge gets cut off. A fixed element's containing
-// block is the viewport — the dialog is itself `fixed` and sets no
-// transform/filter, so it never becomes a containing block for fixed
-// descendants — so the content escapes the clip. It still inherits the
-// dialog's CSS vars (e.g. `--laplace-chatterbox-dialog-width`) because it
-// stays in the DOM tree; only its positioning scheme changes. The
-// positioner flips sides and caps height to keep it on screen.
+// shadcn-style compound popover. PopoverContent is `position: fixed` (not
+// absolute) so it escapes the Configurator dialog's `overflow` clip near the
+// dialog's edges; the dialog sets no transform/filter so the viewport stays
+// the containing block. It still inherits the dialog's CSS vars via the DOM tree.
 
 interface PopoverContextValue {
   open: boolean
   setOpen: (open: boolean) => void
-  // Wrapper bounds drive outside-click detection — a click is "inside"
-  // when it lands anywhere in here (trigger OR content), so clicking
-  // the trigger to toggle and clicking content rows both stay open
-  // unless they explicitly close themselves.
+  // Bounds for outside-click detection: a click anywhere inside (trigger OR
+  // content) counts as "inside" and stays open.
   wrapperRef: { current: HTMLDivElement | null }
 }
 
@@ -57,11 +42,7 @@ export function Popover({ open, onOpenChange, className, children }: PopoverProp
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   return (
     <PopoverContext.Provider value={{ open, setOpen: onOpenChange, wrapperRef }}>
-      {/* `relative` establishes the positioning context for
-          PopoverContent's absolute layout AND the bounding box for the
-          outside-click test. `inline-block` keeps the wrapper inline so
-          a Popover sitting inside a flex / inline row doesn't break the
-          row's layout. */}
+      {/* `inline-block` so a Popover inside a flex/inline row doesn't break the row's layout. */}
       <div ref={wrapperRef} class={cn('relative inline-block', className)}>
         {children}
       </div>
@@ -69,12 +50,8 @@ export function Popover({ open, onOpenChange, className, children }: PopoverProp
   )
 }
 
-// === PopoverTrigger =====================================================
-//
-// Clones its single element child to inject an onClick that toggles the
-// popover. Any existing onClick on the child is preserved and runs first,
-// so a consumer keeping their own click behaviour (analytics, focus
-// management, etc.) still gets it on top of the toggle.
+// Clones its element child to inject a toggle onClick; any existing onClick is
+// preserved and runs first.
 
 export interface PopoverTriggerProps {
   children: VNode
@@ -86,13 +63,8 @@ export function PopoverTrigger({ children }: PopoverTriggerProps) {
 
   const originalOnClick = (children.props as { onClick?: (e: MouseEvent) => void } | null)?.onClick
 
-  // cloneElement's prop typing is `Partial<P>` which we can't statically
-  // satisfy across arbitrary VNodes — the `as Record<string, unknown>`
-  // cast tells TS "trust me, this prop name is universally accepted on
-  // HTMLElement-shaped children". Function-component children that don't
-  // forward onClick will silently swallow the toggle; for those, prefer
-  // the controlled form (own the `open` signal at the call site and pass
-  // `onClick` directly).
+  // Gotcha: function-component children that don't forward onClick silently
+  // swallow the toggle; for those use the controlled form instead.
   return cloneElement(children, {
     onClick: (e: MouseEvent) => {
       if (typeof originalOnClick === 'function') originalOnClick(e)
@@ -101,13 +73,7 @@ export function PopoverTrigger({ children }: PopoverTriggerProps) {
   } as Record<string, unknown>)
 }
 
-// === PopoverContent =====================================================
-//
-// Fixed-positioned content shown when `open` is true. Coordinates are
-// computed from the trigger's rect so it escapes the Configurator dialog's
-// `overflow` clip instead of being cut off near the dialog's edges.
-// Outside-click (mousedown anywhere outside the Popover wrapper) and Escape
-// both close.
+// Fixed-positioned content shown when `open`. Outside-click (mousedown) and Escape close it.
 
 export type { PopoverAlign, PopoverSide }
 
@@ -117,11 +83,7 @@ export interface PopoverContentProps {
   side?: PopoverSide
   /** How the popover is aligned along the horizontal axis. */
   align?: PopoverAlign
-  /**
-   * Stretch the content to the trigger's measured width — for select-style
-   * popovers (Combobox) whose dropdown lines up under the trigger instead of
-   * sizing to its own content.
-   */
+  /** Stretch content to the trigger's measured width (select-style dropdowns). */
   matchTriggerWidth?: boolean
   className?: string
 }
@@ -135,26 +97,18 @@ export function PopoverContent({
 }: PopoverContentProps) {
   const { open, setOpen, wrapperRef } = usePopover()
   const contentRef = useRef<HTMLDivElement>(null)
-  // Computed fixed-position box. `null` until the first measure pass runs —
-  // during that pass the content renders hidden (it must be in the DOM to be
-  // measured) so it never flashes at the wrong spot.
+  // `null` until the first measure pass; content renders hidden meanwhile
+  // (must be in the DOM to measure) so it never flashes at the wrong spot.
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null)
-  // Trigger-matched width (px) when `matchTriggerWidth` is set, else null
-  // (content sizes itself). Kept apart from `placement` so the pure geometry
-  // stays width-agnostic.
+  // px when `matchTriggerWidth`, else null; separate from `placement` to keep geometry width-agnostic.
   const [width, setWidth] = useState<number | null>(null)
 
-  // mousedown (not click) so a gesture that ends in a drag-select doesn't
-  // swallow the close — matches the Combobox close behaviour for
-  // consistency across the dialog.
+  // mousedown (not click) so a drag-select gesture doesn't swallow the close.
   useEffect(() => {
     if (!open) return
     const onDoc = (e: MouseEvent) => {
-      // composedPath() pierces shadow-DOM boundaries; e.target alone is
-      // retargeted to the shadow host on a document-level listener and
-      // would incorrectly fire "outside" for clicks inside the popover.
-      // The content is `fixed` but still a DOM descendant of the wrapper,
-      // so it stays "inside" for this test.
+      // composedPath() pierces shadow DOM; e.target alone is retargeted to the
+      // shadow host on a document listener and would misfire "outside".
       const wrapper = wrapperRef.current
       if (wrapper && !e.composedPath().includes(wrapper)) {
         setOpen(false)
@@ -171,12 +125,9 @@ export function PopoverContent({
     }
   }, [open])
 
-  // Measure the trigger + content and place the fixed box. While open it
-  // re-runs on scroll (capture phase, so the dialog's INNER panel scroll
-  // counts too — not just window scroll), window resize, and content resize
-  // (async data loading in, switching emote packages) so the popover stays
-  // glued to its trigger. useLayoutEffect so the first placement lands
-  // before paint.
+  // Measure and place the fixed box, re-running on scroll (capture phase so the
+  // dialog's inner panel scroll counts too), resize, and content resize.
+  // useLayoutEffect so the first placement lands before paint.
   useLayoutEffect(() => {
     if (!open) {
       setPlacement(null)
@@ -186,14 +137,10 @@ export function PopoverContent({
       const wrapper = wrapperRef.current
       const content = contentRef.current
       if (!wrapper || !content) return
-      // The wrapper is `inline-block` around the trigger and the fixed
-      // content is out of flow, so the wrapper's rect IS the trigger's rect.
+      // Wrapper is inline-block and content is out of flow, so its rect IS the trigger's rect.
       const t = wrapper.getBoundingClientRect()
-      // offsetWidth / scrollHeight report the content's NATURAL size,
-      // independent of the maxHeight cap applied below — so re-measuring
-      // never feeds the clamped height back into the computation.
-      // When matching the trigger width, feed that width in as the content
-      // width so horizontal alignment/clamping reflect the width we'll apply.
+      // offsetWidth/scrollHeight report NATURAL size, so the maxHeight cap
+      // below never feeds back into re-measuring.
       const contentWidth = matchTriggerWidth ? t.width : content.offsetWidth
       const next = computePopoverPosition(
         { top: t.top, left: t.left, width: t.width, height: t.height },
@@ -238,10 +185,8 @@ export function PopoverContent({
       ref={contentRef}
       role='dialog'
       class={cn(
-        // Fixed (not absolute) so the dialog's overflow can't clip us; the
-        // positioner keeps us inside the viewport. overflow-y-auto lets a
-        // popover taller than the available space scroll rather than
-        // overflow the screen; overflow-x stays hidden for the rounded edge.
+        // Fixed so the dialog's overflow can't clip us; overflow-y-auto scrolls
+        // tall popovers, overflow-x hidden preserves the rounded edge.
         'fixed z-50',
         'rounded ring ring-ga6/30',
         'bg-bg1',

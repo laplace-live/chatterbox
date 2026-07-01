@@ -143,9 +143,7 @@ function MemeItem({
                   title={`按「${tag.name}」筛选`}
                   variant='ghost'
                   className='px-1! py-0! text-sm text-white'
-                  // Tag color is data-driven (per-meme) so it can't be a
-                  // static class; UnoCSS would have to safelist every
-                  // possible value otherwise.
+                  // Data-driven per-meme color can't be a static class (UnoCSS can't safelist every value).
                   style={{ background: bgColor }}
                 >
                   {tag.emoji ?? ''}
@@ -175,7 +173,7 @@ function MemeItem({
   )
 }
 
-const MEME_RELOAD_INTERVAL = 30_000 // 30 seconds
+const MEME_RELOAD_INTERVAL = 30_000
 
 export function MemesList() {
   const memes = useSignal<LaplaceInternal.HTTPS.Workers.MemeWithUser[]>([])
@@ -201,8 +199,7 @@ export function MemesList() {
   }
 
   const loadMemes = async ({ silent = false }: { silent?: boolean } = {}) => {
-    // Hard gate: never hit the network while the feature is off, even if a
-    // caller (e.g. a stale timer) sneaks past the effect-level guard.
+    // Hard gate against stale timers that slip past the effect-level guard.
     if (!memesEnabled.value) return
     if (!silent) loading.value = true
     isError.value = false
@@ -255,8 +252,7 @@ export function MemesList() {
     }
   }, [memes.value])
 
-  // Optimistically re-sort after copy/send so the user sees the updated order
-  // immediately instead of waiting for the next 30s polling interval.
+  // Optimistically re-sort after copy/send instead of waiting for the next poll.
   const updateCount = (id: number, count: number) => {
     capturePositions()
     const now = new Date().toISOString()
@@ -270,9 +266,7 @@ export function MemesList() {
   }
 
   useEffect(() => {
-    // Toggling the feature off clears any already-loaded list and skips both
-    // the initial fetch and the polling timer, so disabling it stops all
-    // network activity immediately (not just on the next reload).
+    // Disabling clears the list and skips fetch + timer so network activity stops immediately.
     if (!memesEnabled.value) {
       memes.value = []
       status.value = '已禁用'
@@ -349,12 +343,7 @@ export function MemesList() {
           )}
           <div
             ref={containerRef}
-            // Negative horizontal margin extends the scroll container to the
-            // dialog's outer edge while the inner padding keeps content
-            // visually aligned with the rest of the panel. Fixed max-height
-            // (rather than flex-1) keeps the meme list from monopolizing the
-            // 发送 tab's now-scrollable viewport when other accordions are
-            // expanded.
+            // Negative margin + inner padding bleeds the scroll area to the dialog edge; fixed max-height (not flex-1) stops it hogging the scrollable tab.
             class='-mx-2.5 max-h-60 overflow-y-auto px-2.5'
           >
             {memes.value

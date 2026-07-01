@@ -1,25 +1,8 @@
-/**
- * OpenAI-compatible LLM client helpers.
- *
- * Only the model-listing endpoint is implemented right now; the rest of the
- * integration (chat completions, etc.) lands later. Kept in its own module
- * so the future call sites have a single place to reach for shared
- * URL-normalisation and error handling.
- */
+/** OpenAI-compatible LLM client helpers. */
 
 import { GITHUB_URL, PROJECT_NAME } from './const'
 
-/**
- * Per-token pricing as returned by the OpenAI-compatible /models endpoint.
- *
- * Values are kept as raw strings (the way OpenRouter and friends emit them
- * — e.g. `"0.0000025"` for prompt tokens) rather than coerced to numbers
- * here, so the consumer can decide whether to display, format, or compare.
- *
- * Most providers don't expose pricing at all; the field is undefined in
- * that case. Vendors using OpenRouter-shaped responses (`pricing.prompt`,
- * `pricing.completion`) populate them.
- */
+/** Per-token pricing from the /models endpoint; raw strings, not coerced. */
 export interface LlmModelPricing {
   /** USD per prompt (input) token. */
   prompt?: string
@@ -30,35 +13,21 @@ export interface LlmModelPricing {
 export interface LlmModel {
   /** Model id used in chat-completions requests. */
   id: string
-  /**
-   * Friendly display name when the API provides one (OpenRouter does;
-   * OpenAI doesn't). Settings UI should fall back to `id` when missing.
-   */
+  /** Friendly display name when provided; UI falls back to `id` when missing. */
   name?: string
   /** Per-token pricing when the API exposes it. */
   pricing?: LlmModelPricing
 }
 
-/**
- * Format an LLM provider's per-token pricing as a compact USD-per-million
- * string. OpenRouter returns raw decimals like `"0.0000025"` for $2.50 /
- * 1M tokens, so we multiply through to land on the more familiar M scale
- * the industry quotes pricing in.
- *
- * Trailing zeros are stripped via `parseFloat(toFixed(4))` so both
- * `2.50000` → `2.5` and `0.0001000` → `0.0001` render cleanly. Returns
- * `null` when there's nothing usable to show — caller decides whether to
- * render anything.
- */
+/** Format per-token pricing as a compact USD-per-1M string; null when nothing usable. */
 export function formatLlmPricing(p: LlmModelPricing | undefined): string | null {
   if (!p) return null
   const prompt = p.prompt !== undefined ? Number(p.prompt) : null
   const completion = p.completion !== undefined ? Number(p.completion) : null
-  // Coerce-failures (NaN) and entirely-absent are equivalent for display.
   const validPrompt = prompt !== null && Number.isFinite(prompt)
   const validCompletion = completion !== null && Number.isFinite(completion)
   if (!validPrompt && !validCompletion) return null
-  // Most providers signal "free" with all zeros; flatten the noise.
+  // All-zero pricing means free.
   if ((prompt ?? 0) === 0 && (completion ?? 0) === 0) return '免费'
   const fmt = (n: number) => `$${parseFloat((n * 1_000_000).toFixed(4))}`
   const parts: string[] = []
@@ -67,22 +36,12 @@ export function formatLlmPricing(p: LlmModelPricing | undefined): string | null 
   return `${parts.join(' · ')} / 1M tokens`
 }
 
-/**
- * Trim trailing slashes off the user-typed base so we can append `/models`
- * etc. without ending up with `//models`. We do *not* auto-strip or auto-add
- * `/v1`: the typed value is the source of truth (some self-hosted backends
- * mount the API at the bare root, others at `/v1`, and we shouldn't
- * second-guess either).
- */
+/** Trim trailing slashes off the typed base; `/v1` is deliberately not auto-added or stripped. */
 function normalizeBase(base: string): string {
   return base.trim().replace(/\/+$/, '')
 }
 
-/**
- * Pull a string field off an arbitrary record without throwing on missing
- * / wrong-typed values. Used for the defensive parser below — providers
- * vary in shape and we only want fields we can trust.
- */
+/** Read a string field off an arbitrary record; undefined when missing or wrong-typed. */
 function readString(obj: unknown, key: string): string | undefined {
   if (!obj || typeof obj !== 'object') return undefined
   const v = (obj as Record<string, unknown>)[key]
@@ -99,19 +58,7 @@ function parsePricing(raw: unknown): LlmModelPricing | undefined {
   return out
 }
 
-/**
- * GET `${base}/models` against an OpenAI-compatible endpoint and return the
- * sorted list of models.
- *
- * Errors surface as thrown `Error` instances with user-readable messages so
- * the caller can pipe them straight into a status line. We deliberately
- * avoid swallowing any error class — the caller decides how loud to be.
- *
- * Parsing is intentionally permissive: any entry with a `string` `id` is
- * accepted, with `name` / `pricing` extracted only when the provider
- * supplies them in the canonical OpenRouter shape. Self-hosted backends
- * that return just `{ id }` work the same as before.
- */
+/** GET `${base}/models` and return the sorted model list; throws Error with user-readable message. */
 export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmModel[]> {
   const trimmedBase = normalizeBase(base)
   if (!trimmedBase) throw new Error('请填写 API 地址')
@@ -138,8 +85,7 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
       },
     })
   } catch (err) {
-    // Most commonly hit for CORS rejections and DNS / network failures —
-    // both surface here as a generic TypeError from `fetch`.
+    // CORS / DNS / network failures all surface as a generic TypeError from `fetch`.
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`网络请求失败：${msg}`)
   }
@@ -163,9 +109,7 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
     throw new Error(`返回内容不是合法 JSON：${msg}`)
   }
 
-  // OpenAI shape: { object: "list", data: [{ id, ... }] }. We accept any
-  // object whose `data` is an array of `{ id: string }` so the helper
-  // works with OpenRouter / Together / vLLM / Ollama / LM Studio etc.
+  // OpenAI shape: { object: "list", data: [{ id, ... }] }.
   if (!json || typeof json !== 'object' || !Array.isArray((json as { data?: unknown }).data)) {
     throw new Error('返回数据缺少 data 数组')
   }
@@ -186,47 +130,26 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
   }
   if (models.length === 0) throw new Error('返回模型列表为空')
 
-  // Stable lexicographic order by id so the dropdown doesn't reshuffle
-  // between refreshes (some providers return creation-ordered lists,
-  // which surfaces freshly added models at unpredictable positions).
+  // Stable order by id so the dropdown doesn't reshuffle between refreshes.
   models.sort((a, b) => a.id.localeCompare(b.id))
   return models
 }
 
-/**
- * One message in an OpenAI-style chat-completion conversation. We only
- * use `role` + `content` — `name`, `tool_calls`, etc. are unused by the
- * polish use case and would just be noise in the wire payload.
- */
+/** One OpenAI-style chat message; only `role` + `content` are used. */
 export interface LlmChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
 
-/**
- * OpenAI-style structured-output directive.
- *
- * Only the `json_schema` form is modelled here — the older `json_object`
- * form is uninteresting because providers that accept it also accept
- * `json_schema`, which gives us guaranteed shape on top of "must be JSON".
- *
- * Passed through verbatim to the wire body. Vendors that don't recognise
- * `response_format` (older self-hosted servers, some routers) silently
- * ignore the field; callers should still instruct the model to emit JSON
- * via the system prompt so the parse path doesn't depend on the directive
- * being honoured.
- */
+/** OpenAI-style structured-output directive; unrecognizing vendors silently ignore it, so still instruct JSON via the system prompt. */
 export interface ChatCompletionResponseFormat {
   type: 'json_schema'
   json_schema: {
-    /** Human-readable identifier for the schema. Required by OpenAI's
-     *  structured-outputs spec; ignored by tolerant implementations. */
+    /** Schema identifier; required by OpenAI, ignored by tolerant implementations. */
     name: string
-    /** Whether unknown properties are rejected. OpenAI defaults to
-     *  false; we default to true at call sites to fail loudly. */
+    /** Reject unknown properties; call sites default to true to fail loudly. */
     strict?: boolean
-    /** JSON Schema body (subset OpenAI accepts: object/array/string/
-     *  number/boolean/null, with `properties`, `required`, etc.). */
+    /** JSON Schema body (the subset OpenAI accepts). */
     schema: unknown
   }
 }
@@ -236,33 +159,21 @@ export interface ChatCompletionOptions {
   apiKey: string
   model: string
   messages: LlmChatMessage[]
-  /** Sampling temperature. Defaults to 0.7 — same as OpenAI's web UI. */
+  /** Sampling temperature; defaults to 0.7. */
   temperature?: number
-  /** Cap on response length. Most providers honour this; unset means
-   *  whatever the model's default is. */
+  /** Cap on response length; unset means the model's default. */
   maxTokens?: number
-  /** Optional structured-output directive. Forwarded to the wire body
-   *  as `response_format`. Vendors that ignore it still receive JSON
-   *  via the system prompt; callers should still parse defensively. */
+  /** Structured-output directive forwarded as `response_format`; parse defensively regardless. */
   responseFormat?: ChatCompletionResponseFormat
-  /** Optional abort signal so callers can cancel in-flight requests
-   *  (e.g. when the user navigates away mid-polish). */
+  /** Abort signal to cancel in-flight requests. */
   signal?: AbortSignal
 }
 
 /**
- * POST `${base}/chat/completions` with an OpenAI-shaped body and return
- * the assistant's `content` string from the first choice.
+ * POST `${base}/chat/completions` and return the first choice's `content`.
  *
- * Streaming is intentionally NOT enabled — the polish UI wants the full
- * text in one shot so it can apply post-processing (trim, dequote) and
- * decide what to do with it. If we add a streaming chat panel later,
- * this helper grows a sibling rather than changing in place.
- *
- * Errors surface as thrown `Error` instances with user-readable Chinese
- * messages so the caller can pipe them straight into a status line /
- * `appendLog`. AbortError is propagated untouched so cancellation paths
- * don't get re-classified as network failures.
+ * Streaming is intentionally not enabled (full text in one shot). Throws Error
+ * with user-readable messages; AbortError is propagated untouched.
  */
 export async function chatCompletion(opts: ChatCompletionOptions): Promise<string> {
   const trimmedBase = normalizeBase(opts.base)
@@ -278,9 +189,7 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
     throw new Error('API 地址格式无效')
   }
 
-  // Build the wire body. `stream: false` is explicit to defeat any
-  // proxy / vendor that defaults to streaming when the client doesn't
-  // say otherwise — we don't parse SSE in this code path.
+  // `stream: false` is explicit to defeat proxies/vendors that default to streaming.
   const body: Record<string, unknown> = {
     model: opts.model.trim(),
     messages: opts.messages,
@@ -307,8 +216,7 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
       signal: opts.signal,
     })
   } catch (err) {
-    // AbortError is a DOMException in browsers; let it propagate so
-    // callers can distinguish "user cancelled" from "network died".
+    // AbortError is a DOMException; let it propagate so callers see "cancelled" not "network died".
     if (err instanceof DOMException && err.name === 'AbortError') throw err
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`网络请求失败：${msg}`)
@@ -333,10 +241,7 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
     throw new Error(`返回内容不是合法 JSON：${msg}`)
   }
 
-  // OpenAI shape: { choices: [{ message: { role, content }, finish_reason }] }.
-  // Vendors sometimes return an empty choices array (e.g. when content
-  // is filtered) — treat that as an error rather than silently returning
-  // empty so the user sees something specific.
+  // OpenAI shape: { choices: [{ message: { role, content } }] }; empty choices (e.g. filtered) is an error.
   const choices = (json as { choices?: unknown }).choices
   if (!Array.isArray(choices) || choices.length === 0) {
     throw new Error('返回数据缺少 choices 数组')

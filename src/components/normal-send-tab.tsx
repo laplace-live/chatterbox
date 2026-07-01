@@ -33,32 +33,16 @@ import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
 
 export function NormalSendTab() {
-  // In-flight indicator for the polish call. Drives both the AI button
-  // label ("润色中…") and the textarea's disabled state, since we don't
-  // want the user mutating `fasongText` while a polish is racing to
-  // overwrite it on completion.
+  // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
   const polishing = useSignal(false)
 
   const llmGap = describeLlmGap('normalSend')
   const llmReady = llmGap === null
 
-  // Inline prompt picker visibility. We surface the picker as soon as
-  // the API itself is wired up (base + key + model) and there's at
-  // least one normalSend prompt to pick from — even when the
-  // currently-active draft is empty (which makes `llmReady` false).
-  // Showing it in that case is the whole point: it lets the user
-  // recover by switching to a non-empty draft without round-tripping
-  // through Settings. Index clamping for out-of-range persisted values
-  // is handled inside `PromptPicker`.
+  // Shown even when the active draft is empty (llmReady false), so the user can switch to a non-empty draft.
   const showPromptPicker = isLlmApiConfigured() && llmPromptsNormalSend.value.length > 0
 
-  /**
-   * Run the LLM polish on whatever's currently in the textarea, replace
-   * the textarea content with the polished result, and return whether
-   * we succeeded. Shared between the AI button (manual) and the YOLO
-   * Enter handler (auto) so both paths apply identical validation /
-   * cleanup / logging.
-   */
+  /** Polish the textarea content in place; returns whether it succeeded. */
   const polishCurrentInput = async (): Promise<boolean> => {
     if (polishing.value) return false
     const original = fasongText.value.trim()
@@ -73,11 +57,7 @@ export function NormalSendTab() {
         appendLog('⚠️ AI 返回为空，已保留原文')
         return false
       }
-      // Mutate `fasongText` rather than passing through a temporary so
-      // the textarea visibly shows the polished result — both for the
-      // manual AI flow (user reviews + sends) AND the YOLO flow (the
-      // user briefly sees what was polished before sendMessage clears
-      // the field).
+      // Write to the signal so the textarea visibly shows the polished result before send.
       fasongText.value = polished
       appendLog(`✨ AI 润色：${original} → ${polished}`)
       return true
@@ -103,9 +83,7 @@ export function NormalSendTab() {
       return
     }
 
-    // Cross-room emote ID (e.g. `room_1713546334_108382` pasted from another
-    // streamer's room). B站 would echo the raw ID back into chat as plain
-    // text, so reject before sending.
+    // Cross-room emote ID (e.g. `room_..._...`): B站 echoes it back as plain text, so reject.
     if (isUnavailableEmoticon(originalMessage)) {
       appendLog(formatUnavailableEmoticonReject(originalMessage, '手动表情'))
       fasongText.value = ''
@@ -125,10 +103,7 @@ export function NormalSendTab() {
         return
       }
 
-      // Emotes are never wrapped — 【】 around an emote ID would break the
-      // emote. For plain text, reserve the wrapper graphemes in the split
-      // length so each wrapped segment still fits maxLength, then wrap each
-      // resulting segment in 【】.
+      // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper graphemes so each segment still fits maxLength.
       const wrap = !isEmote && normalSendWrapBrackets.value
       const segments = isEmote
         ? [processedMessage]
@@ -153,14 +128,7 @@ export function NormalSendTab() {
     }
   }
 
-  /**
-   * Submit handler for the textarea's Enter key. In YOLO mode this
-   * polishes BEFORE handing off to `sendMessage`; otherwise it forwards
-   * straight through. YOLO refuses to send when the LLM isn't usable
-   * (rather than silently falling back to raw send) — the user
-   * explicitly opted into "polish before send", and a silent skip
-   * would surprise them.
-   */
+  /** Enter-key handler; in YOLO mode polishes first and refuses to send if the LLM is unusable. */
   const handleSubmit = async () => {
     if (normalSendYolo.value) {
       if (!llmReady) {
@@ -185,10 +153,7 @@ export function NormalSendTab() {
         <div class='relative my-2'>
           <Textarea
             value={fasongText.value}
-            // Locked while a polish is racing — without this the user
-            // could keep typing past the moment we apply the polished
-            // result, and our `fasongText.value = polished` write would
-            // clobber their fresh keystrokes.
+            // Locked during polish so the completing write can't clobber fresh keystrokes.
             disabled={polishing.value}
             onInput={e => {
               fasongText.value = e.currentTarget.value
@@ -209,14 +174,6 @@ export function NormalSendTab() {
           <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>{fasongText.value.length}</div>
         </div>
 
-        {/* Action row sits directly under the textarea. The emote picker
-            leads because it's a separate concern from the AI cluster
-            (LLM polish / YOLO toggle / prompt picker) — putting it
-            first in reading order makes the "insert an emote" path
-            equally discoverable. The disabled-when-not-ready states on
-            the AI buttons keep the UI honest: users can SEE the buttons
-            (good for discovery) but can't trigger them until the LLM
-            is wired up. */}
         <div class='my-2 flex items-center gap-1'>
           <EmoteSelector />
           <Button
@@ -228,10 +185,6 @@ export function NormalSendTab() {
             {polishing.value ? '润色中…' : 'AI 润色'}
           </Button>
           <Button
-            // Variant flip is the primary "is this on?" signal —
-            // brand-coloured fill when active, neutral outline when
-            // off. Same affordance pattern as the 独轮车 / 自动融入
-            // toggle buttons.
             variant={normalSendYolo.value ? 'default' : 'outline'}
             size='sm'
             disabled={!llmReady}
@@ -242,14 +195,6 @@ export function NormalSendTab() {
             YOLO
           </Button>
           {showPromptPicker && (
-            // Inline switcher for the active 常规发送 prompt. The
-            // PromptManager in Settings is still the place to author
-            // / edit / reorder the list; this picker is purely for
-            // hot-swapping which one feeds the AI 润色 / YOLO calls
-            // without leaving the send tab. Smaller grapheme cap than
-            // the Settings picker because the dropdown sits inline
-            // with two buttons and we want the row to stay readable
-            // in the narrowest dialog width.
             <PromptPicker
               className='min-w-10 truncate'
               title='切换 AI 润色 / YOLO 使用的常规发送提示词'

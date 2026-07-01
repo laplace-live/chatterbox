@@ -11,13 +11,7 @@ export const maxLogLines = gmSignal('maxLogLines', 1000)
 /** Rolling log buffer surfaced by the LogPanel. */
 export const logLines = signal<string[]>([])
 
-/**
- * Appends an entry to the shared log.
- *
- * - `appendLog('text')` writes a free-form message.
- * - `appendLog(result, label, display)` writes a formatted send result in the
- *   standard `✅/❌ label: text，原因：...` style.
- */
+/** Appends an entry to the shared log; a send result renders as `✅/❌ label: text，原因：...`. */
 export function appendLog(message: string): void
 export function appendLog(result: SendDanmakuResult, label: string, display: string): void
 export function appendLog(arg: string | SendDanmakuResult, label?: string, display?: string): void {

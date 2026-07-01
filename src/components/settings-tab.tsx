@@ -76,10 +76,7 @@ import { Separator } from './ui/separator'
 
 const SYNC_INTERVAL = 10 * 60 * 1000
 
-// Visual rhythm for sub-sections inside merged accordions (cloud / global /
-// room rules under 替换规则, etc.). Visible dividers between siblings
-// are rendered as <Separator /> elements between the blocks, not as a
-// trailing border on each block, so the rule is centralised in one place.
+// Dividers between siblings are <Separator /> elements, not trailing borders.
 const SUB_SECTION_CLASS = 'my-2 first:mt-0 last:pb-0'
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
@@ -87,21 +84,15 @@ const HINT_CLASS = 'my-2 text-ga6'
 const EMPTY_CLASS = 'text-ga4'
 const LINK_CLASS = 'text-link no-underline'
 
-// AccordionItem wrapper styling: a small bottom margin separates stacked
-// triggers when collapsed; the content side gets a bit of vertical padding
-// so opened bodies don't kiss the trigger above or the next trigger below.
 const ACCORDION_ITEM_CLASS = 'mb-1'
 const ACCORDION_CONTENT_CLASS = 'pt-2 pb-2'
 
-// Each rule / blacklist row shares the same layout. Visible dividers
-// between rows are rendered as <Separator /> siblings between the rows
-// (see the .map() call sites) instead of a trailing border on the row.
+// Dividers between rows are <Separator /> siblings, not trailing borders.
 const LIST_ROW_CLASS = 'flex items-center gap-2 py-[.2em]'
 const LIST_ROW_TEXT = 'flex-1 break-all font-mono'
 const ADD_ROW_CLASS = 'flex gap-1 items-center flex-wrap'
 const FILL_INPUT_CLASS = 'flex-1 min-w-[80px]'
 
-// Used as the destructive-action color on `ghost` Buttons in lists.
 const DELETE_BTN_CLASS = 'text-[red]'
 
 interface RemoteKeywords {
@@ -122,15 +113,8 @@ interface AutoSeekMetricsProps {
 }
 
 /**
- * Live readout for the auto-seek section. Re-renders whenever any of
- * its props (all signal-backed) changes — no `useEffect`/setInterval
- * needed, because the seeker module publishes the metrics through
- * signals already and Preact tracks the dependency.
- *
- * Colour code mirrors the seeker's ladder semantics:
- *   - red   = below slowdown threshold (about to stall)
- *   - amber = significantly above target (we're catching up)
- *   - green = within ~0.5s of target (the "comfortable" zone)
+ * Live readout for the auto-seek section; re-renders on signal-backed props.
+ * Colour: red = below slowdown threshold, amber = above target, green = near target.
  */
 function AutoSeekMetrics(props: AutoSeekMetricsProps) {
   const { bufferLen, rate, threshold } = props
@@ -173,18 +157,9 @@ export function SettingsTab() {
 
   const messageBlacklistInput = useSignal('')
 
-  // Local string mirror of `autoSeekBufferThreshold` so the user can type
-  // intermediate values like "1." (which `parseFloat` collapses to `1`)
-  // without the controlled input rewriting the field mid-keystroke and
-  // eating the dot. We write back to the signal only when the buffer
-  // parses to a complete in-range number; `onBlur` normalises whatever
-  // is left in the field and re-syncs from the canonical value.
+  // String mirror so typing "1." isn't collapsed to `1` mid-keystroke, eating the dot.
   const autoSeekThresholdDraft = useSignal(autoSeekBufferThreshold.value.toString())
 
-  // LLM section: visibility toggle on the password field, plus a tiny
-  // status state machine for the "fetch models" call (idle / loading /
-  // success / error). Status is colour-coded the same way the remote
-  // keyword sync line is, so the user gets the same visual feedback.
   const llmKeyVisible = useSignal(false)
   const llmFetching = useSignal(false)
   const llmFetchStatus = useSignal('')
@@ -198,11 +173,7 @@ export function SettingsTab() {
     try {
       const ids = await fetchLlmModels(llmApiBase.value, llmApiKey.value)
       llmModels.value = ids
-      // If the previously selected model isn't in the freshly fetched
-      // list (renamed / removed), keep the old id around so the user
-      // can SEE that it's stale (rendered via the same "saved but
-      // missing" sentinel option as Soniox uses for unplugged mics).
-      // The user can switch away themselves; we don't auto-clobber.
+      // Keep a now-missing selected id (don't auto-clobber); rendered as a stale sentinel.
       llmFetchStatus.value = `已获取 ${ids.length} 个模型`
       llmFetchStatusColor.value = '#36a185'
     } catch (err) {
@@ -529,10 +500,7 @@ export function SettingsTab() {
   useEffect(() => {
     if (didInit.current) return
     didInit.current = true
-    // Skip the initial fetch and pause the periodic one while the cloud layer
-    // is off — no point hitting the network for rules we won't apply. The
-    // interval re-checks the signal each tick, so re-enabling resumes it
-    // without remounting.
+    // Skip fetches while the cloud layer is off; the interval re-checks each tick.
     if (remoteRulesEnabled.value) {
       const ls = remoteKeywordsLastSync.value
       if (!ls || Date.now() - ls > SYNC_INTERVAL) {
@@ -549,9 +517,7 @@ export function SettingsTab() {
     return () => clearInterval(timer)
   }, [])
 
-  // cachedRoomId is resolved lazily by ensureRoomId(), so it may still be null
-  // when this component first mounts. Sync it to the room-rule editor once
-  // available, but only if the user hasn't already picked a room manually.
+  // cachedRoomId resolves lazily (may be null at mount); adopt it unless the user picked one.
   useEffect(() => {
     if (editingRoomId.value) return
     const rid = cachedRoomId.value
@@ -586,33 +552,25 @@ export function SettingsTab() {
     appendLog('🚲 已清空融入黑名单')
   }
 
-  // Sort lexicographically (zh-Hans-CN locale) so the list is stable across
-  // adds — the underlying Record key order is insertion-defined and would
-  // otherwise reshuffle every time the user added an entry.
+  // Sort so the list stays stable across adds (Record key order is insertion-defined).
   const messageBlacklistEntries = Object.keys(autoBlendMessageBlacklist.value).sort((a, b) =>
     a.localeCompare(b, 'zh-Hans-CN')
   )
 
   const addToMessageBlacklist = () => {
-    // Match the same trim semantics auto-blend uses to key counters; an
-    // entry added with a trailing space would otherwise never match an
-    // incoming danmaku.
+    // Trim to match auto-blend's counter keying, else a trailing space never matches.
     const text = messageBlacklistInput.value.trim()
     if (!text) {
       appendLog('⚠️ 消息黑名单内容不能为空')
       return
     }
-    // A `/pattern/flags` entry is a regex; reject a malformed pattern up front
-    // so it never reaches the matcher (which would otherwise silently skip it,
-    // leaving the user thinking it's active). Literals always validate.
+    // Reject a malformed regex up front; the matcher would otherwise silently skip it.
     const validation = validateRegexEntry(text)
     if (!validation.ok) {
       appendLog(`⚠️ 正则表达式无效：${validation.error}`)
       return
     }
-    // `Object.hasOwn` (not `in`) — see auto-blend.ts for the prototype-chain
-    // gotcha. Without this, typing e.g. "toString" would always claim the
-    // entry already exists and silently swallow the input.
+    // `Object.hasOwn`, not `in`: else keys like "toString" falsely report as existing.
     if (Object.hasOwn(autoBlendMessageBlacklist.value, text)) {
       appendLog(`🚲 已在融入消息黑名单：${text}`)
       messageBlacklistInput.value = ''
@@ -636,13 +594,8 @@ export function SettingsTab() {
     appendLog('🚲 已清空融入消息黑名单')
   }
 
-  // Hidden file input that the import button drives via .click(). We keep
-  // it mounted (rather than constructing one ad-hoc) so the picker stays
-  // anchored inside the dialog and we can reset .value after each pick.
   const importFileInputRef = useRef<HTMLInputElement>(null)
-  // Separate input for the notes-only import. Sharing one input across
-  // both flows would force us to multiplex on the file content shape;
-  // a second hidden input keeps each handler single-purpose.
+  // Separate input keeps the notes-only import handler single-purpose.
   const importNotesInputRef = useRef<HTMLInputElement>(null)
 
   const handleExport = () => {
@@ -665,16 +618,13 @@ export function SettingsTab() {
       const parsed = parseSettingsFile(text)
       const count = Object.keys(parsed.data).length
       const exportedAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('zh-CN') : '未知时间'
-      // Confirm AFTER parsing so we can show real numbers, and so an
-      // unparsable file fails fast without nagging the user.
+      // Confirm after parsing: show real counts and let an unparsable file fail fast.
       const ok = confirm(
         `即将导入 ${count} 项设置（导出于 ${exportedAt}）。\n\n此操作将覆盖当前所有设置且无法撤销，导入完成后页面会自动刷新，是否继续？`
       )
       if (!ok) return
       applySettingsFile(parsed)
-      // Signals from gmSignal cache their initial value at module load,
-      // so reload to pick up the freshly written GM values. Reload before
-      // any signal write-back can clobber the imported data.
+      // gmSignal caches initial values at module load; reload before any write-back clobbers the import.
       location.reload()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -683,13 +633,7 @@ export function SettingsTab() {
     }
   }
 
-  // === User notes import / export ======================================
-  //
-  // Notes round-trip through their own JSON file so a viewer can share a
-  // curated set without leaking unrelated settings (LLM keys, etc.). The
-  // export emits a fresh download immediately; import opens a confirm
-  // with two modes (merge vs replace) so the destructive path is opt-in.
-
+  // Notes use their own JSON file so sharing doesn't leak other settings (LLM keys, etc.).
   const handleNotesExport = () => {
     try {
       const count = exportUserNotes()
@@ -715,21 +659,14 @@ export function SettingsTab() {
       const count = Object.keys(parsed.notes).length
       const exportedAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('zh-CN') : '未知时间'
       const existing = Object.keys(userNotes.value).length
-      // Three-way prompt: 合并 keeps the user's local notes and applies
-      // the file on top using newest-`updatedAt` precedence; 覆盖 wipes
-      // local notes first. `confirm` only has two buttons, so we use a
-      // staged prompt — first confirm import, then pick mode.
+      // `confirm` has only two buttons, so stage it: first confirm import, then pick mode.
       const ok = confirm(
         `即将导入备注文件\n\n文件包含 ${count} 条备注（导出于 ${exportedAt}），本地现有 ${existing} 条。\n\n点击「确定」继续选择导入方式。`
       )
       if (!ok) return
       let mode: UserNotesImportMode = 'merge'
       if (existing > 0) {
-        // Two staged confirms because the browser `confirm` API only
-        // exposes two buttons. The user already opted into importing;
-        // this second prompt only picks the additive vs destructive
-        // mode. 确定 maps to the safe additive merge (the default
-        // recommendation); 取消 escalates to the destructive overwrite.
+        // 确定 = additive merge (safe default), 取消 = destructive overwrite.
         const merge = confirm(
           `请选择导入方式：\n\n确定 = 合并（同 UID 取较新版本，本地独有备注会保留）\n取消 = 覆盖（删除现有 ${existing} 条本地备注，仅保留文件中的备注）`
         )
@@ -750,9 +687,7 @@ export function SettingsTab() {
 
   return (
     <Accordion>
-      {/* 功能切换: top-level on/off switches for the script's features. Pinned
-          to the top because these are the most "global" controls — flipping
-          one changes which other sections of the UI become relevant. */}
+      {/* 功能切换: top-level feature switches; pinned to top as the most global controls. */}
       <AccordionItem
         open={settingsFeaturesOpen.value}
         onOpenChange={v => {
@@ -863,8 +798,7 @@ export function SettingsTab() {
         </AccordionContent>
       </AccordionItem>
 
-      {/* 替换规则: cloud + local global + per-room rules grouped so the user
-          can see the layered fallback (cloud < global < room) in one place. */}
+      {/* 替换规则: grouped to show the layered fallback (cloud < global < room). */}
       <AccordionItem
         open={settingsRulesOpen.value}
         onOpenChange={v => {
@@ -893,10 +827,7 @@ export function SettingsTab() {
               onInput={e => {
                 const enabled = e.currentTarget.checked
                 remoteRulesEnabled.value = enabled
-                // Rebuild the map right away so the change takes effect without
-                // a reload. When re-enabling after the auto-sync was paused,
-                // pull fresh rules if the cache is missing or stale (syncRemote
-                // rebuilds the map + status itself).
+                // Rebuild now (no reload); on re-enable, pull fresh rules if the cache is stale.
                 if (enabled) {
                   const ls = remoteKeywordsLastSync.value
                   if (!ls || Date.now() - ls > SYNC_INTERVAL) {
@@ -924,9 +855,6 @@ export function SettingsTab() {
               <Button variant='outline' size='sm' disabled={testingRemote.value} onClick={() => void testRemote()}>
                 {testingRemote.value ? '测试中…' : '测试云端词库'}
               </Button>
-              {/* Status text colour cycles through neutral/success/error driven by
-                  the sync state machine; keeping it as inline color avoids
-                  enumerating each state as a class. */}
               <span style={{ color: syncStatusColor.value }}>{syncStatus.value}</span>
             </div>
           </div>
@@ -1112,8 +1040,7 @@ export function SettingsTab() {
         </AccordionContent>
       </AccordionItem>
 
-      {/* 自动融入黑名单: user-level + message-level filters, both for the
-          auto-blend feature, kept together so they're discoverable as a pair. */}
+      {/* 自动融入黑名单: user-level + message-level auto-blend filters. */}
       <AccordionItem
         open={settingsBlacklistOpen.value}
         onOpenChange={v => {
@@ -1224,8 +1151,7 @@ export function SettingsTab() {
         </AccordionContent>
       </AccordionItem>
 
-      {/* LLM: API / model config + per-feature prompts grouped so the user
-          can see the full LLM stack in one place. */}
+      {/* LLM: API / model config + per-feature prompts. */}
       <AccordionItem
         open={settingsLlmOpen.value}
         onOpenChange={v => {
@@ -1257,9 +1183,6 @@ export function SettingsTab() {
               <Label htmlFor='llmApiKey'>API Key</Label>
               <Input
                 id='llmApiKey'
-                // Visibility toggle mirrors Soniox: password by default so the
-                // key isn't shoulder-surfable, but reveal-on-demand keeps it
-                // editable / verifiable without copy-paste gymnastics.
                 type={llmKeyVisible.value ? 'text' : 'password'}
                 placeholder='sk-...'
                 className='min-w-37.5 flex-1'
@@ -1284,25 +1207,13 @@ export function SettingsTab() {
                 id='llmModel'
                 className='min-w-37.5 flex-1'
                 value={llmModel.value}
-                // Map LlmModel → ComboboxOption + carry the rich payload
-                // through so renderItem below can read pricing without a
-                // second lookup. Building the array inline is fine here:
-                // llmModels only changes when the user clicks 刷新, and the
-                // Combobox's filter/highlight effects already deal with
-                // identity changes across renders.
+                // Built inline: llmModels only changes on 刷新, and the Combobox handles identity changes.
                 options={llmModels.value.map(m => {
                   const priceStr = formatLlmPricing(m.pricing)
                   return {
                     value: m.id,
-                    // Default trigger text + filter target. We DON'T use
-                    // `m.name` as the label even when it exists, because
-                    // OpenRouter's friendly names ("OpenAI: GPT-4o") are
-                    // longer than the id and would push pricing off-row.
-                    // The friendly name still feeds searchText.
+                    // Use the id, not `m.name`: friendly names are longer and push pricing off-row.
                     label: m.id,
-                    // Filter haystack: id + friendly name + pricing
-                    // string, so a query of "free" or "$2.5" or
-                    // "OpenAI" all surface the right rows.
                     searchText: [m.id, m.name, priceStr].filter(Boolean).join(' '),
                     model: m,
                     priceStr,
@@ -1315,10 +1226,7 @@ export function SettingsTab() {
                 searchPlaceholder='输入关键词过滤模型…'
                 emptyText='未找到匹配模型'
                 unloadedText='请点击「刷新」获取模型列表'
-                // Stale-but-persisted sentinel — same pattern the STT tab
-                // uses for an unplugged audio device: surface the saved id
-                // so the user can SEE what's selected and pick something
-                // else, rather than silently falling back to placeholder.
+                // Surface a saved-but-missing id so the user sees it instead of a silent placeholder.
                 missingLabel={v => `${v}（已保存，不在当前列表中）`}
                 renderItem={opt => (
                   <div class='flex flex-col gap-0.5'>
@@ -1336,12 +1244,7 @@ export function SettingsTab() {
                 {llmFetching.value ? '加载中…' : '刷新'}
               </Button>
             </div>
-            {llmFetchStatus.value && (
-              // Status colour cycles through neutral / success / error driven
-              // by the fetch state machine; inline color matches the remote
-              // keyword sync line above so the same visual language repeats.
-              <div style={{ color: llmFetchStatusColor.value }}>{llmFetchStatus.value}</div>
-            )}
+            {llmFetchStatus.value && <div style={{ color: llmFetchStatusColor.value }}>{llmFetchStatus.value}</div>}
           </div>
 
           <Separator />
@@ -1353,12 +1256,7 @@ export function SettingsTab() {
               调用的统一前缀（例如设定角色、风格规范、安全约束等）。每条提示词的第一行会作为列表中的预览名称，列表中选中的那条会被使用。可以为同一个范围保存多条提示词在不同场景间切换。
             </div>
 
-            {/* Global subsection: pinned to the top because its contents
-                apply to every feature below. Visual order matches "global
-                first, then specifics" so the user reads the chain in the
-                same order the LLM ultimately does. The trailing <Separator />
-                visually splits "shared baseline" from "per-feature
-                instructions" so the hierarchy is obvious at a glance. */}
+            {/* Global subsection pinned to top: its prompt applies to every feature below. */}
             <div class='mb-3'>
               <Label htmlFor='llmPromptGlobal' className='mb-1 block font-bold'>
                 全局提示词
@@ -1382,10 +1280,6 @@ export function SettingsTab() {
 
             <Separator className='mb-3' />
 
-            {/* Per-feature subsection layout. The triple repeats the same
-                shape (label + hint + PromptManager) so the user can scan
-                top-to-bottom and trust that "find the right block, edit the
-                prompt" works the same way for every feature. */}
             <div class='mb-3'>
               <Label htmlFor='llmPromptNormalSend' className='mb-1 block font-bold'>
                 常规发送
@@ -1505,28 +1399,20 @@ export function SettingsTab() {
                 max='10'
                 step='0.1'
                 className='w-20'
-                // Bind to the local string draft, not the float signal.
-                // Typing "1." would otherwise round-trip as `value={1}`
-                // and erase the dot before the user can type the "5".
+                // Bind the string draft, not the float signal, so "1." keeps its dot.
                 value={autoSeekThresholdDraft.value}
                 disabled={!autoSeekEnabled.value}
                 onInput={e => {
                   const raw = e.currentTarget.value
                   autoSeekThresholdDraft.value = raw
-                  // Only commit to the persisted signal when the field
-                  // parses to a complete, in-range number. Mid-typing
-                  // states (empty, "1.", ".5") are kept in the draft
-                  // but don't overwrite the threshold yet.
+                  // Commit only a complete, in-range number; keep mid-typing states in the draft.
                   const v = parseFloat(raw)
                   if (Number.isFinite(v) && v >= MIN_STABLE_THRESHOLD && v <= 10) {
                     autoSeekBufferThreshold.value = v
                   }
                 }}
                 onBlur={() => {
-                  // Normalise on commit: clamp out-of-range / unparsable
-                  // input, then re-render the draft from the canonical
-                  // value so the field always reads back exactly what's
-                  // persisted.
+                  // Clamp out-of-range / unparsable input, then re-sync the draft from the canonical value.
                   let v = parseFloat(autoSeekThresholdDraft.value)
                   if (!Number.isFinite(v) || v < MIN_STABLE_THRESHOLD) v = MIN_STABLE_THRESHOLD
                   else if (v > 10) v = 10
@@ -1633,9 +1519,7 @@ export function SettingsTab() {
             <Button variant='outline' size='sm' onClick={handleImportClick}>
               导入设置
             </Button>
-            {/* The picker itself is hidden; the import button drives it via
-                .click(). Resetting .value after each pick lets the user
-                re-select the same file (e.g. after editing it). */}
+            {/* Reset .value after each pick so re-selecting the same file still fires onChange. */}
             <input
               ref={importFileInputRef}
               type='file'

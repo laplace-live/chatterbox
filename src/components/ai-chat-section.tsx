@@ -33,8 +33,7 @@ import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 
-// Match the existing section visual rhythm in stt-tab.tsx so this block
-// reads as a native part of the 同传 tab rather than a bolted-on extra.
+// Match section visual rhythm in stt-tab.tsx.
 const SECTION_CLASS = 'my-2 border-b border-b-solid border-b-ga2'
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
@@ -50,8 +49,7 @@ function relativeTime(ts: number | null, now: number): string {
   return `${hr} 小时前`
 }
 
-/** Map the engine status signal to a (label, color) pair for the
- *  status pill in the section header. */
+/** Map the engine status signal to a (label, color) pair for the header pill. */
 function statusPill(): { label: string; color: string } {
   switch (aiChatStatus.value) {
     case 'generating':
@@ -72,10 +70,7 @@ function truncateForRow(text: string, max = 60): string {
 }
 
 function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
-  // Visual encoding: ✅ sent (green) / ⏭ skipped (gray) / ❌ failed (red).
-  // sent=true,message=non-empty   → ✅
-  // sent=false,message=non-empty  → ❌ (we tried but enqueue failed)
-  // sent=false,message=empty      → ⏭ (LLM or user chose to skip)
+  // Empty message = skip (⏭); non-empty + !sent = enqueue failed (❌).
   const isSkip = !entry.message
   const icon = isSkip ? '⏭' : entry.sent ? '✅' : '❌'
   const color = isSkip ? '#888' : entry.sent ? '#36a185' : '#f44'
@@ -95,9 +90,7 @@ function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
 }
 
 export function AiChatSection() {
-  // Tick a local "now" signal every second so the relative-time labels
-  // ("上次生成 N 秒前") refresh without the whole section re-rendering
-  // on every signal write. setInterval cleaned up on unmount.
+  // Tick a local "now" so relative-time labels refresh without a global signal write.
   const now = useSignal(Date.now())
   useEffect(() => {
     const id = setInterval(() => {
@@ -106,9 +99,7 @@ export function AiChatSection() {
     return () => clearInterval(id)
   }, [])
 
-  // Inline edit state for the candidate list. One row at a time —
-  // matches how the candidate list reads visually (always one decision
-  // in focus) and avoids a per-row signal explosion.
+  // Inline edit state for the candidate list; one row at a time.
   const editingId = useSignal<number | null>(null)
   const editingText = useSignal('')
 
@@ -157,12 +148,7 @@ export function AiChatSection() {
           }}
           label='启用 AI 陪聊'
         />
-        {/* Auto / Review toggle. Variant flip mirrors the YOLO toggles
-            in 常规发送 / 自动融入 / 独轮车 — filled when active. The
-            user still benefits from seeing both modes in the DOM
-            (instead of a single combined switch) because the
-            "current mode" question is the most important thing to
-            see at a glance when scanning a panel full of AI controls. */}
+        {/* Auto / Review toggle; filled when active. */}
         <Button
           variant={autoSend ? 'default' : 'outline'}
           size='sm'
@@ -195,9 +181,7 @@ export function AiChatSection() {
         <span>上次生成：{relativeTime(aiChatLastGenAt.value, now.value)}</span>
       </div>
 
-      {/* Pending candidates (Review mode only). Empty state surfaces an
-          actionable hint so the user understands they need either the
-          streamer to speak or viewers to chat. */}
+      {/* Pending candidates (Review mode only). */}
       {!autoSend && (
         <div class='mb-2'>
           <div class='mb-1 font-bold'>
@@ -208,11 +192,7 @@ export function AiChatSection() {
             <div class='text-ga4'>暂无候选 — 等待主播说话或观众消息触发生成</div>
           ) : (
             <div class='max-h-45 overflow-y-auto'>
-              {/* Newest-first ordering: engine appends to the end (so the
-                  ring buffer drops the oldest when capped), but the user
-                  cares about the freshest candidate, so reverse here for
-                  display. Matches the 最近决策 feed below which does the
-                  same with `[...history].reverse()`. */}
+              {/* Engine appends to the end; reverse for newest-first display. */}
               {[...candidates].reverse().map(cand => (
                 <div key={cand.id} class='border-b border-b-ga2 border-b-solid py-1'>
                   {editingId.value === cand.id ? (
@@ -267,11 +247,7 @@ export function AiChatSection() {
         </div>
       )}
 
-      {/* Decision feed — surfaces last N gens for both Auto and Review
-          modes. Folded into an Accordion (closed by default in Auto
-          mode where the section is busy with auto-sent danmaku
-          showing up in the main log too) to keep the panel's
-          default height in check. */}
+      {/* Decision feed; folded into an Accordion to cap panel height. */}
       <AccordionItem className='mb-2'>
         <AccordionTrigger>
           最近决策
@@ -295,11 +271,7 @@ export function AiChatSection() {
         </AccordionContent>
       </AccordionItem>
 
-      {/* Prompt picker. Shown unconditionally because Auto mode users
-          may want to hot-swap personas mid-stream too — the gate from
-          /常规发送 / 独轮车 ("only when LLM api is configured") doesn't
-          apply here because picking a different prompt is also how
-          you SET an active prompt that makes the LLM usable. */}
+      {/* Prompt picker shown unconditionally: setting an active prompt is what makes the LLM usable. */}
       <div class={ROW_CLASS}>
         <Label htmlFor='aiChatPrompt'>提示词：</Label>
         <PromptPicker

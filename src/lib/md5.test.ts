@@ -2,12 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { Md5 } from './md5'
 
-/**
- * The manual MD5 implementation backs the WBI signature (see `wbi.ts`).
- * Room titles, danmaku and Chinese handles flow through signing, so it must
- * match a reference MD5 for multi-byte UTF-8 input as well as ASCII. We use
- * Bun's native `CryptoHasher` as the source of truth.
- */
+/** Source-of-truth MD5 via Bun's native hasher; verifies our impl on multi-byte UTF-8, not just ASCII. */
 function referenceMd5(str: string): string {
   return new Bun.CryptoHasher('md5').update(str).digest('hex')
 }

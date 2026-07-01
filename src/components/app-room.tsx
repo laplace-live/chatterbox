@@ -47,12 +47,9 @@ export function AppRoom() {
     return () => stopAutoBlend()
   }, [autoBlendEnabled.value])
 
-  // AI Chat engine — mirrors the autoBlend pattern above. Start/stop is
-  // ref-counted inside the engine so a strict-mode double-effect can't
-  // tear down a still-needed subscription. The cleanup on unmount runs
-  // through `stopAiChatEngine` rather than no-op'ing so a HMR full
-  // reload of <App /> doesn't leave a dangling danmaku-stream
-  // subscription pointing at an old effect.
+  // Start/stop is ref-counted inside the engine so strict-mode double-effect can't
+  // tear down a still-needed subscription; unmount stops (not no-op) so HMR reload
+  // doesn't leak a danmaku-stream subscription on an old effect.
   useEffect(() => {
     if (aiChatEnabled.value) {
       startAiChatEngine()
@@ -62,59 +59,36 @@ export function AppRoom() {
     return () => stopAiChatEngine()
   }, [aiChatEnabled.value])
 
-  // Always-on: the "融入黑名单" toggle injected into B站's chat-item menu
-  // should be available even when 自动融入 is currently off, so users can
-  // pre-blacklist known spammers before flipping the switch.
+  // Always-on so users can pre-blacklist spammers via the chat-item menu even while 自动融入 is off.
   useEffect(() => {
     startUserBlacklistHijack()
     return () => stopUserBlacklistHijack()
   }, [])
 
-  // Always-on: the 仅音频 toggle injected next to 小窗模式 must exist whenever
-  // the live page is loaded, regardless of the signal's current value —
-  // turning the feature on/off is what the button is for. The module itself
-  // is signal-driven and idempotent, so we mount it unconditionally.
+  // Signal-driven and idempotent; mounted unconditionally so the 仅音频 toggle always exists.
   useEffect(() => {
     startAudioOnly()
     return () => stopAudioOnly()
   }, [])
 
-  // Always-on mount: the auto-seek module is signal-driven (reads
-  // `autoSeekEnabled` internally) and a no-op while the feature is off,
-  // so mounting unconditionally lets the user flip the setting in the
-  // configurator without a reload. Listeners are only attached when
-  // enabled, so the always-on cost is one signal effect — basically free.
+  // Signal-driven (reads `autoSeekEnabled`) and a no-op while off; mounted unconditionally so the setting flips without a reload.
   useEffect(() => {
     startAutoSeek()
     return () => stopAutoSeek()
   }, [])
 
-  // Auto-quality is a one-shot — it polls for `livePlayer`, switches to
-  // 原画, and stops. Toggling the setting at runtime intentionally does
-  // NOT re-fire (the change applies on next reload), matching the
-  // "initial quality preference" mental model. The internal `started`
-  // guard makes a strict-mode double-effect or HMR remount safe.
+  // One-shot: polls for `livePlayer`, switches to 原画, stops. Runtime toggling intentionally
+  // does NOT re-fire (applies on next reload); internal `started` guard makes remounts safe.
   useEffect(() => {
     startAutoQuality()
     return () => stopAutoQuality()
   }, [])
 
-  // B站's SPA renders `.app-body` after our userscript has mounted and
-  // also re-applies inline styles on it after hydration, which silently
-  // overrode any plain CSS rule (or inline style we'd set imperatively)
-  // once the page finished loading. Inject a <style> rule with !important
-  // so the browser applies it whenever `.app-body` exists and B站's
-  // post-hydration inline writes can't clobber it.
-  //
-  // The actual rule text is filled in by the effect below so we can update
-  // it reactively (dialog open/close, width drag) by rewriting
-  // `textContent` instead of churning a fresh <style> node per pointermove.
+  // B站 re-applies inline styles on `.app-body` post-hydration, so use a !important <style>
+  // rule its inline writes can't clobber; rule text is rewritten reactively via `textContent`.
   const layoutStyleRef = useRef<HTMLStyleElement | null>(null)
   useEffect(() => {
-    // Clear stale inline margin left over from older versions of this
-    // script that mutated `.app-body` directly. We only clear the exact
-    // value the old code wrote ('1rem') so we never accidentally wipe a
-    // margin B站 itself put there.
+    // Clear stale inline margin from older versions; match the exact old value ('1rem') so we don't wipe one B站 set.
     const stale = document.querySelector<HTMLElement>('.app-body')
     if (stale?.style.marginLeft === '1rem') stale.style.marginLeft = ''
 
@@ -128,20 +102,9 @@ export function AppRoom() {
     }
   }, [optimizeLayout.value])
 
-  // Keep `.app-body`'s reserved space in sync with the right-anchored
-  // configurator dialog (`fixed right-1`) so page content never tucks under
-  // the open panel.
-  //
-  // We cap `max-width` rather than adding `margin-right`: B站 pins
-  // `.app-body`'s width via JS keyed to `window.innerWidth`, so a
-  // margin-right is just absorbed as negative margin and frees no space —
-  // capping the width is what actually reflows the content. Using
-  // `calc(100% - …)` keeps the reserved strip responsive to viewport resizes
-  // natively (the browser recomputes 100% on resize — no JS resize listener
-  // needed); only the dialog-width term is re-injected here when the user
-  // drags the resize handle. The +24 covers the dialog's `right-1` offset
-  // plus a small breathing gap, and `clampWidth` is the same source of truth
-  // the dialog renders with so the reserve can't drift from the panel.
+  // Cap `max-width`, not `margin-right`: B站 pins width via JS keyed to `window.innerWidth`, so a
+  // margin frees no space. `calc(100% - …)` stays responsive without a resize listener; +24 covers
+  // the dialog's `right-1` offset plus a gap, and `clampWidth` matches the dialog so reserve can't drift.
   useEffect(() => {
     const style = layoutStyleRef.current
     if (!style) return

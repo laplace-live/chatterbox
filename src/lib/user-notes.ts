@@ -1,39 +1,9 @@
 /**
- * Per-uid local user notes.
- *
- * Viewers can attach a free-form, multi-line note to any bilibili UID
- * (typically a streamer, but the storage doesn't care — anything with
- * a uid surface, including the space page, works). Notes are keyed by
- * `String(uid)` so they're stable across number ↔ string drift and
- * round-trip cleanly through JSON.
- *
- * Storage strategy
- * ----------------
- * One GM key holds the entire `Record<uid, UserNote>` so a single
- * reactive signal drives every consumer (info button face indicator,
- * popover editor, future surfaces). This trades per-uid write
- * granularity for trivially simple readers and import/export, which
- * fits a "a few hundred notes at most" workload comfortably.
- *
- * Notes are not size-capped at the API layer — the user explicitly
- * asked for "no length limit, or large enough for general use". GM
- * storage is JSON-serialised under the hood; in practice the
- * userscript host caps payloads in the low MB range, so even 10k
- * notes of a few hundred chars each fit. We don't trim or warn.
- *
- * Import / export
- * ---------------
- * Notes ride along with the existing whole-settings export by virtue
- * of being a plain GM key, but we ALSO ship a notes-only export
- * (`exportUserNotes` / `importUserNotes`) so a viewer can share their
- * curated set without leaking unrelated configuration (LLM keys,
- * blacklists, etc). The notes-only file format is intentionally
- * minimal — just `version`, `exportedAt`, and the `notes` map.
- *
- * Merge semantics on import: callers choose between `replace` (drop
- * everything currently stored and load the file's notes) and `merge`
- * (per-uid newest-`updatedAt` wins). Merge is the default for sharing
- * scenarios where overwriting your own notes would be a footgun.
+ * Per-uid local user notes, keyed by `String(uid)` for stable JSON round-trips.
+ * The whole `Record<uid, UserNote>` lives under one GM key so a single signal
+ * drives every consumer. Notes are not size-capped. A notes-only export exists
+ * alongside the whole-settings export so a curated set can be shared without
+ * leaking other config.
  */
 
 import { gmSignal } from './gm-signal'
@@ -45,12 +15,7 @@ export interface UserNote {
   updatedAt: number
 }
 
-/**
- * UID-keyed note map. Keyed by `String(uid)` so JSON round-trips don't
- * mutate the keys (object keys are always strings; explicit stringify
- * makes the intent obvious and protects against numeric coercion bugs
- * if a caller passes a string uid by accident).
- */
+/** UID-keyed note map. Keyed by `String(uid)` so JSON round-trips don't mutate keys. */
 export const userNotes = gmSignal<Record<string, UserNote>>('userNotes', {})
 
 /** Read the note for `uid`. Returns null when the uid has no note. */
@@ -58,9 +23,7 @@ export function getUserNote(uid: number | string | null | undefined): UserNote |
   if (uid === null || uid === undefined) return null
   const key = String(uid)
   const note = userNotes.value[key]
-  // `hasOwn` so a uid named `toString` or `__proto__` (degenerate but
-  // possible if a malformed import sneaks one in) can't return the
-  // prototype method by accident.
+  // `hasOwn` so a uid like `toString`/`__proto__` can't return a prototype method.
   if (!Object.hasOwn(userNotes.value, key)) return null
   return note ?? null
 }
@@ -82,10 +45,7 @@ export function setUserNote(uid: number | string, note: string): void {
     deleteUserNote(uid)
     return
   }
-  // Spread to a new object so the signal's identity changes and
-  // downstream `useEffect` / `computed` consumers fire. Mutating the
-  // existing object would write to GM storage (via the gmSignal
-  // effect) but wouldn't trigger re-renders.
+  // New object identity so `useEffect`/`computed` consumers fire; mutating in place wouldn't.
   userNotes.value = {
     ...userNotes.value,
     [key]: { note, updatedAt: Date.now() },
@@ -117,9 +77,7 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-// Mirrors settings-io.ts's filename timestamp (filesystem-safe, local
-// clock) so a viewer who downloads both files gets a consistent naming
-// scheme.
+// Mirrors settings-io.ts's filename timestamp (filesystem-safe, local clock).
 function buildTimestamp(d = new Date()): string {
   return [
     d.getFullYear(),
@@ -132,10 +90,8 @@ function buildTimestamp(d = new Date()): string {
 }
 
 /**
- * Trigger a browser download of the current notes as JSON. Returns the
- * number of notes written. No-throw on empty (still emits a file with
- * `notes: {}`), so the caller can rely on a successful return meaning
- * "the file landed in Downloads".
+ * Trigger a browser download of the current notes as JSON; returns the count written.
+ * Empty is fine (emits `notes: {}`), so a successful return means the file downloaded.
  */
 export function exportUserNotes(): number {
   const notes = userNotes.value
@@ -158,10 +114,8 @@ export function exportUserNotes(): number {
 }
 
 /**
- * Validate that `text` is a JSON-encoded `UserNotesFile`. Throws with a
- * user-facing message if malformed. Entries with the wrong shape are
- * silently dropped (rather than rejecting the whole file) so a single
- * corrupted record doesn't block importing the rest.
+ * Parse `text` as a `UserNotesFile`; throws a user-facing message if malformed.
+ * Wrong-shape entries are dropped individually rather than rejecting the whole file.
  */
 export function parseUserNotesFile(text: string): UserNotesFile {
   let parsed: unknown
@@ -185,8 +139,7 @@ export function parseUserNotesFile(text: string): UserNotesFile {
     const note = typeof v.note === 'string' ? v.note : null
     const updatedAt = typeof v.updatedAt === 'number' && Number.isFinite(v.updatedAt) ? v.updatedAt : Date.now()
     if (note === null) continue
-    // Skip blank entries on import too — they'd otherwise pollute the
-    // store with indicators that show but reveal an empty editor.
+    // Skip blank entries: they'd show an indicator but reveal an empty editor.
     if (note.trim().length === 0) continue
     notes[key] = { note, updatedAt }
   }
@@ -212,14 +165,8 @@ export interface UserNotesImportResult {
 
 /**
  * Apply a parsed notes file to local storage.
- *
- * - `replace`: drop every existing note and load the file's verbatim.
- *   `skipped` is always 0 in this mode.
- * - `merge`: per-uid newest-`updatedAt` wins. Entries newer locally are
- *   skipped; entries newer in the file overwrite. Local-only entries
- *   are preserved. Use this for sharing scenarios where overwriting
- *   your own freshly-written notes with a stale shared file would be
- *   surprising.
+ * - `replace`: drop all existing notes and load the file's; `skipped` is always 0.
+ * - `merge`: per-uid newest-`updatedAt` wins; local-only entries are preserved.
  */
 export function applyUserNotesFile(file: UserNotesFile, mode: UserNotesImportMode): UserNotesImportResult {
   const result: UserNotesImportResult = { added: 0, updated: 0, skipped: 0, removed: 0 }
@@ -227,9 +174,7 @@ export function applyUserNotesFile(file: UserNotesFile, mode: UserNotesImportMod
   if (mode === 'replace') {
     result.removed = Object.keys(userNotes.value).length
     result.added = Object.keys(file.notes).length
-    // Clone so consumers see a fresh object identity (gmSignal effect
-    // writes to GM regardless, but `useEffect` deps need reference
-    // change to fire).
+    // Clone for fresh object identity so `useEffect` deps fire.
     userNotes.value = { ...file.notes }
     return result
   }

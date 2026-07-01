@@ -1,23 +1,7 @@
 /**
- * Deepgram `SttEngine` — raw WebSocket realtime STT.
- *
- * The simplest of the three providers to authenticate: the API key rides the
- * `Sec-WebSocket-Protocol` subprotocol (`['token', key]`), the browser-blessed
- * way to pass it without an `Authorization` header — so no token mint and no
- * CORS (like Soniox putting the key in the URL).
- *
- * Flow:
- *   1. Open `wss://api.deepgram.com/v1/listen?model=&language=&encoding=linear16
- *      &sample_rate=16000&channels=1&interim_results=true&smart_format=true&
- *      endpointing=300`, authenticating via the subprotocol.
- *   2. On open, capture the mic via the shared PCM pipeline and stream the raw
- *      Int16 PCM frames as binary WebSocket messages (Deepgram wants raw bytes,
- *      not base64).
- *   3. Map `Results` messages: interim → non-final chunk, `is_final` → final
- *      chunk, `speech_final` → `endpoint`.
- *
- * Continuous audio (including silence) keeps the socket alive, so no KeepAlive
- * is needed. `pause`/`resume` gate sending; `finalize` sends `Finalize`.
+ * Deepgram `SttEngine` — raw WebSocket realtime STT. Key rides the
+ * `Sec-WebSocket-Protocol` subprotocol (`['token', key]`), so no auth header and
+ * no CORS. Continuous audio keeps the socket alive, so no KeepAlive needed.
  */
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
@@ -26,9 +10,7 @@ import { DEEPGRAM_DEFAULT_MODEL, DEEPGRAM_WS_URL } from '../const'
 import { parseDeepgramResult } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
 
-// Milliseconds of silence before Deepgram finalizes an utterance (speech_final).
-// Deepgram's default (10 ms) fragments aggressively; 300 ms gives utterance-ish
-// boundaries that map better to one danmaku per phrase.
+// Silence ms before speech_final; default 10 ms fragments too aggressively.
 const ENDPOINTING_MS = '300'
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
@@ -61,7 +43,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
     try {
       ws?.close()
     } catch {
-      // closing a socket that never opened can throw — nothing to do
+      // closing a socket that never opened can throw
     }
     onEvent({ type: 'error', error: toError(err) })
   }
@@ -110,8 +92,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
       const language = params.languageHints[0]
       if (language) url.searchParams.set('language', language)
 
-      // Browser auth: the key rides the Sec-WebSocket-Protocol subprotocol
-      // (['token', key]) — no Authorization header, no CORS, no token mint.
+      // Auth via subprotocol (['token', key]) — no header, no CORS.
       const socket = new WebSocket(url.toString(), ['token', params.apiKey])
       ws = socket
 
@@ -131,9 +112,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
       socket.onerror = () => fail(new Error('WebSocket 连接错误'))
       socket.onclose = () => {
         if (aborted || settled) return
-        // Never opened ⇒ handshake/auth failure (Deepgram rejects the upgrade
-        // when the subprotocol key is invalid), which the browser surfaces only
-        // as a close. Surface a useful hint rather than a silent "stopped".
+        // Never opened ⇒ handshake/auth failure; browser surfaces it only as a close.
         if (!opened) {
           fail(new Error('连接失败，请检查 Deepgram API Key 或网络'))
           return
@@ -151,14 +130,10 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
     // Ask Deepgram to flush any final transcript before we close.
     try {
       ws?.send(JSON.stringify({ type: 'CloseStream' }))
-    } catch {
-      // ignore
-    }
+    } catch {}
     try {
       ws?.close()
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   const cancel = (): void => {
@@ -167,9 +142,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
     stopCapture()
     try {
       ws?.close()
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   const pause = (): void => {
@@ -183,9 +156,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
   const finalize = (): void => {
     try {
       ws?.send(JSON.stringify({ type: 'Finalize' }))
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   return { start, stop, cancel, pause, resume, finalize }

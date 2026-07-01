@@ -1,10 +1,4 @@
-/**
- * Deepgram STT model-listing helper. Mirrors `fetchSonioxModels`, but Deepgram's
- * `/v1/models` doesn't send CORS headers for third-party origins, so a plain
- * `fetch` is blocked — we go through `GM_xmlhttpRequest` (declared via
- * `@connect api.deepgram.com`). `parseDeepgramModels` keeps only the realtime
- * (`streaming: true`) models and shapes them for the picker.
- */
+/** List Deepgram realtime STT models. `/v1/models` sends no CORS headers, so use `GM_xmlhttpRequest`, not `fetch`. */
 
 import type { SttModelOption } from './types'
 

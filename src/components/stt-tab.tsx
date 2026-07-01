@@ -58,8 +58,7 @@ const STT_FLUSH_DELAY_MS = 5000
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
-// Per-provider display label + signup link, so the API-key section renders
-// generically instead of branching per provider.
+// Per-provider display label + signup link, so the API-key section renders generically.
 const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> = {
   soniox: { label: 'Soniox', signupUrl: 'https://soniox.com/' },
   elevenlabs: { label: 'ElevenLabs', signupUrl: 'https://elevenlabs.io/' },
@@ -67,9 +66,7 @@ const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> =
   gladia: { label: 'Gladia', signupUrl: 'https://gladia.io/' },
 }
 
-// Single-value language pickers for the providers that take one language code
-// (ElevenLabs `languageCode`, Deepgram `language`). Soniox uses multi-hint
-// checkboxes instead.
+// Single-value language pickers; Soniox uses multi-hint checkboxes instead.
 const ELEVENLABS_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: '', label: '自动检测' },
   { value: 'zh', label: '中文' },
@@ -84,8 +81,7 @@ const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
-// Gladia takes BCP-47 codes; '' = auto-detect (with code-switching). Same short
-// list as the others — Gladia supports many more, but these cover our streamers.
+// Gladia takes BCP-47 codes; '' = auto-detect (with code-switching).
 const GLADIA_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: '', label: '自动检测' },
   { value: 'zh', label: '中文' },
@@ -102,24 +98,17 @@ export function SttTab() {
   const finalText = useSignal('')
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
-  // Model-list fetch state machine (idle / loading / success / error),
-  // colour-coded like the recording status line. Used by the providers with a
-  // fetchable model list (Soniox, Deepgram); ElevenLabs has a single model.
+  // Model-list fetch status; only Soniox and Deepgram have a fetchable list.
   const modelFetching = useSignal(false)
   const modelFetchStatus = useSignal('')
   const modelFetchStatusColor = useSignal('#666')
 
-  // Single accumulator for the finalised display text. Translation mode is
-  // captured for the lifetime of a session (see `translationModeRef`), so one
-  // buffer suffices — `reduceChunks` already picks the right stream.
+  // One accumulator suffices: translation mode is fixed per session, so reduceChunks picks the right stream.
   const acc = useRef('')
   const sendBuffer = useRef('')
   const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFlushing = useRef(false)
-  // Translation toggle captured at start() time and stashed in a ref so the
-  // event handlers — which fire across the lifetime of the recording —
-  // observe the value the user picked when they clicked 开始同传. Always false
-  // for providers without translation (ElevenLabs, Deepgram).
+  // Translation toggle captured at start() so long-lived handlers see the value picked at click time.
   const translationModeRef = useRef(false)
 
   const enumerateMics = async () => {
@@ -133,10 +122,7 @@ export function SttTab() {
     }
   }
 
-  // Browsers hide device labels until the page has been granted microphone
-  // permission at least once. Calling getUserMedia briefly forces the prompt
-  // (or returns instantly if already granted), then we re-enumerate to pick
-  // up the now-visible labels.
+  // Browsers hide device labels until mic permission is granted; getUserMedia forces the prompt, then re-enumerate.
   const requestMicPermission = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       appendLog('🔴 当前浏览器不支持麦克风访问')
@@ -213,8 +199,7 @@ export function SttTab() {
       if (!sendBuffer.current.trim()) return
       const wrap = sttWrapBrackets.value
       const maxLen = sttMaxLength.value || 40
-      // Reserve the 【】 wrapper graphemes so the wrapped segment still fits
-      // within the user's configured max length.
+      // Reserve the 【】 wrapper graphemes so the wrapped segment still fits maxLen.
       const splitLen = wrapSplitLen(maxLen, wrap)
       const processedText = applyReplacements(sendBuffer.current.trim())
       sendBuffer.current = ''
@@ -238,11 +223,7 @@ export function SttTab() {
     }
   }
 
-  // Transcript handler — provider-agnostic. Each frame's chunks are reduced to
-  // the new final text + current non-final text for the stream the user is
-  // listening to (translation vs original). Finals feed the 500-char sliding
-  // display, the danmaku send buffer (when auto-send is on), and the AI-Chat
-  // transcript buffer; non-finals just refresh the provisional display.
+  // Provider-agnostic: finals feed the sliding display, send buffer, and AI-Chat buffer; non-finals only refresh the provisional display.
   const handleTranscript = (chunks: SttChunk[]) => {
     const { newFinal, nonFinal } = reduceChunks(chunks, translationModeRef.current)
     if (newFinal && sttAutoSend.value) addToBuffer(newFinal)
@@ -256,22 +237,15 @@ export function SttTab() {
 
   const handleEndpoint = () => {
     if (sttAutoSend.value) {
-      // The translation pipeline lags the original transcript by a few hundred
-      // ms, so when sending translated text we delay the flush slightly to
-      // avoid clipping the tail of the current utterance. (Translation is
-      // Soniox-only.)
+      // Translation lags the original by a few hundred ms; delay the flush so the utterance tail isn't clipped.
       setTimeout(() => void flushBuffer(), translationModeRef.current ? 300 : 0)
     }
-    // Surface the endpoint to AI Chat unconditionally (independent of the
-    // auto-send gating above) so the engine still fires when same-tab danmaku
-    // auto-send is off.
+    // Fire unconditionally (independent of auto-send) so AI Chat still triggers when danmaku auto-send is off.
     sttEndpointReached.value = true
   }
 
   const handleFinished = async () => {
-    // Wait briefly for any in-flight flush triggered by the last result frame
-    // to settle before declaring the session over. 100 × 100 ms = 10 s upper
-    // bound; longer than that is a stuck network call and we'd rather move on.
+    // Wait for an in-flight flush to settle, capped at 10s (100 × 100 ms) to avoid hanging on a stuck call.
     let waitCount = 0
     while (isFlushing.current && waitCount < 100) {
       await new Promise(r => setTimeout(r, 100))
@@ -286,9 +260,7 @@ export function SttTab() {
     console.error('STT error:', err)
     const message = err.message || String(err)
     const label = PROVIDER_META[sttProvider.value].label
-    // Surface platform-typed mic errors with friendly Chinese copy. The audio
-    // layers throw the same DOM error names (NotAllowedError / NotFoundError);
-    // Soniox's SDK adds Audio*Error subclasses, sniffed by name.
+    // Match by name: DOM throws NotAllowedError/NotFoundError; Soniox adds Audio*Error subclasses.
     if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
       statusText.value = '麦克风权限被拒绝'
@@ -318,12 +290,9 @@ export function SttTab() {
     statusColor.value = '#36a185'
   }
 
-  // ---------------------------------------------------------------
   // Provider-aware config for the recording hook
-  // ---------------------------------------------------------------
   const provider: SttProvider = sttProvider.value
   const isSoniox = provider === 'soniox'
-  // The api key signal for the active provider — bound directly to the input.
   const apiKeySignal =
     provider === 'soniox'
       ? sonioxApiKey
@@ -334,10 +303,7 @@ export function SttTab() {
           : gladiaApiKey
   const activeApiKey = apiKeySignal.value.trim()
 
-  // Validate the saved device is still present at the moment we'd use it. If
-  // it isn't, fall back to the system default and surface the swap once (the
-  // persisted reset happens lazily inside toggle() to avoid mutating store
-  // state during render).
+  // Fall back to default if the saved device is gone; the persisted reset is deferred to toggle() to avoid a store write during render.
   const savedDeviceIdForHook = sttAudioDeviceId.value
   const deviceStillAvailable =
     !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
@@ -386,9 +352,7 @@ export function SttTab() {
     onConnected: handleConnected,
   })
 
-  // Fetch + cache the realtime model list for providers that expose one
-  // (Soniox via fetch+CORS, Deepgram via GM_xmlhttpRequest). ElevenLabs has a
-  // single hardcoded model, so it has no refresh.
+  // Fetch the model list; only Soniox (fetch+CORS) and Deepgram (GM_xmlhttpRequest) expose one.
   const refreshModels = async () => {
     if (modelFetching.value) return
     modelFetching.value = true
@@ -427,8 +391,7 @@ export function SttTab() {
         statusColor.value = '#f44'
         return
       }
-      // Persist the device fallback now (deferred from render to keep it out
-      // of the render path's signal-write side effects).
+      // Persist the device fallback here, deferred from render to avoid a signal write during render.
       if (savedDeviceIdForHook && !deviceStillAvailable) {
         appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
         sttAudioDeviceId.value = ''
@@ -439,10 +402,8 @@ export function SttTab() {
       state.value = 'starting'
       statusText.value = '正在连接…'
       statusColor.value = '#666'
-      // Capture translation mode for the lifetime of this session.
       translationModeRef.current = translationEnabledForHook
-      // The engine handles SDK/socket setup and surfaces any failure via
-      // onError, so no pre-warm is needed here.
+      // No pre-warm needed: the engine sets up the SDK/socket and reports failure via onError.
       recording.start()
     } else if (state.value === 'running') {
       state.value = 'stopping'
@@ -470,8 +431,7 @@ export function SttTab() {
 
   const hints = sonioxLanguageHints.value
   const devices = audioDevices.value
-  // Labels are blanked by the browser until microphone permission is granted;
-  // a non-empty label is our proxy for "already granted, no need to nag".
+  // Labels are blank until mic permission is granted, so a non-empty label means "already granted".
   const hasMicLabels = devices.some(d => d.label)
   const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
@@ -495,8 +455,7 @@ export function SttTab() {
             id='sttProvider'
             className='min-w-37.5 flex-1 pr-5'
             value={provider}
-            // Locked while a session is live — switching providers mid-stream
-            // would only take effect on the next start.
+            // Locked while live: a provider switch would only take effect on the next start.
             disabled={state.value !== 'stopped'}
             onChange={e => {
               const next = e.currentTarget.value
@@ -619,8 +578,7 @@ export function SttTab() {
         ) : (
           <div class={ROW_CLASS}>
             <Label>模型</Label>
-            {/* Read-only: ElevenLabs and Gladia each expose a single fixed
-                realtime model with no list endpoint. */}
+            {/* Read-only: ElevenLabs and Gladia each have one fixed model, no list endpoint. */}
             <span class='text-ga6'>{provider === 'gladia' ? GLADIA_DEFAULT_MODEL : ELEVENLABS_DEFAULT_MODEL}</span>
           </div>
         )}
@@ -709,8 +667,7 @@ export function SttTab() {
         </div>
       </div>
 
-      {/* Realtime translation is Soniox-only — ElevenLabs Scribe and Deepgram
-          transcribe but don't translate, so the section is hidden for them. */}
+      {/* Realtime translation is Soniox-only; the others transcribe but don't translate. */}
       {isSoniox && (
         <>
           <Separator />
@@ -771,8 +728,7 @@ export function SttTab() {
 
       <Separator />
 
-      {/* AI Chat lives downstream of STT — it consumes the same final
-          transcript stream the captions above render. */}
+      {/* AI Chat consumes the same final transcript stream the captions above render. */}
       <AiChatSection />
     </>
   )

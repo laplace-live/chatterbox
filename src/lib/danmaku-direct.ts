@@ -55,11 +55,7 @@ html.laplace-dm-direct-always .${MARKER} {
 }
 `
 
-/**
- * Builds the actual danmaku string we'd send for a given event.
- * Reply danmakus need an `@uname ` prefix to be meaningful when re-sent.
- * Returns null when the message can't be reliably reconstructed.
- */
+/** Sendable danmaku string for an event; null if unreconstructable. Reply danmakus get an `@uname ` prefix. */
 function eventToSendableMessage(ev: DanmakuEvent): string | null {
   if (!ev.isReply) return ev.text
   return ev.uname ? `@${ev.uname} ${ev.text}` : null
@@ -99,31 +95,14 @@ function handleSteal(msg: string): void {
 }
 
 async function handleRepeat(msg: string, anchor?: { x: number; y: number }): Promise<void> {
-  // YOLO polish for +1 piggybacks on the 常规发送 toggle (`normalSendYolo`)
-  // rather than getting its own switch — both paths are conceptually
-  // "user-initiated single send", just one is typed and the other is
-  // a quick repeat. Sharing the toggle (and the `normalSend` prompt)
-  // means the user's "polish style for what I send manually" applies
-  // uniformly to both surfaces, which is what the user asked for.
-  //
-  // Polish runs BEFORE the confirm dialog so the dialog body shows
-  // what will ACTUALLY be sent (post-polish, pre-replacement). If we
-  // confirmed the raw text and then quietly swapped it out at send
-  // time, the confirmation would be lying.
-  //
-  // Emote +1 skips polish entirely: the chat-item's `dataset.msg` for
-  // an emote is its `emoticon_unique` (e.g. `room_1713546334_108382`),
-  // an opaque ID. Feeding that to the LLM yields mangled text that
-  // `sendDanmaku` would no longer recognise as an emote — B站 echoes
-  // it back as plain chat text. Same `!isEmote` guard the auto-blend
-  // and loop YOLO paths apply to keep all three surfaces consistent.
+  // +1 YOLO shares the 常规发送 toggle/prompt (`normalSendYolo`).
+  // Polish runs before the confirm dialog so the body shows what's actually sent.
+  // Emote +1 skips polish: `dataset.msg` is the opaque `emoticon_unique`; polishing it makes B站 echo it as plain text.
   const isEmote = isEmoticonUnique(msg)
   let toSend = msg
   if (normalSendYolo.value && !isEmote) {
     if (!isLlmReady('normalSend')) {
-      // Refuse rather than fall back to raw send — same contract as
-      // the 常规发送 / 自动融入 YOLO modes. The user opted in; a
-      // silent skip-the-polish would surprise them.
+      // Refuse rather than fall back to raw send — user opted into YOLO.
       appendLog('❌ +1 YOLO 模式已开启，但 LLM 配置不完整，本次跳过')
       return
     }
@@ -156,10 +135,7 @@ async function handleRepeat(msg: string, anchor?: { x: number; y: number }): Pro
     }
     const processed = applyReplacements(toSend)
     const result = await enqueueDanmaku(processed, roomId, csrfToken, SendPriority.MANUAL)
-    // Display arrow lights up whenever the final text differs from the
-    // original danmaku — captures both the YOLO polish (toSend !== msg)
-    // and the sensitive-word replacement (processed !== toSend) in a
-    // single compact `original → final` line.
+    // Show `original → final` when polish or replacement changed the text.
     const display = msg !== processed ? `${msg} → ${processed}` : processed
     appendLog(result, '+1', display)
   } catch (err) {

@@ -9,11 +9,7 @@ export interface TextareaProps extends TextareaBase {
   className?: string
 }
 
-// Wrapped in `forwardRef` so consumers (e.g. LogPanel's auto-scroll
-// useEffect) can attach a ref to the underlying <textarea>. Preact 10
-// strips `ref` from the props of a plain function component during
-// `createElement`, so without forwardRef the ref silently never reaches
-// the DOM and `ref.current` stays null.
+// forwardRef required: Preact 10 strips `ref` from plain function components, so the ref never reaches the DOM without it.
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
   { disabled, className, ...props },
   ref

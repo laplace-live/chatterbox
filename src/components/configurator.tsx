@@ -12,22 +12,12 @@ import { SettingsTab } from './settings-tab'
 import { SttTab } from './stt-tab'
 import { Tabs } from './tabs'
 
-// Width clamps for the resize handle. MIN keeps the action rows (input +
-// 2-3 buttons) on a single line so the dialog never collapses into a
-// nothing-fits state. MAX caps at 900 to stop someone dragging past the
-// viewport on widescreen monitors; we also subtract a viewport margin at
-// drag time so smaller windows clamp tighter.
+// MIN keeps action rows on one line; MAX caps drag on widescreen; margin clamps smaller windows tighter.
 const DIALOG_MIN_WIDTH = 180
 const DIALOG_MAX_WIDTH = 900
 const DIALOG_VIEWPORT_MARGIN = 40
 
-// Single source of truth for "what width is this dialog allowed to be right
-// now?". Used at three call sites — render, drag start, and drag move — so
-// they can't drift apart. In particular: capturing `dialogWidth.value`
-// directly at drag start would anchor the gesture to a stored value the
-// user can't see (e.g. 800 px persisted from a wider session, but the
-// viewport caps the visible width at 360), making the first ~hundreds of
-// pixels of drag a no-op against the clamp.
+/** Clamp a width to the current viewport-aware envelope; re-reads window.innerWidth each call, so resizing the browser mid-drag tightens the bound live. */
 export function clampWidth(raw: number): number {
   const viewportMax = Math.min(DIALOG_MAX_WIDTH, window.innerWidth - DIALOG_VIEWPORT_MARGIN)
   return Math.max(DIALOG_MIN_WIDTH, Math.min(raw, viewportMax))
@@ -37,22 +27,13 @@ export function Configurator() {
   const tab = activeTab.value
   const visible = dialogOpen.value
   const optimized = optimizeLayout.value
-  // Clamp at READ time too so a stored 800 from a wider session doesn't
-  // overflow a now-narrower viewport. Drag writes are also clamped, so
-  // once the user resizes anything the persisted value rejoins the
-  // viewport-aware envelope automatically.
+  // Clamp at read time so a stored width from a wider session doesn't overflow a narrower viewport.
   const width = clampWidth(dialogWidth.value)
 
-  // All four tab panels share the visibility/layout shape: in optimized
-  // mode the panel itself owns the vertical scroll (since the dialog is
-  // overflow-hidden), and in legacy mode the dialog scrolls and the panel
-  // grows naturally. Fasong's meme list still has its own internal scroll
-  // container (capped at max-h-[240px]) so a long meme list doesn't
-  // monopolize the panel viewport.
+  // Optimized: panel owns the scroll (dialog is overflow-hidden). Legacy: dialog scrolls, panel grows.
   const panelClass = (active: boolean) =>
     cn(
-      // `<Tabs />` already lives inside the dialog, so panel-level horizontal
-      // padding belongs here on the per-tab wrapper rather than the dialog.
+      // Horizontal padding lives on the per-tab wrapper, not the dialog (which also holds `<Tabs />`).
       'px-[10px]',
       !active && 'hidden',
       active && optimized && 'min-h-0 flex-1 overflow-y-auto',
@@ -62,19 +43,8 @@ export function Configurator() {
   return (
     <div
       id='laplace-chatterbox-dialog'
-      // Three layout shapes for the dialog:
-      // 1. Hidden when `dialogOpen` is false.
-      // 2. Visible + optimized: full-height flex column with hidden overflow
-      //    (children opt back into scroll where appropriate).
-      // 3. Visible + non-optimized: legacy block layout that grows to its
-      //    content up to the viewport height.
-      // z-index sits ONE BELOW the corner cluster (z-2147483647) so the
-      // InfoButton's popover — which is `absolute` inside the cluster
-      // and therefore trapped by its stacking context — can render on
-      // top of this dialog when both are open. See `corner-cluster.tsx`
-      // for the full reasoning. 2147483646 is still well above
-      // bilibili's own chrome (which lives in the low thousands), so we
-      // lose nothing by ceding one tick.
+      // Visible+optimized: flex column, overflow-hidden (children opt back into scroll). Non-optimized: legacy block growing to viewport height.
+      // z-index sits one below the corner cluster so InfoButton's popover (trapped in the cluster's stacking context) can render over this dialog.
       className={cn(
         'fixed right-1 bottom-[calc(34px)] z-2147483646 text-[13px]',
         'min-w-12.5 rounded bg-bg1 shadow-md ring ring-ga6/30',
@@ -118,43 +88,19 @@ export function Configurator() {
 }
 
 /**
- * Drag handle pinned to the LEFT edge of the dialog. The panel is anchored
- * at `right: 1px`, so dragging left grows the panel and dragging right
- * shrinks it — matches the "grab the edge that's free to move" affordance
- * users expect from resizable side-panels.
- *
- * Implementation notes:
- *
- * - `setPointerCapture` keeps pointer events flowing to the handle even
- *   when the cursor leaves the 6 px strip — without it, a fast drag would
- *   detach mid-gesture as soon as the mouse outpaced the panel.
- * - We toggle `cursor` / `userSelect` on `document.body` for the duration
- *   of the drag so the cursor stays `ew-resize` over arbitrary B站 DOM and
- *   so dragging fast doesn't accidentally select chat text behind the
- *   dialog. Both are cleared in the same handler that releases capture.
- * - `clampWidth` re-reads `window.innerWidth` on every call, so resizing
- *   the browser window mid-drag tightens the upper bound live and matches
- *   what the user sees on screen.
+ * Drag handle on the left edge of the right-anchored dialog (drag left grows, right shrinks).
+ * - `setPointerCapture` keeps events flowing when the cursor outpaces the narrow strip mid-drag.
+ * - Toggles `document.body` cursor/userSelect during the drag so the cursor stays `ew-resize` and fast drags don't select page text.
  */
 function ResizeHandle() {
-  // `TargetedPointerEvent<HTMLDivElement>` (Preact's typed wrapper) narrows
-  // `currentTarget` to the actual `<div>` we mounted, so the body of the
-  // handler reads `target.setPointerCapture` / `target.addEventListener`
-  // without any `as HTMLElement` rescue cast.
   const onPointerDown = (e: TargetedPointerEvent<HTMLDivElement>) => {
-    // Block click-through into the underlying dialog (the handle sits over
-    // the first ~6 px of the panel content) and stop the host page from
-    // initiating its own drag/select gesture.
+    // Block click-through into the dialog and the host page's own drag/select gesture.
     e.preventDefault()
     e.stopPropagation()
 
     const target = e.currentTarget
     const startX = e.clientX
-    // Anchor on the width the dialog is ACTUALLY rendered at, not the raw
-    // persisted value. Otherwise a stored 800 with a viewport-clamped
-    // visible 360 would force the user to drag 440+ px before any visual
-    // change occurs (the delta would just chip away at the gap between
-    // 800 and the clamp).
+    // Anchor on the rendered width, not the raw persisted value, or a clamped stored width makes the first px of drag a no-op.
     const startWidth = clampWidth(dialogWidth.value)
 
     target.setPointerCapture(e.pointerId)
@@ -165,11 +111,7 @@ function ResizeHandle() {
     document.body.style.userSelect = 'none'
 
     const onMove = (ev: PointerEvent) => {
-      // Right-anchored panel: leftward motion (negative ev.clientX delta)
-      // must INCREASE width, hence `startX - currentX` rather than the
-      // usual `currentX - startX`. `clampWidth` re-reads `window.innerWidth`
-      // each call so resizing the browser mid-drag tightens the upper
-      // bound live, matching what the user sees on screen.
+      // Right-anchored: leftward motion increases width, hence `startX - currentX`.
       const delta = startX - ev.clientX
       dialogWidth.value = clampWidth(startWidth + delta)
     }
@@ -191,22 +133,15 @@ function ResizeHandle() {
   return (
     <div
       class={cn(
-        // Absolute inside the fixed dialog: `position: fixed` itself
-        // establishes a containing block, so no extra `relative` needed.
+        // Absolute against the fixed dialog, which already establishes a containing block.
         'absolute top-0 bottom-0 left-0 w-0.75',
         'cursor-ew-resize select-none',
         // Sit above tab buttons / panels so the strip is always grabbable.
-        // The dialog itself is at the script's z-index ceiling, so this
-        // only races with our own children.
         'z-10',
-        // Subtle hover/active feedback so the affordance is discoverable
-        // without a permanent visual seam down the panel edge.
+        // Hover/active feedback so the affordance is discoverable without a permanent seam.
         'hover:bg-ga3 active:bg-ga4'
       )}
-      // `touch-action: none` opts out of the browser's default pan/zoom
-      // gesture so a touch-drag scrolls the panel width instead of the
-      // page. Inline because UnoCSS doesn't ship a `touch-none`
-      // utility under our slimmed-down preset.
+      // `touch-action: none` so a touch-drag resizes instead of panning the page; inline since our UnoCSS preset lacks `touch-none`.
       style={{ touchAction: 'none' }}
       onPointerDown={onPointerDown}
       title='拖动以调整面板宽度'

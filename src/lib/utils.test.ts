@@ -2,15 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { buildOvuContributeUrl, extractBvid, extractOpusAuthorUid, extractOpusPubDate } from './utils'
 
-/**
- * `extractBvid` backs the LAPLACE ICU archive button on
- * `www.bilibili.com/video/*` pages — it derives the BV id that gets
- * spliced into `https://laplace.icu/v/:bvid`. A wrong or missing id would
- * send users to a dead archive URL, so the parser must pick the BV segment
- * out of the various shapes bilibili video URLs take (trailing slash, query
- * params, page selectors) and return `undefined` for paths that carry no
- * BV id (legacy `av` links, non-video paths).
- */
+/** Derives the BV id from bilibili video URLs; `undefined` for non-BV paths (legacy `av`, case-sensitive prefix). */
 describe('extractBvid', () => {
   test('plain video URL', () => {
     expect(extractBvid('https://www.bilibili.com/video/BV1NbE866EK7')).toBe('BV1NbE866EK7')
@@ -37,15 +29,7 @@ describe('extractBvid', () => {
   })
 })
 
-/**
- * `extractOpusAuthorUid` backs the 主播额外信息 info popover on
- * `www.bilibili.com/opus/*` pages. The opus URL carries the post id (not a
- * uid), so identity is read from B站's SSR snapshot
- * (`window.__INITIAL_STATE__.detail`) rather than the path. A wrong uid would
- * surface another person's guild/MCN/魔法期 data, so the parser must prefer
- * the author module's numeric `mid`, fall back to the string `basic.uid`, and
- * degrade to `undefined` on any unexpected shape instead of throwing.
- */
+/** Reads opus author uid from the SSR snapshot (opus URL has no uid): prefer author module `mid`, fall back to `basic.uid`. */
 describe('extractOpusAuthorUid', () => {
   test('author module mid (primary source)', () => {
     const state = {
@@ -58,7 +42,6 @@ describe('extractOpusAuthorUid', () => {
         ],
       },
     }
-    // The numeric author mid wins over basic.uid when both are present.
     expect(extractOpusAuthorUid(state)).toBe(1802654492)
   })
 
@@ -84,15 +67,10 @@ describe('extractOpusAuthorUid', () => {
   })
 })
 
-/**
- * `extractOpusPubDate` feeds the `date` param of the 魔法期 贡献数据 link. It
- * reads the author module's `pub_ts` (publish Unix-seconds) — NOT `pub_time`,
- * which becomes an edit-time display string ("编辑于 …") on edited posts — and
- * formats it in Beijing time so the date matches the streamer's calendar.
- */
+/** Formats author `pub_ts` (Unix seconds) in Beijing time. NOT `pub_time`, which becomes an edit-time string on edited posts. */
 describe('extractOpusPubDate', () => {
   test('formats pub_ts as YYYY-MM-DD in Beijing time', () => {
-    // 1778512382 = 2026-05-11T15:13:02Z = 2026-05-11 23:13 Beijing.
+    // 1778512382 = 2026-05-11 23:13 Beijing.
     const state = {
       detail: { modules: [{ module_type: 'MODULE_TYPE_AUTHOR', module_author: { mid: 1, pub_ts: '1778512382' } }] },
     }
@@ -100,7 +78,7 @@ describe('extractOpusPubDate', () => {
   })
 
   test('a timestamp late in the UTC day still lands on the Beijing date', () => {
-    // 1778543000 = 2026-05-11T23:43:20Z → 2026-05-12 07:43 Beijing.
+    // 1778543000 = 2026-05-11 UTC but 2026-05-12 Beijing.
     const state = {
       detail: { modules: [{ module_type: 'MODULE_TYPE_AUTHOR', module_author: { pub_ts: 1778543000 } }] },
     }
@@ -121,11 +99,7 @@ describe('extractOpusPubDate', () => {
   })
 })
 
-/**
- * `buildOvuContributeUrl` assembles the 魔法期 贡献数据 link. `uid` is always
- * present; `source` (opus permalink) and `date` (opus post date) are only
- * known on /opus/* pages and must be omitted — not blanked — elsewhere.
- */
+/** Assembles the 贡献数据 link; `source`/`date` are only known on /opus/* and must be omitted — not blanked — elsewhere. */
 describe('buildOvuContributeUrl', () => {
   test('uid only (non-opus surfaces)', () => {
     expect(buildOvuContributeUrl(1802654492)).toBe('https://laplace.live/ovu?uid=1802654492')
@@ -141,7 +115,6 @@ describe('buildOvuContributeUrl', () => {
     expect(parsed.searchParams.get('uid')).toBe('1802654492')
     expect(parsed.searchParams.get('source')).toBe('https://www.bilibili.com/opus/1201190606249918471')
     expect(parsed.searchParams.get('date')).toBe('2026-05-11')
-    // The embedded URL's `://` and `/` are encoded so they don't break the query.
     expect(url).toContain('source=https%3A%2F%2Fwww.bilibili.com%2Fopus%2F1201190606249918471')
   })
 

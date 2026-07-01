@@ -7,45 +7,19 @@ import { cn } from '../../lib/cn'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 import { Separator } from './separator'
 
-/**
- * Minimal contract every Combobox option must satisfy. Consumers can
- * extend this with whatever extra fields they need (e.g. pricing tier,
- * owner, tags, …) and pass that richer type through to `renderItem`
- * via the generic parameter — `Combobox<MyOption>`.
- */
+/** Minimal contract every Combobox option must satisfy; extend via the generic for `renderItem`. */
 export interface ComboboxOption {
   /** Controlled id. Compared against `value` and emitted via `onChange`. */
   value: string
   /** Shown by default in the trigger and in option rows. Defaults to `value`. */
   label?: string
-  /**
-   * Override the filter haystack. By default the filter matches against
-   * `value` joined with `label` (when label differs) so typing the id
-   * OR the friendly name both find the row. Set this when you want to
-   * filter against extra metadata (price, owner, …) that isn't part of
-   * the visible label.
-   */
+  /** Override the filter haystack; defaults to `value` joined with `label`. */
   searchText?: string
 }
 
 /**
- * shadcn-style Combobox: a button trigger that opens a floating popover
- * containing a filter input and a scrollable, keyboard-navigable list of
- * options. Picked over the native <select> when the option set is large
- * enough that filtering by typing is faster than scrolling — model
- * catalogs (OpenAI, OpenRouter, Together, …) easily run into hundreds of
- * ids.
- *
- * Generic over the option type so consumers can attach arbitrary metadata
- * to each option and surface it via `renderItem`. The Combobox owns the
- * click target, hover/keyboard tracking, and the leading check-icon
- * column; consumers' `renderItem` only returns the row content.
- *
- * Layout caveat: the popover is positioned absolutely against the trigger
- * wrapper. Inside the floating Configurator panel the dialog itself is
- * `overflow-hidden` (optimized) / `overflow-y-auto` (legacy), so a popover
- * opened near the dialog's bottom edge can be clipped. Place the
- * Combobox where there's room below it, or expect to scroll the panel.
+ * shadcn-style Combobox: filterable, keyboard-navigable popover list; generic over the option type.
+ * @remarks Popover is positioned against the trigger, so opening near an `overflow-hidden` panel's bottom edge can clip it.
  */
 export interface ComboboxProps<O extends ComboboxOption = ComboboxOption> {
   value: string
@@ -60,33 +34,16 @@ export interface ComboboxProps<O extends ComboboxOption = ComboboxOption> {
   emptyText?: string
   /** Empty-state message when there are no options at all (pre-fetch). */
   unloadedText?: string
-  /**
-   * When `value` is set but isn't present in `options`, render a
-   * sentinel row at the bottom of the list using this label. Used to
-   * surface a saved-but-now-missing selection (e.g. a model id that
-   * disappeared from the provider's catalog) — the same pattern Soniox
-   * uses for an unplugged microphone.
-   */
+  /** When `value` isn't in `options`, render a sentinel row using this label to surface a stale selection. */
   missingLabel?: (value: string) => string
-  /**
-   * Custom rendering for each option row. Receives the full option
-   * object plus the `selected` / `active` flags so consumers can react
-   * to selection or hover state.
-   *
-   * Default: a single-line `label ?? value` with `font-bold` when
-   * selected.
-   */
+  /** Custom rendering for each option row; defaults to a single-line `label ?? value`, bold when selected. */
   renderItem?: (option: O, state: { selected: boolean; active: boolean }) => ComponentChildren
 
   disabled?: boolean
   className?: string
   /** Forwarded onto the trigger button so external <Label htmlFor> works. */
   id?: string
-  /**
-   * Native HTML title (tooltip) forwarded onto the trigger button.
-   * Useful when the combobox has no visible <Label> beside it (e.g. the
-   * inline PromptPicker that swaps the active prompt on a feature tab).
-   */
+  /** Native HTML title (tooltip) forwarded onto the trigger button. */
   title?: string
 }
 
@@ -107,15 +64,13 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
 }: ComboboxProps<O>) {
   const open = useSignal(false)
   const query = useSignal('')
-  // Index into the *filtered* list of the row that arrow-keys / Enter
-  // currently target. Re-anchored on open and clamped on filter changes.
+  // Index into the *filtered* list; re-anchored on open, clamped on filter changes.
   const highlight = useSignal(0)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Filter haystack. Consumer-provided `searchText` wins entirely.
-  // Otherwise we lowercase value + label so typing either matches.
+  // `searchText` wins entirely; else lowercased value + label.
   const haystack = (o: O): string => {
     if (o.searchText !== undefined) return o.searchText.toLowerCase()
     const v = o.value.toLowerCase()
@@ -123,29 +78,22 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
     return v
   }
 
-  // Substring match, case-insensitive. Empty query passes the full list
-  // through so the popover doubles as a plain dropdown for users who'd
-  // rather scroll than type.
+  // Empty query passes the full list so the popover doubles as a plain dropdown.
   const q = query.value.trim().toLowerCase()
   const filtered = q ? options.filter(o => haystack(o).includes(q)) : options
 
   const selectedOption = options.find(o => o.value === value)
   const showMissing = !!value && !selectedOption && !!missingLabel
 
-  // Trigger label prefers the matched option's `label` so a friendly
-  // display name (e.g. "OpenAI: GPT-4o") wins over the raw id when one
-  // is provided.
+  // Prefer the matched option's `label` over the raw id.
   const triggerLabel = selectedOption?.label ?? value
 
-  // Reset cursor to the top of the list whenever the filter changes —
-  // otherwise typing `gpt` after navigating to row 7 leaves the highlight
-  // pointing at a row that no longer matches the user's mental model.
+  // Reset cursor on filter change so the highlight can't point at a now-unmatched row.
   useEffect(() => {
     highlight.value = 0
   }, [query.value])
 
-  // Clamp highlight when the option set shrinks (filter narrows or a
-  // /models refetch returns a shorter list).
+  // Clamp highlight when the option set shrinks.
   useEffect(() => {
     if (filtered.length === 0) {
       highlight.value = 0
@@ -154,10 +102,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
     }
   }, [filtered.length])
 
-  // On open: clear stale query, focus input, anchor highlight on the
-  // currently selected option so arrow-keys move *from* the user's
-  // existing pick rather than always starting from the top.
-  // On close: clear filter so a re-open starts fresh.
+  // On open: focus input, anchor highlight on the selected option. On close: clear filter.
   useEffect(() => {
     if (open.value) {
       inputRef.current?.focus()
@@ -169,12 +114,9 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
     }
   }, [open.value])
 
-  // Outside-click and Escape are handled by <Popover>/<PopoverContent>, so
-  // the Combobox no longer wires its own document listeners.
+  // Outside-click and Escape are handled by <Popover>, not our own document listeners.
 
-  // Keep the highlighted option visible while keyboard-navigating a long
-  // list. `block: 'nearest'` so we don't jerk the scroll position around
-  // when the row is already in view.
+  // Keep the highlighted option visible; `block: 'nearest'` avoids jerking a row already in view.
   useEffect(() => {
     if (!open.value) return
     const item = listRef.current?.querySelector<HTMLElement>(`[data-idx="${highlight.value}"]`)
@@ -187,9 +129,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
   }
 
   const onTriggerKeyDown = (e: KeyboardEvent) => {
-    // Enter / Space already toggle via the native button click that
-    // PopoverTrigger hooks; only ArrowDown (which fires no click) needs to
-    // open the list here. A disabled <button> receives no keydown at all.
+    // Enter/Space toggle via the native button click; only ArrowDown (no click) needs handling.
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       open.value = true
@@ -219,9 +159,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
       e.preventDefault()
       open.value = false
     } else if (e.key === 'Tab') {
-      // Don't preventDefault — let Tab move focus naturally; just close
-      // so the popover doesn't stay floating over whatever the user
-      // tabs to next.
+      // No preventDefault: let Tab move focus naturally; just close the popover.
       open.value = false
     }
   }
@@ -232,8 +170,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
       onOpenChange={v => {
         open.value = v
       }}
-      // `block` overrides the Popover wrapper's default `inline-block` so the
-      // combobox keeps the block / flex-1 sizing it gets from `className`.
+      // `block` overrides the Popover wrapper's default `inline-block` to keep flex-1 sizing.
       className={cn('block min-w-0', className)}
     >
       <PopoverTrigger>
@@ -245,9 +182,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
           onKeyDown={onTriggerKeyDown}
           aria-haspopup='listbox'
           aria-expanded={open.value}
-          // Match Input's vertical metrics so a Combobox sitting inside
-          // ROW_CLASS lines up with sibling inputs/buttons instead of
-          // floating a hairline above or below them.
+          // Match Input's vertical metrics so it lines up with sibling inputs/buttons.
           class={cn(
             'box-border w-full',
             'flex items-center justify-between gap-1',
@@ -261,9 +196,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
           )}
         >
           <span class={cn('flex-1 truncate leading-tight', !value && 'text-ga5')}>{triggerLabel || placeholder}</span>
-          {/* size/stroke explicit because Tabler's defaults (24/2) are too
-              chunky here — we want the chevron to read as a hint, not an
-              anchor, on a 20-px-tall trigger. */}
+          {/* Explicit size: Tabler's defaults (24/2) are too chunky for a 20px-tall trigger. */}
           <IconChevronDown
             size={12}
             aria-hidden='true'
@@ -272,8 +205,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
         </button>
       </PopoverTrigger>
 
-      {/* matchTriggerWidth stretches the dropdown to the trigger, replacing
-          the old `left-0 right-0` now that the content is position:fixed. */}
+      {/* matchTriggerWidth stretches the dropdown to the trigger (content is position:fixed). */}
       <PopoverContent side='bottom' align='start' matchTriggerWidth>
         <div class='p-1'>
           <input
@@ -300,10 +232,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
 
         <div ref={listRef} role='listbox' class='max-h-50 overflow-y-auto'>
           {options.length === 0 && !showMissing ? (
-            // Pre-fetch case: the user hasn't loaded any options yet.
-            // Use unloadedText if the consumer supplied one (e.g.
-            // "请先点击「刷新」"), else fall back to the generic empty
-            // text so we still say *something*.
+            // Pre-fetch (no options yet): unloadedText if supplied, else emptyText.
             <div class='px-2 py-1 text-ga5'>{unloadedText ?? emptyText}</div>
           ) : filtered.length === 0 && !showMissing ? (
             <div class='px-2 py-1 text-ga5'>{emptyText}</div>
@@ -330,16 +259,11 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                     'border-none bg-transparent',
                     'text-left text-inherit leading-tight',
                     'cursor-pointer',
-                    // Mouse-hover and keyboard-highlight both drive the
-                    // same `active` state so the visible "where am I"
-                    // signal never disagrees between input modalities.
+                    // Hover and keyboard share one `active` state so they never disagree.
                     active && 'bg-ga1s'
                   )}
                 >
-                  {/* min-w-0 lets the inner content respect break-all
-                      even though it sits inside a flex row; without
-                      it long ids would force the parent button wider
-                      than the popover. */}
+                  {/* min-w-0 lets inner content wrap inside the flex row instead of forcing the button wider. */}
                   <div class='min-w-0 flex-1'>
                     {renderItem ? (
                       renderItem(opt, { selected, active })
@@ -350,10 +274,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                   <IconCheck
                     size={12}
                     aria-hidden='true'
-                    // Reserve the slot even for unselected rows
-                    // (invisible, not hidden) so the option
-                    // content doesn't shift horizontally as the
-                    // selection moves between rows.
+                    // invisible (not hidden) reserves the slot so rows don't shift as selection moves.
                     class={cn('mt-0.5 shrink-0', !selected && 'invisible')}
                   />
                 </button>
@@ -363,12 +284,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
 
           {showMissing && (
             <>
-              {/* Pin the sentinel below the live list with a divider
-                  so it reads as a separate cluster. Static informational
-                  row — not a real listbox option. We deliberately drop
-                  role='option' so screen readers don't announce it as
-                  selectable; the user can't pick it (it's already what's
-                  selected) and clicking does nothing. */}
+              {/* Static informational row; role='option' deliberately dropped so it's not announced as selectable. */}
               <Separator />
               <div
                 title={value}

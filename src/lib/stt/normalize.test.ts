@@ -14,14 +14,7 @@ import {
   sonioxResultToChunks,
 } from './normalize'
 
-/**
- * These pure mappers are the seam that lets one consumer handle both
- * providers. `sonioxResultToChunks` must preserve Soniox's final/non-final
- * and original/translation distinctions; `reduceChunks` must pick exactly the
- * stream the user is listening to (translation when on, original when off);
- * `isSingleUseTokenResponse` guards the ElevenLabs token mint against a
- * malformed response without an `as` cast.
- */
+// Pure mappers: the seam that lets one STT consumer handle both providers.
 describe('sonioxResultToChunks', () => {
   test('maps text + is_final and defaults kind to original', () => {
     const chunks = sonioxResultToChunks({

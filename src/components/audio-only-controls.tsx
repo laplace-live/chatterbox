@@ -5,37 +5,19 @@ import { cn } from '../lib/cn'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from '../lib/store'
 
 /**
- * Playback controls for audio-only mode: a mute toggle whose volume slider
- * expands on hover / keyboard focus (YouTube-style), rendered in the
- * bottom-right corner cluster and only while audio-only is engaged.
- *
- * Why here instead of in bilibili's player controls? Audio-only mode calls
- * `livePlayer.stopPlayback()`, which tears down bilibili's entire
- * `.web-player-controller-wrap` subtree — so the native play/volume
- * controls are gone, and anything injected there would be destroyed with
- * it (see `lib/audio-only.ts`). Living in our own shadow-DOM cluster means
- * these are just signals wired to the hidden <audio> element, immune to
- * bilibili's re-renders and other userscripts stomping the player.
- *
- * Pure signal I/O: the component reads/writes `audioOnlyVolume` /
- * `audioOnlyMuted` and never touches the audio element directly — the
- * live-apply effect in `lib/audio-only.ts` owns that side, so the same
- * value also survives stream-URL refreshes for free.
+ * Audio-only mute toggle with hover/focus-expanding volume slider.
+ * Lives in our own shadow-DOM cluster because audio-only mode calls
+ * `stopPlayback()`, tearing down bilibili's native controls; pure signal
+ * I/O into `audioOnlyVolume`/`audioOnlyMuted` (never the audio element).
  */
 export function AudioOnlyControls() {
-  // Only present while audio-only is engaged; in video mode bilibili's
-  // own player controls are intact and these would be redundant. Reading
-  // the signal here also makes the component appear/disappear reactively
-  // as the user toggles the mode.
   if (!audioOnlyEnabled.value) return null
 
   const volume = audioOnlyVolume.value
   const muted = audioOnlyMuted.value
   const Icon = pickIcon(volume, muted)
 
-  // The slider reads 0 while muted (matching the speaker glyph), like
-  // YouTube — the pre-mute level is preserved in `audioOnlyVolume`, so
-  // un-muting restores it without us tracking a separate "last volume".
+  // Reads 0 while muted; pre-mute level survives in `audioOnlyVolume` (no separate "last volume").
   const sliderValue = muted ? 0 : volume
 
   const toggleMute = () => {
@@ -44,8 +26,7 @@ export function AudioOnlyControls() {
 
   const onSlide = (next: number) => {
     audioOnlyVolume.value = next
-    // Dragging the slider is an intent to set what you hear: any positive
-    // value unmutes; dragging all the way to 0 reads as a mute.
+    // Any positive value unmutes; dragging to 0 mutes.
     audioOnlyMuted.value = next <= 0
   }
 
@@ -65,11 +46,7 @@ export function AudioOnlyControls() {
       >
         <Icon size={16} stroke={2} />
       </button>
-      {/* Slider wrapper grows from zero width on hover / focus-within.
-          `overflow-hidden` clips the slider (and its margins) when
-          collapsed, so at rest the control is a tidy speaker-only chip;
-          `focus-within` keeps it open for keyboard users who tab onto the
-          range even though it's visually hidden at rest. */}
+      {/* Grows from zero width on hover/focus-within; `focus-within` keeps it open for keyboard tab-in. */}
       <div
         class={cn(
           'flex items-center overflow-hidden',

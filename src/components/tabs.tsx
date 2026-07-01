@@ -24,10 +24,7 @@ export function Tabs() {
             }}
             class={cn(
               '-mb-px cursor-pointer bg-transparent px-2 py-1',
-              // Native <button> ships with a UA border. Zero-out top/x and
-              // explicitly draw a 1px solid bottom border whose color we
-              // toggle below — keeps the active-tab underline aligned with
-              // the container's own bottom border (offset by mb-[-1px]).
+              // Zero out the UA button border; active underline aligns with the container's bottom border via -mb-px.
               'border-x-0 border-t-0 border-b border-b-solid',
               isActive ? 'border-b-brand font-bold' : 'border-b-transparent font-normal'
             )}

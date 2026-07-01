@@ -2,23 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { isNativePlayerStreaming, resolveLivePlayer } from './player-dom'
 
-/**
- * Minimal stand-in for a same-origin `Window` in the frame chain: just the
- * two properties `resolveLivePlayer` reads — an optional `livePlayer` and a
- * `parent` link. It structurally satisfies the function's parameter, so the
- * doubles pass straight in with no cast. Real top frames have
- * `parent === self`; we mirror that to mark the chain's terminator.
- */
+/** Same-origin `Window` stand-in; `parent === self` marks the chain terminator. */
 type FakeWin = { livePlayer?: unknown; parent?: FakeWin }
 
-/**
- * `isNativePlayerStreaming` centralizes the "is bilibili's native player
- * actively pulling the live stream?" check that audio-only's watchdog and
- * volume-restore both rely on. The signal is the `<video>` src: a `blob:`
- * URL means a MediaSource is attached and streaming; after
- * `stopPlayback()` the src reverts to a static poster `.mp4`, and an
- * un-mounted / reset element has an empty src.
- */
+/** Signal is `<video>` src: `blob:` = streaming; post-`stopPlayback()` poster `.mp4` or empty = not. */
 describe('isNativePlayerStreaming', () => {
   test('blob: src (MediaSource attached) → streaming', () => {
     expect(isNativePlayerStreaming({ src: 'blob:https://live.bilibili.com/abc-123' } as HTMLVideoElement)).toBe(true)
@@ -33,18 +20,12 @@ describe('isNativePlayerStreaming', () => {
   })
 })
 
-/**
- * `resolveLivePlayer` finds bilibili's `livePlayer` control global by
- * walking up the frame ancestor chain. The walk exists because promotion /
- * activity pages run the room in a `/blanc/<id>` iframe while installing
- * `livePlayer` on the top frame — so the player the iframe needs is one (or
- * more) frames up. "Ready" is signalled by a callable `stopPlayback`.
- */
+/** Walks the frame ancestor chain because `/blanc/<id>` iframes install `livePlayer` on the top frame; "ready" = callable `stopPlayback`. */
 describe('resolveLivePlayer', () => {
   test('normal room: player on the starting window (depth 0)', () => {
     const player = { stopPlayback() {} }
     const win: FakeWin = { livePlayer: player }
-    win.parent = win // top frame: parent === self
+    win.parent = win
     expect(resolveLivePlayer(win)).toBe(player)
   })
 
@@ -52,7 +33,7 @@ describe('resolveLivePlayer', () => {
     const player = { stopPlayback() {} }
     const top: FakeWin = { livePlayer: player }
     top.parent = top
-    const iframe: FakeWin = { parent: top } // iframe itself has no livePlayer
+    const iframe: FakeWin = { parent: top }
     expect(resolveLivePlayer(iframe)).toBe(player)
   })
 
@@ -64,7 +45,7 @@ describe('resolveLivePlayer', () => {
   })
 
   test('player present but stopPlayback not installed yet (JS-state lag) → null', () => {
-    const win: FakeWin = { livePlayer: { quality: 10000 } } // no stopPlayback
+    const win: FakeWin = { livePlayer: { quality: 10000 } }
     win.parent = win
     expect(resolveLivePlayer(win)).toBeNull()
   })
@@ -73,7 +54,7 @@ describe('resolveLivePlayer', () => {
     const ready = { stopPlayback() {} }
     const top: FakeWin = { livePlayer: ready }
     top.parent = top
-    const iframe: FakeWin = { livePlayer: {}, parent: top } // local player lacks stopPlayback
+    const iframe: FakeWin = { livePlayer: {}, parent: top }
     expect(resolveLivePlayer(iframe)).toBe(ready)
   })
 
@@ -85,7 +66,7 @@ describe('resolveLivePlayer', () => {
       },
     })
     crossOrigin.parent = crossOrigin
-    const iframe: FakeWin = { parent: crossOrigin } // same-origin self, no player
+    const iframe: FakeWin = { parent: crossOrigin }
     expect(resolveLivePlayer(iframe)).toBeNull()
   })
 
@@ -93,7 +74,7 @@ describe('resolveLivePlayer', () => {
     const a: FakeWin = {}
     const b: FakeWin = {}
     a.parent = b
-    b.parent = a // cycle, neither is its own parent
+    b.parent = a
     expect(resolveLivePlayer(a, 3)).toBeNull()
   })
 })

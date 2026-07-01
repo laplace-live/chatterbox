@@ -1,31 +1,9 @@
 /**
  * Read-only metadata aggregator for the info button popover.
  *
- * Two upstream endpoints (both hosted at workers.vrp.moe, both typed by
- * `@laplace.live/internal`):
- *
- *   - `LAPLACE_FERTILITY/${uid}`     → `FertilityUserResponse`
- *   - `LAPLACE_BILIBILI_USER/${uid}` → `BilibiliUser`
- *
- * Both are fetched lazily and cached per-uid for the lifetime of the
- * page. We intentionally do NOT persist the responses to GM storage —
- * the data is opinionated and a stale snapshot could be misleading
- * across days. A page reload re-fetches.
- *
- * Each fetch is gated by the corresponding settings signal
- * (`infoFertilityEnabled`, `infoGuildEnabled`, `infoMcnEnabled`). Guild
- * and MCN both come from the same `BilibiliUser` endpoint, so a single
- * fetch satisfies either toggle being on.
- *
- * 404 from either endpoint is treated as "no data" (a normal outcome for
- * uids not in the Laplace dataset) rather than an error — surfaced as
- * `null` data with no error message. Real network / parse failures land
- * in `*Error` so the popover can show them.
- *
- * Identifier resolution is the consumer's job: on live pages,
- * `cachedStreamerUid` is the source of truth; on space pages, the URL
- * path is. Both feed the same `ensureInfoData(uid)` entry point — this
- * module doesn't care which surface called it.
+ * Cached per-uid for the page lifetime, never persisted (stale opinionated data
+ * misleads across days; reload re-fetches). 404 = "no data" (null, no error),
+ * not a failure. Guild and MCN share the BilibiliUser endpoint.
  */
 
 import type { LaplaceInternal } from '@laplace.live/internal'
@@ -41,12 +19,9 @@ export type BilibiliUserData = LaplaceInternal.HTTPS.Workers.BilibiliUser
 export const infoCurrentUid = signal<number | null>(null)
 
 /**
- * Opus-page provenance for the 魔法期 "贡献数据" link. Null on every other
- * surface; `main.tsx` sets it only on `/opus/*` pages. `source` is the opus
- * permalink and `date` is the post's publish date (`YYYY-MM-DD`, may be null
- * if the SSR snapshot carried no usable timestamp). It lives next to
- * `infoCurrentUid` because, like the uid, it's surface-supplied context the
- * popover reads but doesn't resolve itself.
+ * Opus-page provenance for the 魔法期 "贡献数据" link; null off `/opus/*`.
+ * `source` is the permalink; `date` is publish date (`YYYY-MM-DD`, null if the
+ * SSR snapshot carried no usable timestamp).
  */
 export const infoOpusMeta = signal<{ source: string; date: string | null } | null>(null)
 
@@ -58,24 +33,16 @@ export const bilibiliUserData = signal<BilibiliUserData | null>(null)
 export const bilibiliUserLoading = signal(false)
 export const bilibiliUserError = signal<string | null>(null)
 
-// Per-uid in-flight promise caches. Without these, two consumers asking
-// for the same uid back-to-back (e.g. the popover opening twice during a
-// settings flip) would fire duplicate network requests. Cleared only by
-// `resetInfoData` so the cache survives popover open/close cycles.
+// Per-uid in-flight promises dedupe concurrent requests for the same uid.
 const fertilityInFlight = new Map<number, Promise<void>>()
 const bilibiliUserInFlight = new Map<number, Promise<void>>()
 
-// Per-uid response caches. Same lifetime as the in-flight map — once a
-// uid resolves we never re-fetch it within the page session. A reload is
-// the only refresh mechanism by design (the upstream data updates on
-// the order of days, not minutes).
+// Per-uid response cache; never re-fetched within a page session (reload only).
 const fertilityCache = new Map<number, FertilityData | null>()
 const bilibiliUserCache = new Map<number, BilibiliUserData | null>()
 
 async function fetchFertility(uid: number): Promise<void> {
-  // Re-hydrate from cache instantly if we already resolved this uid.
-  // `has` (not truthy-check on `get`) so a cached `null` (404 = no data)
-  // also short-circuits and doesn't re-fetch.
+  // `has` not truthy-`get`, so a cached `null` (404) also short-circuits.
   if (fertilityCache.has(uid)) {
     fertilityData.value = fertilityCache.get(uid) ?? null
     return
@@ -145,27 +112,14 @@ async function fetchBilibiliUser(uid: number): Promise<void> {
   return p
 }
 
-/**
- * Fan out fetches for `uid` based on which categories the user has
- * enabled. Safe to call repeatedly — each underlying endpoint dedupes
- * via the in-flight + cache maps.
- *
- * No-op when uid is null (e.g. live page before `ensureRoomId` resolves,
- * or a non-numeric space-page URL).
- */
+/** Fan out enabled fetches for `uid`; safe to call repeatedly (deduped), no-op when null. */
 export function ensureInfoData(uid: number | null): void {
   if (uid === null) return
   if (infoFertilityEnabled.value) void fetchFertility(uid)
-  // Guild and MCN both live on the BilibiliUser response, so either
-  // toggle being on triggers one (deduped) fetch.
   if (infoGuildEnabled.value || infoMcnEnabled.value) void fetchBilibiliUser(uid)
 }
 
-/**
- * Clear visible signals when the uid changes (e.g. SPA navigation in a
- * future world where this runs across route changes). Caches are
- * preserved so flipping back to a previously-viewed uid is instant.
- */
+/** Clear visible signals on uid change; caches preserved so revisits stay instant. */
 export function resetInfoData(): void {
   fertilityData.value = null
   fertilityError.value = null
@@ -173,13 +127,7 @@ export function resetInfoData(): void {
   bilibiliUserError.value = null
 }
 
-// === Display helpers ====================================================
-//
-// `FertilityStatus` is the 4-value upstream enum
-// ('menstruating' | 'fertile' | 'ovulating' | 'normal'). Map to a
-// Chinese label + emoji + color tint for the popover. Colors are lifted
-// from the reference Greasemonkey scripts so the visual language stays
-// consistent with the audience's existing mental model.
+// Display helpers: colors lifted from the reference Greasemonkey scripts for consistency.
 
 export type FertilityStatus = LaplaceInternal.HTTPS.Workers.FertilityStatus
 
@@ -201,12 +149,7 @@ export function getFertilityDisplay(status: FertilityStatus): FertilityDisplay {
   return FERTILITY_DISPLAY[status]
 }
 
-/**
- * Compact emoji used on the info button face when fertility data is
- * available. Falls back to a generic "i" indicator (rendered by the
- * button itself) when no data — keep this returning null in that case
- * rather than a placeholder so the button's empty state is unambiguous.
- */
+/** Emoji for the info button face; null (not a placeholder) when no fertility data. */
 export function getFertilityButtonEmoji(): string | null {
   const data = fertilityData.value
   if (!data) return null

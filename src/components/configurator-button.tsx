@@ -2,13 +2,8 @@ import { cn } from '../lib/cn'
 import { dialogOpen, sendMsg } from '../lib/store'
 
 /**
- * The 直播助手 toggle that opens the floating configurator. Live-page
- * only — the configurator's settings tab reads live-room state that
- * doesn't exist on space pages, so this button has no business
- * appearing there.
- *
- * Layout (fixed corner, z-index, spacing relative to siblings) is owned
- * by `<CornerCluster />`; this component only renders the button itself.
+ * Toggle that opens the floating configurator. Live-page only: its settings
+ * tab reads live-room state absent on space pages. Layout owned by `<CornerCluster />`.
  */
 export function ConfiguratorButton() {
   const toggle = () => {
