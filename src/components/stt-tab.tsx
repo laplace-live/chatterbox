@@ -647,7 +647,7 @@ export function SttTab() {
           />
           <span>字自动分段</span>
         </div>
-        <div class='flex flex-wrap items-center gap-3'>
+        <div class='flex flex-wrap items-center gap-2'>
           <Checkbox
             id='sttAutoSend'
             checked={sttAutoSend.value}

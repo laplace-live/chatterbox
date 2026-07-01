@@ -215,7 +215,7 @@ export function AutoBlendControls() {
           </Label>
         </div>
 
-        <div class='my-2 flex flex-wrap gap-3'>
+        <div class='my-2 flex flex-wrap gap-2'>
           <Checkbox
             id='autoBlendUseReplacements'
             checked={autoBlendUseReplacements.value}

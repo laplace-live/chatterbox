@@ -208,7 +208,7 @@ export function NormalSendTab() {
           )}
         </div>
 
-        <div class='my-2 flex flex-wrap items-center gap-3'>
+        <div class='my-2 flex flex-wrap items-center gap-2'>
           <Checkbox
             id='aiEvasion'
             checked={aiEvasion.value}
