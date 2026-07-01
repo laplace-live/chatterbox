@@ -81,6 +81,8 @@ export const autoBlendCooldownAuto = gmSignal('autoBlendCooldownAuto', false)
 export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', true)
 // When true, drop incoming danmaku matching the last auto-sent text so a repeating chat can't re-trigger after cooldown. Tracked per startAutoBlend session (cleared on stop).
 export const autoBlendAvoidRepeat = gmSignal('autoBlendAvoidRepeat', false)
+// How many recent auto-sends to dedupe against when `autoBlendAvoidRepeat` is on.
+export const autoBlendAvoidRepeatCount = gmSignal('autoBlendAvoidRepeatCount', 3)
 // YOLO mode for 自动融入: LLM-polish each triggered trend before sending. Once per trigger (not per repeat) to preserve N-repeat semantics and bound LLM cost.
 export const autoBlendYolo = gmSignal('autoBlendYolo', false)
 // Per-room opt-in to remember 自动融入 on/off state across reloads.

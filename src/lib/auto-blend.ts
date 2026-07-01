@@ -16,6 +16,7 @@ import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
   autoBlendAvoidRepeat,
+  autoBlendAvoidRepeatCount,
   autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
@@ -83,8 +84,8 @@ let unsubscribe: (() => void) | null = null
 let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
 let isSending = false
-// Last auto-sent trend (the counters Map key); blocks re-fire when `autoBlendAvoidRepeat` is on.
-let lastAutoSentText: string | null = null
+// Recent auto-sent trends (counters Map keys); blocks re-fire of any within the last `autoBlendAvoidRepeatCount` when `autoBlendAvoidRepeat` is on.
+let recentAutoSentTexts: string[] = []
 
 /** Live snapshot consumed by `AutoBlendControls`: candidates, CPM, cooldown countdown. */
 export const autoBlendStatus = signal<AutoBlendStatusValue>({
@@ -193,8 +194,8 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   // @ replies target one user, never a trend.
   if (isReply) return
 
-  // Don't let an exact repeat of our last auto-send re-trigger; dropped pre-counter so it stays off the leaderboard.
-  if (autoBlendAvoidRepeat.value && lastAutoSentText !== null && text === lastAutoSentText) return
+  // Don't let an exact repeat of a recent auto-send re-trigger; dropped pre-counter so it stays off the leaderboard.
+  if (autoBlendAvoidRepeat.value && recentAutoSentTexts.slice(-autoBlendAvoidRepeatCount.value).includes(text)) return
 
   if (uid) {
     if (uid in autoBlendUserBlacklist.value) return
@@ -301,7 +302,9 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
     // Record before sending so `autoBlendAvoidRepeat` holds even if the send fails.
-    lastAutoSentText = originalText
+    recentAutoSentTexts.push(originalText)
+    const avoidCap = autoBlendAvoidRepeatCount.value
+    if (recentAutoSentTexts.length > avoidCap) recentAutoSentTexts = recentAutoSentTexts.slice(-avoidCap)
 
     let toSend = replaced
     if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend)
@@ -353,6 +356,6 @@ export function stopAutoBlend(): void {
   counters.clear()
   messageTimestamps.length = 0
   cooldownUntil = 0
-  lastAutoSentText = null
+  recentAutoSentTexts = []
   autoBlendStatus.value = { candidates: [], cooldownRemainingSec: 0, chatsPerMinute: 0, cooldownEffectiveSec: 0 }
 }

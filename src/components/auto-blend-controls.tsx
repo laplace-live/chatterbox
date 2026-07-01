@@ -3,6 +3,7 @@ import { cn } from '../lib/cn'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import {
   autoBlendAvoidRepeat,
+  autoBlendAvoidRepeatCount,
   autoBlendCooldownAuto,
   autoBlendCooldownSec,
   autoBlendEnabled,
@@ -237,7 +238,21 @@ export function AutoBlendControls() {
             onInput={e => {
               autoBlendAvoidRepeat.value = e.currentTarget.checked
             }}
-            label='不重复上次自动发送'
+            label={
+              <span class='inline-flex items-center gap-1'>
+                不重复最近
+                <NumberInput
+                  value={autoBlendAvoidRepeatCount.value}
+                  min={1}
+                  max={50}
+                  disabled={!autoBlendAvoidRepeat.value}
+                  onChange={v => {
+                    autoBlendAvoidRepeatCount.value = v
+                  }}
+                />
+                次自动发送
+              </span>
+            }
           />
           <Checkbox
             id='persistAutoBlendState'
