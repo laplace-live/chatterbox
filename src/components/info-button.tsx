@@ -331,19 +331,16 @@ function GuildList({ history }: { history: { name: string; updatedAt: number }[]
   if (history.length === 0) {
     return <StatusLine color='var(--Ga6,#666)'>暂无公会记录</StatusLine>
   }
-  // Upstream-sorted newest-first; show the 5 most recent.
-  const recent = history.slice(0, 5)
+  // Upstream order isn't guaranteed; sort newest-first so entry 0 is the current guild.
+  const sorted = [...history].sort((a, b) => b.updatedAt - a.updatedAt)
   return (
     <ul class='m-0 flex list-none flex-col gap-1 p-0'>
-      {recent.map((entry, i) => (
+      {sorted.map((entry, i) => (
         <li key={`${entry.name}-${entry.updatedAt}`} class='flex items-baseline justify-between gap-2'>
           <span class={i === 0 ? 'font-medium' : 'text-ga6'}>{entry.name}</span>
           <span class='text-[11px] text-ga6'>{formatRelativeDate(entry.updatedAt)}</span>
         </li>
       ))}
-      {history.length > recent.length && (
-        <li class='text-[11px] text-ga6'>… 还有 {history.length - recent.length} 条历史记录</li>
-      )}
     </ul>
   )
 }
@@ -372,18 +369,16 @@ function McnList({ history }: { history: { mcnName: string; updatedAt: number }[
   if (history.length === 0) {
     return <StatusLine color='var(--Ga6,#666)'>暂无 MCN 记录</StatusLine>
   }
-  const recent = history.slice(0, 5)
+  // Upstream order isn't guaranteed; sort newest-first so entry 0 is the current MCN.
+  const sorted = [...history].sort((a, b) => b.updatedAt - a.updatedAt)
   return (
     <ul class='m-0 flex list-none flex-col gap-1 p-0'>
-      {recent.map((entry, i) => (
+      {sorted.map((entry, i) => (
         <li key={`${entry.mcnName}-${entry.updatedAt}`} class='flex items-baseline justify-between gap-2'>
           <span class={i === 0 ? 'font-medium' : 'text-ga6'}>{entry.mcnName}</span>
           <span class='text-[11px] text-ga6'>{formatRelativeDate(entry.updatedAt)}</span>
         </li>
       ))}
-      {history.length > recent.length && (
-        <li class='text-[11px] text-ga6'>… 还有 {history.length - recent.length} 条历史记录</li>
-      )}
     </ul>
   )
 }
