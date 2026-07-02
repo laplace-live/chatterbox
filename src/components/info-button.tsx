@@ -205,12 +205,12 @@ function UserNoteSection({ uid }: { uid: number }) {
         onInput={e => handleInput(e.currentTarget.value)}
         onBlur={commit}
         placeholder='给这位用户添加备注，支持多行文本，自动保存且仅本地…'
-        className='min-h-24 text-[13px]'
+        className='min-h-24'
         rows={4}
       />
       <div class='flex items-center justify-between gap-2'>
         <div class='flex items-center gap-2'>
-          <span class='text-[11px] text-ga6'>
+          <span class='text-ga6'>
             {stored
               ? `上次编辑：${new Date(stored.updatedAt).toLocaleString('zh-CN', {
                   year: 'numeric',
@@ -221,8 +221,8 @@ function UserNoteSection({ uid }: { uid: number }) {
                 })}`
               : '尚未添加备注'}
           </span>
-          {saveStatus.value === 'saving' && <span class='text-[11px] text-ga6'>正在保存…</span>}
-          {saveStatus.value === 'saved' && <span class='text-[11px] text-brand'>已保存</span>}
+          {saveStatus.value === 'saving' && <span class='text-ga6'>正在保存…</span>}
+          {saveStatus.value === 'saved' && <span class='text-brand'>已保存</span>}
         </div>
         {stored && (
           <Button variant='ghost' size='sm' className='text-[red]' onClick={handleDelete}>
@@ -338,7 +338,7 @@ function GuildList({ history }: { history: { name: string; updatedAt: number }[]
       {sorted.map((entry, i) => (
         <li key={`${entry.name}-${entry.updatedAt}`} class='flex items-baseline justify-between gap-2'>
           <span class={i === 0 ? 'font-medium' : 'text-ga6'}>{entry.name}</span>
-          <span class='text-[11px] text-ga6'>{formatRelativeDate(entry.updatedAt)}</span>
+          <span class='text-ga6'>{formatRelativeDate(entry.updatedAt)}</span>
         </li>
       ))}
     </ul>
@@ -376,7 +376,7 @@ function McnList({ history }: { history: { mcnName: string; updatedAt: number }[
       {sorted.map((entry, i) => (
         <li key={`${entry.mcnName}-${entry.updatedAt}`} class='flex items-baseline justify-between gap-2'>
           <span class={i === 0 ? 'font-medium' : 'text-ga6'}>{entry.mcnName}</span>
-          <span class='text-[11px] text-ga6'>{formatRelativeDate(entry.updatedAt)}</span>
+          <span class='text-ga6'>{formatRelativeDate(entry.updatedAt)}</span>
         </li>
       ))}
     </ul>
