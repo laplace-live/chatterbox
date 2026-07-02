@@ -42,8 +42,7 @@ export function Popover({ open, onOpenChange, className, children }: PopoverProp
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   return (
     <PopoverContext.Provider value={{ open, setOpen: onOpenChange, wrapperRef }}>
-      {/* `inline-block` so a Popover inside a flex/inline row doesn't break the row's layout. */}
-      <div ref={wrapperRef} class={cn('relative inline-block', className)}>
+      <div ref={wrapperRef} class={cn('relative inline-flex', className)}>
         {children}
       </div>
     </PopoverContext.Provider>
