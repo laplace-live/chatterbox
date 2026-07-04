@@ -6,7 +6,7 @@
  *
  * - Event-driven (progress/waiting/timeupdate/playing), not interval-polled: zero wakeups while idle, throttled against event bursts.
  * - Round-play/轮播 (`live_status === 2`) serves a finite-duration VOD; the core holds 1x on finite `duration` so the ladder doesn't peg it at 1.3x. Real live reports non-finite duration.
- * - Skip while `document.hidden`; `visibilitychange` re-ticks on foreground to trim the buffer grown while hidden.
+ * - Skip while `document.hidden` unless `autoSeekWhenHidden`; `visibilitychange` re-ticks on foreground to trim the buffer grown while hidden.
  * - Target element is swapped by B站 (quality/roundplay) and by audio-only engage/refresh; a `MutationObserver` re-attaches, every tick re-queries.
  */
 
@@ -21,6 +21,7 @@ import {
   autoSeekCurrentBufferLen,
   autoSeekCurrentRate,
   autoSeekEnabled,
+  autoSeekWhenHidden,
 } from './store'
 
 // Throttle adjacent ticks so a `progress`+`timeupdate` burst doesn't cause multiple
@@ -89,8 +90,9 @@ function setRate(m: HTMLMediaElement, rate: number): void {
 
 /** Inspect the current media buffer and maybe adjust `playbackRate`. */
 function tick(): void {
-  // Backgrounded tabs throttle our event sources to ~1Hz; skip and trim on visibilitychange.
-  if (document.hidden) return
+  // Backgrounded tabs throttle our event sources to ~1Hz — still enough to seek on when
+  // opted in; otherwise skip and trim on visibilitychange.
+  if (document.hidden && !autoSeekWhenHidden.value) return
 
   const m = getMediaTarget()
   if (!m) return

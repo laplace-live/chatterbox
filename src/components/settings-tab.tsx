@@ -18,6 +18,7 @@ import {
   autoSeekCurrentBufferLen,
   autoSeekCurrentRate,
   autoSeekEnabled,
+  autoSeekWhenHidden,
   cachedRoomId,
   danmakuDirectAlwaysShow,
   danmakuDirectConfirm,
@@ -1389,6 +1390,15 @@ export function SettingsTab() {
                 autoSeekEnabled.value = e.currentTarget.checked
               }}
               label='启用自动追帧'
+            />
+            <Checkbox
+              id='autoSeekWhenHidden'
+              checked={autoSeekWhenHidden.value}
+              disabled={!autoSeekEnabled.value}
+              onInput={e => {
+                autoSeekWhenHidden.value = e.currentTarget.checked
+              }}
+              label='页面在后台时继续追帧'
             />
             <div class='flex items-center gap-1'>
               <Label htmlFor='autoSeekBufferThreshold'>目标延迟</Label>

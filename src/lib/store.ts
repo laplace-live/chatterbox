@@ -39,6 +39,8 @@ export const audioOnlyMuted = signal(false)
 // Auto-seek (自动追帧): nudges `video.playbackRate` to minimize latency. Event-driven (no polling); inert while `audioOnlyEnabled`. Threshold in seconds = target buffered-ahead. See `lib/auto-seek.ts`.
 export const autoSeekEnabled = gmSignal('autoSeekEnabled', false)
 export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
+// Keep seeking while the tab is hidden (events throttle to ~1Hz there, still enough to drive the ladder).
+export const autoSeekWhenHidden = gmSignal('autoSeekWhenHidden', false)
 // Auto-quality (自动原画): one-shot switch to 原画 (qn=10000) on page load, so later manual picks stay respected. Inert when `audioOnlyEnabled` (avoids ping-pong with its stopPlayback watchdog). See `lib/auto-quality.ts`.
 export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 
