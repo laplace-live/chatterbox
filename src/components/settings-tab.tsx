@@ -157,6 +157,7 @@ export function SettingsTab() {
   const newRoomId = useSignal('')
 
   const userBlacklistInput = useSignal('')
+  const userBlacklistUnameInput = useSignal('')
   const messageBlacklistInput = useSignal('')
 
   // String mirror so typing "1." isn't collapsed to `1` mid-keystroke, eating the dot.
@@ -565,15 +566,27 @@ export function SettingsTab() {
       appendLog('⚠️ UID 必须为数字')
       return
     }
-    if (Object.hasOwn(autoBlendUserBlacklist.value, uid)) {
-      appendLog(`🚲 已在融入黑名单：${uid}`)
+    // Optional; empty uname renders as「(无昵称)」until a danmaku-box click fills it.
+    const uname = userBlacklistUnameInput.value.trim()
+    const display = uname || uid
+    const clearInputs = () => {
       userBlacklistInput.value = ''
+      userBlacklistUnameInput.value = ''
+    }
+    if (Object.hasOwn(autoBlendUserBlacklist.value, uid)) {
+      // Let a manual nickname relabel an existing (often bare) entry.
+      if (uname && uname !== autoBlendUserBlacklist.value[uid]) {
+        autoBlendUserBlacklist.value = { ...autoBlendUserBlacklist.value, [uid]: uname }
+        appendLog(`🚲 已更新融入黑名单昵称：${display}`)
+      } else {
+        appendLog(`🚲 已在融入黑名单：${display}`)
+      }
+      clearInputs()
       return
     }
-    // Empty uname renders as「(无昵称)」; a later danmaku-box click fills the real name.
-    autoBlendUserBlacklist.value = { ...autoBlendUserBlacklist.value, [uid]: '' }
-    appendLog(`🚲 已加入融入黑名单：${uid}`)
-    userBlacklistInput.value = ''
+    autoBlendUserBlacklist.value = { ...autoBlendUserBlacklist.value, [uid]: uname }
+    appendLog(`🚲 已加入融入黑名单：${display}`)
+    clearInputs()
   }
 
   // Sort so the list stays stable across adds (Record key order is insertion-defined).
@@ -1081,7 +1094,7 @@ export function SettingsTab() {
             </div>
             <div class={HINT_CLASS}>
               名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 /
-              移出名单，或在下方手动输入 UID 添加。
+              移出名单，或在下方手动输入 UID（可选填昵称）添加。
             </div>
             <div class='mb-2 max-h-50 overflow-y-auto'>
               {blacklistEntries.length === 0 ? (
@@ -1115,6 +1128,20 @@ export function SettingsTab() {
                 value={userBlacklistInput.value}
                 onInput={e => {
                   userBlacklistInput.value = e.currentTarget.value
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.isComposing) {
+                    e.preventDefault()
+                    addToUserBlacklist()
+                  }
+                }}
+              />
+              <Input
+                placeholder='昵称（可选）'
+                className={FILL_INPUT_CLASS}
+                value={userBlacklistUnameInput.value}
+                onInput={e => {
+                  userBlacklistUnameInput.value = e.currentTarget.value
                 }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.isComposing) {
