@@ -52,9 +52,9 @@ describe('extractOpusAuthorUid', () => {
 
   test('falls back to basic.uid when author module lacks a mid', () => {
     const state = {
-      detail: { basic: { uid: '12345' }, modules: [{ module_type: 'MODULE_TYPE_AUTHOR', module_author: {} }] },
+      detail: { basic: { uid: '2763' }, modules: [{ module_type: 'MODULE_TYPE_AUTHOR', module_author: {} }] },
     }
-    expect(extractOpusAuthorUid(state)).toBe(12345)
+    expect(extractOpusAuthorUid(state)).toBe(2763)
   })
 
   test('missing / malformed snapshot returns undefined', () => {

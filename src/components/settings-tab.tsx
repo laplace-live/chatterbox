@@ -156,6 +156,7 @@ export function SettingsTab() {
   const editingRoomId = useSignal(cachedRoomId.value !== null ? String(cachedRoomId.value) : '')
   const newRoomId = useSignal('')
 
+  const userBlacklistInput = useSignal('')
   const messageBlacklistInput = useSignal('')
 
   // String mirror so typing "1." isn't collapsed to `1` mid-keystroke, eating the dot.
@@ -551,6 +552,28 @@ export function SettingsTab() {
     if (!confirm(`确定清空 ${blacklistEntries.length} 个黑名单用户？`)) return
     autoBlendUserBlacklist.value = {}
     appendLog('🚲 已清空融入黑名单')
+  }
+
+  const addToUserBlacklist = () => {
+    const uid = userBlacklistInput.value.trim()
+    if (!uid) {
+      appendLog('⚠️ UID 不能为空')
+      return
+    }
+    // B站 mid is always numeric; reject anything else to keep keys clean.
+    if (!/^\d+$/.test(uid)) {
+      appendLog('⚠️ UID 必须为数字')
+      return
+    }
+    if (Object.hasOwn(autoBlendUserBlacklist.value, uid)) {
+      appendLog(`🚲 已在融入黑名单：${uid}`)
+      userBlacklistInput.value = ''
+      return
+    }
+    // Empty uname renders as「(无昵称)」; a later danmaku-box click fills the real name.
+    autoBlendUserBlacklist.value = { ...autoBlendUserBlacklist.value, [uid]: '' }
+    appendLog(`🚲 已加入融入黑名单：${uid}`)
+    userBlacklistInput.value = ''
   }
 
   // Sort so the list stays stable across adds (Record key order is insertion-defined).
@@ -1057,7 +1080,8 @@ export function SettingsTab() {
               {blacklistEntries.length > 0 && <span class='font-normal text-ga6'> ({blacklistEntries.length})</span>}
             </div>
             <div class={HINT_CLASS}>
-              名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 / 移出名单。
+              名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 /
+              移出名单，或在下方手动输入 UID 添加。
             </div>
             <div class='mb-2 max-h-50 overflow-y-auto'>
               {blacklistEntries.length === 0 ? (
@@ -1083,11 +1107,31 @@ export function SettingsTab() {
                 ))
               )}
             </div>
-            {blacklistEntries.length > 0 && (
-              <Button variant='outline' size='sm' onClick={clearBlacklist}>
-                清空名单
+            <div class={ADD_ROW_CLASS}>
+              <Input
+                placeholder='UID，如 2763'
+                inputMode='numeric'
+                className={FILL_INPUT_CLASS}
+                value={userBlacklistInput.value}
+                onInput={e => {
+                  userBlacklistInput.value = e.currentTarget.value
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.isComposing) {
+                    e.preventDefault()
+                    addToUserBlacklist()
+                  }
+                }}
+              />
+              <Button variant='outline' size='sm' onClick={addToUserBlacklist}>
+                添加
               </Button>
-            )}
+              {blacklistEntries.length > 0 && (
+                <Button variant='outline' size='sm' onClick={clearBlacklist}>
+                  清空名单
+                </Button>
+              )}
+            </div>
           </div>
 
           <Separator />
