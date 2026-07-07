@@ -1,7 +1,7 @@
 {
   "name": "laplace-chatterbox",
   "private": true,
-  "version": "4.1.12",
+  "version": "4.1.13",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,10 +11,10 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@preact/signals": "^2.9.2",
+    "@preact/signals": "^2.9.3",
     "@tabler/icons-preact": "^3.44.0",
     "clsx": "^2.1.1",
-    "preact": "^10.29.4",
+    "preact": "^10.29.5",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
