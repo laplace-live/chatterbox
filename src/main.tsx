@@ -3,6 +3,7 @@ import { type ComponentChild, render } from 'preact'
 import { unsafeWindow } from '$'
 import css from './styles.css?inline'
 import './lib/fetch-hijack'
+import './lib/neptune-hijack'
 
 import { AppOpus } from './components/app-opus'
 import { AppRoom } from './components/app-room'

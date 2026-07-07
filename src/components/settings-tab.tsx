@@ -779,7 +779,7 @@ export function SettingsTab() {
               onInput={e => {
                 unlockLiveBlock.value = e.currentTarget.checked
               }}
-              label='直播间拉黑解锁（刷新生效，仅布局解锁）'
+              label='直播间拉黑/屏蔽解锁（刷新生效，仅布局解锁）'
             />
             <Checkbox
               id='unlockSpaceBlock'
