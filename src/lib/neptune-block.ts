@@ -23,14 +23,15 @@ export function stripRoomBlock(neptune: unknown): boolean {
 /**
  * Trap `__NEPTUNE_IS_MY_WAIFU__` on `target` so B站's SSR assignment is stripped
  * before any consumer (SPA / player bootstrap) reads it. Install at document-start.
- * `isEnabled` is re-checked per assignment (toggling is 刷新生效). Fails open.
+ * `isEnabled` is re-checked per assignment (toggling is 刷新生效); `onStripped` fires
+ * only when a block was actually cleared. Fails open.
  */
-export function installNeptuneBlockTrap(target: object, isEnabled: () => boolean): void {
+export function installNeptuneBlockTrap(target: object, isEnabled: () => boolean, onStripped?: () => void): void {
   const win = target as Record<string, unknown>
   try {
     // Lost the race (global already assigned): strip in place, no trap needed.
     if (win[NEPTUNE_KEY]) {
-      if (isEnabled()) stripRoomBlock(win[NEPTUNE_KEY])
+      if (isEnabled() && stripRoomBlock(win[NEPTUNE_KEY])) onStripped?.()
       return
     }
     let backing: unknown
@@ -41,7 +42,7 @@ export function installNeptuneBlockTrap(target: object, isEnabled: () => boolean
         return backing
       },
       set(v: unknown) {
-        if (isEnabled()) stripRoomBlock(v)
+        if (isEnabled() && stripRoomBlock(v)) onStripped?.()
         backing = v
       },
     })

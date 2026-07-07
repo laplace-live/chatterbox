@@ -1,6 +1,8 @@
 import { effect } from '@preact/signals'
 
 import { unsafeWindow } from '$'
+import { createDeferredNode } from './deferred-node'
+import { createLiveBlockPill } from './live-block-pill'
 import { unlockLiveBlock, unlockSpaceBlock } from './store'
 
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
@@ -12,131 +14,38 @@ const GET_INFO_BY_USER_PATTERN = '/xlive/web-room/v1/index/getInfoByUser'
 const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
 const ACC_INFO_PATTERN = '/x/space/wbi/acc/info'
 
-// Module scope so the toggle-off `effect(...)` can cancel a pending injection
-// that would otherwise fire (and inject unremovably) after the feature is off.
-let liveBlockObserver: MutationObserver | null = null
+const liveBlockPill = createLiveBlockPill({
+  id: LIVE_BLOCK_INDICATOR_ID,
+  text: '✽ 拉黑已解锁',
+  title: 'LAPLACE 直播助手已解除该直播间的部分拉黑限制',
+})
 
-function disconnectLiveBlockObserver(): void {
-  liveBlockObserver?.disconnect()
-  liveBlockObserver = null
+/** Full-width banner (per-`ensure` text) inserted after B站's space-page header. */
+function buildSpaceBanner(text: string): HTMLElement {
+  const el = document.createElement('div')
+  el.textContent = text
+  el.style.cssText = [
+    'background: rgb(228 243 240)',
+    'color: rgb(0 82 63)',
+    'padding: 8px 16px',
+    'font-size: 12px',
+    'text-align: center',
+    'box-sizing: border-box',
+    'width: 100%',
+    'line-height: 1',
+  ].join(';')
+  return el
 }
 
-function removeLiveBlockIndicator(): void {
-  disconnectLiveBlockObserver()
-  document.getElementById(LIVE_BLOCK_INDICATOR_ID)?.remove()
-}
-
-/**
- * Prepend the pill indicator into the livestream header's `.right-section`,
- * or once B站 mounts it (one-shot observer, since we run at document-start).
- */
-function ensureLiveBlockIndicator(): void {
-  if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
-  const inject = (targetEl: HTMLElement): void => {
-    if (document.getElementById(LIVE_BLOCK_INDICATOR_ID)) return
-    const el = document.createElement('div')
-    el.id = LIVE_BLOCK_INDICATOR_ID
-    el.title = 'LAPLACE 直播助手已解除该直播间的部分拉黑限制'
-    el.textContent = '✽ 拉黑已解锁'
-    el.style.cssText = [
-      'display: inline-flex',
-      'align-items: center',
-      'align-self: center',
-      'padding: 0 4px',
-      'margin-right: 5px',
-      'background: rgb(0 186 143)',
-      'color: #fff',
-      'border-radius: 4px',
-      'font-size: 12px',
-      'height: 20px',
-      'line-height: 1',
-      'flex-shrink: 0',
-      'cursor: default',
-    ].join(';')
-    targetEl.prepend(el)
-  }
-  const targetEl = document.querySelector<HTMLElement>('.right-section')
-  if (targetEl) {
-    inject(targetEl)
-    return
-  }
-  // Cancel any earlier pending observer so we keep at most one alive.
-  disconnectLiveBlockObserver()
-  liveBlockObserver = new MutationObserver(() => {
-    // Re-read: user may have toggled off while we waited for `.right-section`.
-    if (!unlockLiveBlock.value) {
-      disconnectLiveBlockObserver()
-      return
-    }
-    const c = document.querySelector<HTMLElement>('.right-section')
-    if (!c) return
-    disconnectLiveBlockObserver()
-    inject(c)
-  })
-  liveBlockObserver.observe(document.documentElement, { childList: true, subtree: true })
-}
-
-/**
- * Factory for a full-width banner inserted after B站's space-page header.
- * Observer is per-closure (not module scope) so each banner's `remove()` can
- * cancel its own pending injection on toggle-off / SPA nav.
- */
 function createSpaceBanner(id: string) {
-  const headerSelector = '.header.space-header'
-  let observer: MutationObserver | null = null
-
-  const disconnect = (): void => {
-    observer?.disconnect()
-    observer = null
-  }
-
-  const inject = (header: HTMLElement, text: string): void => {
-    if (document.getElementById(id)) return
-    const el = document.createElement('div')
-    el.id = id
-    el.textContent = text
-    el.style.cssText = [
-      'background: rgb(228 243 240)',
-      'color: rgb(0 82 63)',
-      'padding: 8px 16px',
-      'font-size: 12px',
-      'text-align: center',
-      'box-sizing: border-box',
-      'width: 100%',
-      'line-height: 1',
-    ].join(';')
-    header.insertAdjacentElement('afterend', el)
-  }
-
+  const node = createDeferredNode({
+    id,
+    target: '.header.space-header',
+    attach: (host, el) => host.insertAdjacentElement('afterend', el),
+  })
   return {
-    remove(): void {
-      disconnect()
-      document.getElementById(id)?.remove()
-    },
-    /**
-     * Inject the banner now, or once B站 mounts the header. `shouldInject` is
-     * re-checked in the observer so a toggled-off feature doesn't inject late.
-     */
-    ensure(text: string, shouldInject: () => boolean = () => true): void {
-      if (document.getElementById(id)) return
-      const header = document.querySelector<HTMLElement>(headerSelector)
-      if (header) {
-        inject(header, text)
-        return
-      }
-      disconnect()
-      observer = new MutationObserver(() => {
-        if (!shouldInject()) {
-          disconnect()
-          return
-        }
-        const h = document.querySelector<HTMLElement>(headerSelector)
-        if (!h) return
-        disconnect()
-        inject(h, text)
-      })
-      observer.observe(document.documentElement, { childList: true, subtree: true })
-    },
+    remove: () => node.remove(),
+    ensure: (text: string, shouldInject?: () => boolean) => node.ensure(() => buildSpaceBanner(text), shouldInject),
   }
 }
 
@@ -145,7 +54,7 @@ const deletedSpaceBanner = createSpaceBanner(DELETED_SPACE_BANNER_ID)
 
 // Disabling drops the indicator immediately; re-enabling re-shows on next fetch.
 effect(() => {
-  if (!unlockLiveBlock.value) removeLiveBlockIndicator()
+  if (!unlockLiveBlock.value) liveBlockPill.remove()
 })
 effect(() => {
   if (!unlockSpaceBlock.value) spaceBlockBanner.remove()
@@ -198,14 +107,14 @@ function applyTransforms(url: string, data: any): void {
   if (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
     // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
-    removeLiveBlockIndicator()
+    liveBlockPill.remove()
     const forbid = data?.data?.forbid_live
     if (forbid) {
       const wasBlocking = !!forbid.is_forbid
       forbid.is_forbid = false
       forbid.forbid_text = ''
       console.log('[LAPLACE Chatterbox] Blacklist livestream block removed')
-      if (wasBlocking) ensureLiveBlockIndicator()
+      if (wasBlocking) liveBlockPill.ensure(() => unlockLiveBlock.value)
     }
   } else if (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking acc/relation response:', url)
