@@ -686,6 +686,10 @@ function applyAudioOnlyMode(enabled: boolean): void {
           }
         }
       }
+      // Revert to video mode: flipping the signal re-runs the effect →
+      // applyAudioOnlyMode(false), stripping the hide-video class and
+      // resetting the toggle rather than stranding a blank player frame.
+      audioOnlyEnabled.value = false
     }
   }, 0)
 }
