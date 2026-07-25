@@ -61,49 +61,40 @@ describe('stripRoomBlock', () => {
 describe('installNeptuneBlockTrap', () => {
   test('strips an assignment made after install', () => {
     const win: Record<string, unknown> = {}
-    installNeptuneBlockTrap(win, () => true)
+    installNeptuneBlockTrap(win)
     win[NEPTUNE_KEY] = makeNeptune(true)
     expect(blockOf(win[NEPTUNE_KEY])).toBe(false)
   })
 
   test('getter returns the same object identity B站 assigned', () => {
     const win: Record<string, unknown> = {}
-    installNeptuneBlockTrap(win, () => true)
+    installNeptuneBlockTrap(win)
     const assigned = makeNeptune(true)
     win[NEPTUNE_KEY] = assigned
     expect(win[NEPTUNE_KEY]).toBe(assigned)
     expect(assigned.roomInfoRes.data.block_info.block).toBe(false)
   })
 
-  test('gate off leaves block untouched', () => {
-    const win: Record<string, unknown> = {}
-    installNeptuneBlockTrap(win, () => false)
-    win[NEPTUNE_KEY] = makeNeptune(true)
-    expect(blockOf(win[NEPTUNE_KEY])).toBe(true)
-  })
-
   test('already-present global stripped on install', () => {
     const win: Record<string, unknown> = { [NEPTUNE_KEY]: makeNeptune(true) }
-    installNeptuneBlockTrap(win, () => true)
+    installNeptuneBlockTrap(win)
     expect(blockOf(win[NEPTUNE_KEY])).toBe(false)
   })
 
-  test('already-present + gate off → untouched', () => {
-    const win: Record<string, unknown> = { [NEPTUNE_KEY]: makeNeptune(true) }
-    installNeptuneBlockTrap(win, () => false)
-    expect(blockOf(win[NEPTUNE_KEY])).toBe(true)
+  test('strips every assignment, not just the first', () => {
+    const win: Record<string, unknown> = {}
+    installNeptuneBlockTrap(win)
+    win[NEPTUNE_KEY] = makeNeptune(true)
+    win[NEPTUNE_KEY] = makeNeptune(true)
+    expect(blockOf(win[NEPTUNE_KEY])).toBe(false)
   })
 
   test('fires onStripped once when a block is cleared', () => {
     const win: Record<string, unknown> = {}
     let calls = 0
-    installNeptuneBlockTrap(
-      win,
-      () => true,
-      () => {
-        calls++
-      }
-    )
+    installNeptuneBlockTrap(win, () => {
+      calls++
+    })
     win[NEPTUNE_KEY] = makeNeptune(true)
     expect(calls).toBe(1)
   })
@@ -111,41 +102,19 @@ describe('installNeptuneBlockTrap', () => {
   test('does not fire onStripped when nothing was blocked', () => {
     const win: Record<string, unknown> = {}
     let calls = 0
-    installNeptuneBlockTrap(
-      win,
-      () => true,
-      () => {
-        calls++
-      }
-    )
+    installNeptuneBlockTrap(win, () => {
+      calls++
+    })
     win[NEPTUNE_KEY] = makeNeptune(false)
-    expect(calls).toBe(0)
-  })
-
-  test('does not fire onStripped when gate is off', () => {
-    const win: Record<string, unknown> = {}
-    let calls = 0
-    installNeptuneBlockTrap(
-      win,
-      () => false,
-      () => {
-        calls++
-      }
-    )
-    win[NEPTUNE_KEY] = makeNeptune(true)
     expect(calls).toBe(0)
   })
 
   test('fires onStripped on the already-present path', () => {
     const win: Record<string, unknown> = { [NEPTUNE_KEY]: makeNeptune(true) }
     let calls = 0
-    installNeptuneBlockTrap(
-      win,
-      () => true,
-      () => {
-        calls++
-      }
-    )
+    installNeptuneBlockTrap(win, () => {
+      calls++
+    })
     expect(calls).toBe(1)
   })
 })

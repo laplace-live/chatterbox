@@ -1,9 +1,6 @@
-import { effect } from '@preact/signals'
-
 import { unsafeWindow } from '$'
 import { createDeferredNode } from './deferred-node'
 import { createLiveBlockPill } from './live-block-pill'
-import { unlockLiveBlock } from './store'
 
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
 const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
@@ -52,11 +49,6 @@ function createSpaceBanner(id: string) {
 const spaceBlockBanner = createSpaceBanner(SPACE_BLOCK_BANNER_ID)
 const deletedSpaceBanner = createSpaceBanner(DELETED_SPACE_BANNER_ID)
 
-// Disabling drops the indicator immediately; re-enabling re-shows on next fetch.
-effect(() => {
-  if (!unlockLiveBlock.value) liveBlockPill.remove()
-})
-
 /** Pull the numeric `mid` out of an acc/info URL's query (0 if absent). */
 function midFromUrl(url: string): number {
   try {
@@ -85,14 +77,9 @@ function buildDeletedAccountProfile(mid: number) {
   }
 }
 
-/** True iff we'd actually rewrite this URL given the current signal state. */
+/** True iff this is one of the URLs we rewrite. */
 function shouldHijackUrl(url: string): boolean {
-  return (
-    (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) ||
-    // acc/relation + acc/info unlocks are always-on — no signal gate.
-    url.includes(ACC_RELATION_PATTERN) ||
-    url.includes(ACC_INFO_PATTERN)
-  )
+  return url.includes(GET_INFO_BY_USER_PATTERN) || url.includes(ACC_RELATION_PATTERN) || url.includes(ACC_INFO_PATTERN)
 }
 
 /**
@@ -101,7 +88,7 @@ function shouldHijackUrl(url: string): boolean {
  */
 // biome-ignore lint/suspicious/noExplicitAny: parsed JSON shape from B站
 function applyTransforms(url: string, data: any): void {
-  if (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) {
+  if (url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
     // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
     liveBlockPill.remove()
@@ -111,7 +98,7 @@ function applyTransforms(url: string, data: any): void {
       forbid.is_forbid = false
       forbid.forbid_text = ''
       console.log('[LAPLACE Chatterbox] Blacklist livestream block removed')
-      if (wasBlocking) liveBlockPill.ensure(() => unlockLiveBlock.value)
+      if (wasBlocking) liveBlockPill.ensure()
     }
   } else if (url.includes(ACC_RELATION_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking acc/relation response:', url)

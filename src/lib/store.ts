@@ -29,7 +29,6 @@ export const optimizeLayout = gmSignal('optimizeLayout', false)
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
-export const unlockLiveBlock = gmSignal('unlockLiveBlock', true)
 // Audio-only mode: `livePlayer.stopPlayback()` halts the native HLS pull, then a true audio-only FLV stream (`only_audio=1` from the app endpoint — web endpoint ignores it) plays via hidden `<audio>` + mpegts.js. ~180 vs ~1700 kbps. See `lib/audio-only.ts`.
 export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
 // Audio-only playback controls. Runtime signals, NOT persisted: re-seeded from the native player's volume/mute each engage, so persisting would fight that seed. `audioOnlyVolume` is 0–1.
@@ -219,10 +218,10 @@ export const sttAudioDeviceId = gmSignal('sttAudioDeviceId', '')
   }
 })()
 
-// Drop keys for removed settings (`autoBlendIncludeReply`: @ replies always excluded now; `unlockSpaceBlock`: 空间拉黑解锁 is always-on now). Existence check, not value check, so it deletes regardless of on/off and skips the write after first run.
+// Drop keys for removed settings (`autoBlendIncludeReply`: @ replies always excluded now; the two `unlock*Block` keys: both unlocks are always-on now). Existence check, not value check, so it deletes regardless of on/off and skips the write after first run.
 ;(() => {
   const sentinel = Symbol()
-  for (const key of ['autoBlendIncludeReply', 'unlockSpaceBlock']) {
+  for (const key of ['autoBlendIncludeReply', 'unlockSpaceBlock', 'unlockLiveBlock']) {
     if (GM_getValue<unknown>(key, sentinel) !== sentinel) GM_deleteValue(key)
   }
 })()

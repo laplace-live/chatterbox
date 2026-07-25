@@ -55,7 +55,6 @@ import {
   settingsLogOpen,
   settingsRulesOpen,
   settingsUserNotesOpen,
-  unlockLiveBlock,
 } from '../lib/store'
 import {
   applyUserNotesFile,
@@ -771,14 +770,6 @@ export function SettingsTab() {
                 forceScrollDanmaku.value = e.currentTarget.checked
               }}
               label='脚本载入时强制配置弹幕位置为滚动方向'
-            />
-            <Checkbox
-              id='unlockLiveBlock'
-              checked={unlockLiveBlock.value}
-              onInput={e => {
-                unlockLiveBlock.value = e.currentTarget.checked
-              }}
-              label='直播间拉黑/屏蔽解锁（刷新生效，仅布局解锁）'
             />
             <Checkbox
               id='optimizeLayout'
