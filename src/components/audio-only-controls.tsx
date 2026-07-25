@@ -5,6 +5,12 @@ import { cn } from '../lib/cn'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from '../lib/store'
 
 /**
+ * Level restored when unmuting at 0. Dragging the slider to 0 destroys the
+ * level, so unlike the mute button there is nothing to return to.
+ */
+const UNMUTE_FALLBACK_VOLUME = 0.5
+
+/**
  * Audio-only mute toggle with hover/focus-expanding volume slider.
  * Lives in our own shadow-DOM cluster because audio-only mode calls
  * `stopPlayback()`, tearing down bilibili's native controls; pure signal
@@ -21,7 +27,12 @@ export function AudioOnlyControls() {
   const sliderValue = muted ? 0 : volume
 
   const toggleMute = () => {
-    audioOnlyMuted.value = !audioOnlyMuted.value
+    const nextMuted = !audioOnlyMuted.value
+    // Unmuting at 0 would stay silent AND keep the muted glyph (`volumeIconState`
+    // reads 0 as muted), so the button looks inert. Only reachable via the slider —
+    // muting with this button leaves the level intact.
+    if (!nextMuted && audioOnlyVolume.value <= 0) audioOnlyVolume.value = UNMUTE_FALLBACK_VOLUME
+    audioOnlyMuted.value = nextMuted
   }
 
   const onSlide = (next: number) => {
