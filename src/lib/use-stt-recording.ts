@@ -26,6 +26,7 @@ import { createDeepgramEngine } from './stt/deepgram-engine'
 import { createElevenLabsEngine } from './stt/elevenlabs-engine'
 import { createGladiaEngine } from './stt/gladia-engine'
 import { createSonioxEngine } from './stt/soniox-engine'
+import { createLocalWhisperEngine } from './stt/local-whisper-engine'
 
 export interface UseSttRecordingConfig {
   provider: SttProvider
@@ -92,7 +93,8 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
     updateState('starting')
 
     const cfg = configRef.current
-    const engine = ENGINE_FACTORIES[cfg.provider](cfg.params, event => {
+    const engineFactory = cfg.params.apiKey === 'laplace' ? createLocalWhisperEngine : ENGINE_FACTORIES[cfg.provider];
+    const engine = engineFactory(cfg.params, event => {
       if (generationRef.current !== generation) return
       switch (event.type) {
         case 'state':

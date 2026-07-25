@@ -53,18 +53,43 @@ export interface PcmCaptureOptions {
 }
 
 export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCapture> {
-  const constraints: MediaStreamConstraints = {
-    audio: {
-      ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {}),
-      // DSP off explicitly: raw transcribes best, and pinning a device otherwise
-      // re-enables the browser's echo-cancellation / NS / AGC defaults.
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      channelCount: 1,
-    },
+  let stream: MediaStream | null = null;
+  
+  if (!opts.deviceId) {
+    try {
+      const getPlayerVideo = (window as any).getPlayerVideo;
+      const videoEl: HTMLVideoElement | null = 
+        (getPlayerVideo ? getPlayerVideo() : null) || 
+        document.querySelector('video') || 
+        document.getElementById('lc-audio-only-stream');
+
+      if (videoEl && ((videoEl as any).captureStream || (videoEl as any).mozCaptureStream)) {
+        const capStream = (videoEl as any).captureStream ? (videoEl as any).captureStream() : (videoEl as any).mozCaptureStream();
+        if (capStream.getAudioTracks().length > 0) {
+          stream = capStream;
+          console.log("【LAPLACE】成功直接截取直播间网页声音！");
+        }
+      }
+    } catch (err) {
+      console.warn("【LAPLACE】截取网页声音失败:", err);
+    }
   }
-  const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+  if (!stream) {
+    const constraints: MediaStreamConstraints = {
+      audio: {
+        ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {}),
+        // DSP off explicitly: raw transcribes best, and pinning a device otherwise
+        // re-enables the browser's echo-cancellation / NS / AGC defaults.
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+      },
+    }
+    stream = await navigator.mediaDevices.getUserMedia(constraints)
+  }
+
   const context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE })
   try {
     const source = context.createMediaStreamSource(stream)
