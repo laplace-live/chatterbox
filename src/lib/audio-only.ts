@@ -34,6 +34,10 @@ export const AUDIO_EL_ID = 'lc-audio-only-stream'
 // Stream URLs are signed with ~1h expiry; refresh well before that closes.
 const STREAM_REFRESH_MS = 50 * 60 * 1000
 
+// Backoff for reconnecting after the FLV stream dies (stream restart, edge
+// close, URL 403). Bounded: an off-air room would otherwise poll forever.
+const STREAM_RECOVERY_DELAYS_MS = [2000, 4000, 8000, 15000, 30000]
+
 const STYLE = `
 /* Hide the actual video element while audio keeps playing. The static
  * MP4 poster that bilibili's player shows after stopPlayback() also
@@ -301,6 +305,9 @@ let mpegtsPlayer: Mpegts.Player | null = null
 /** Room id the open stream targets; captured at enable so refresh stays put if the user navigates away. */
 let activeRoomId: number | null = null
 let streamRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let streamRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+/** Consecutive reconnect attempts since the last time the stream was actually flowing. */
+let streamRecoveryAttempts = 0
 let watchdogTimer: ReturnType<typeof setInterval> | null = null
 /** Bumped on every (re)engagement; async work from an older gen short-circuits after a bump. */
 let engagementGen = 0
@@ -311,6 +318,13 @@ function clearStreamRefreshTimer(): void {
   if (streamRefreshTimer !== null) {
     clearTimeout(streamRefreshTimer)
     streamRefreshTimer = null
+  }
+}
+
+function clearStreamRecoveryTimer(): void {
+  if (streamRecoveryTimer !== null) {
+    clearTimeout(streamRecoveryTimer)
+    streamRecoveryTimer = null
   }
 }
 
@@ -433,6 +447,7 @@ async function restoreVolumeToNativePlayer(volume: number, muted: boolean, gen: 
  */
 function destroyAudioPipeline(): void {
   clearStreamRefreshTimer()
+  clearStreamRecoveryTimer()
   clearWatchdog()
   if (mpegtsPlayer) {
     try {
@@ -467,10 +482,37 @@ function destroyAudioPipeline(): void {
 }
 
 /**
+ * Reconnect after the FLV stream ends or errors, on a bounded backoff.
+ * `isLive` disables mpegts.js's own retry (it escalates EARLY_EOF straight to
+ * UNRECOVERABLE_EARLY_EOF), so without this a stream restart is terminal.
+ */
+function scheduleStreamRecovery(roomId: number, gen: number, reason: string): void {
+  if (gen !== engagementGen || !audioOnlyEnabled.value) return
+  clearStreamRecoveryTimer()
+
+  const delay = STREAM_RECOVERY_DELAYS_MS[streamRecoveryAttempts]
+  if (delay === undefined) {
+    appendLog(`⚠️ 仅音频流已中断（${reason}），重连多次失败，请手动关闭并重新开启仅音频模式`)
+    return
+  }
+  streamRecoveryAttempts++
+  appendLog(`⚠️ 仅音频流已中断（${reason}），${Math.round(delay / 1000)} 秒后尝试重连…`)
+
+  streamRecoveryTimer = setTimeout(() => {
+    streamRecoveryTimer = null
+    if (gen !== engagementGen || !audioOnlyEnabled.value) return
+    void refreshStream(roomId, gen)
+  }, delay)
+}
+
+/**
  * Build the hidden `<audio>` + mpegts player for a fresh stream URL (enable
  * and refresh paths). Caller must short-circuit on generation change.
  */
-async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts): Promise<void> {
+async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts, roomId: number, gen: number): Promise<void> {
+  // A fresh attach supersedes any pending reconnect.
+  clearStreamRecoveryTimer()
+
   if (!audioEl) {
     audioEl = document.createElement('audio')
     audioEl.id = AUDIO_EL_ID
@@ -487,15 +529,37 @@ async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts): Promise<v
     mpegtsPlayer = null
   }
 
-  mpegtsPlayer = mpegts.createPlayer({
+  const player = mpegts.createPlayer({
     type: 'flv',
     isLive: true,
     hasVideo: false,
     hasAudio: true,
     url,
   })
-  mpegtsPlayer.attachMediaElement(audioEl)
-  mpegtsPlayer.load()
+  mpegtsPlayer = player
+
+  // Must be bound before load(): mpegts.js emits ERROR through the bundled
+  // `events` polyfill, which throws "Unhandled error." when nothing is
+  // listening — so the absence of a listener is itself a failure mode.
+  // LOADING_COMPLETE covers the silent case: a clean live EOF ends playback
+  // with no error at all.
+  player.on(mpegts.Events.ERROR, (type: string, detail: string) => {
+    if (player !== mpegtsPlayer) return
+    console.warn('[audio-only] mpegts error:', type, detail)
+    scheduleStreamRecovery(roomId, gen, detail || type || '未知错误')
+  })
+  player.on(mpegts.Events.LOADING_COMPLETE, () => {
+    if (player !== mpegtsPlayer) return
+    scheduleStreamRecovery(roomId, gen, '直播流已结束')
+  })
+  // Data is flowing again — clear the backoff so a later drop gets a full ladder.
+  player.on(mpegts.Events.MEDIA_INFO, () => {
+    if (player !== mpegtsPlayer) return
+    streamRecoveryAttempts = 0
+  })
+
+  player.attachMediaElement(audioEl)
+  player.load()
 
   syncVolumeToAudioEl()
 
@@ -526,14 +590,17 @@ async function refreshStream(roomId: number, gen: number): Promise<void> {
       appendLog('⚠️ 仅音频流刷新失败：直播间未在直播')
       return
     }
-    await attachMpegtsPlayer(url, mpegts)
+    await attachMpegtsPlayer(url, mpegts, roomId, gen)
     if (gen !== engagementGen) return
     scheduleStreamRefresh(roomId, gen)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     appendLog(`⚠️ 仅音频流刷新失败：${msg}`)
-    // Retry on the same cadence so transient errors don't kill the mode.
-    if (gen === engagementGen) scheduleStreamRefresh(roomId, gen)
+    if (gen !== engagementGen) return
+    // Mid-reconnect, stay on the fast backoff ladder; otherwise retry on the
+    // same cadence so transient errors don't kill the mode.
+    if (streamRecoveryAttempts > 0) scheduleStreamRecovery(roomId, gen, '重连失败')
+    else scheduleStreamRefresh(roomId, gen)
   }
 }
 
@@ -580,7 +647,9 @@ async function engageAudioOnly(): Promise<void> {
   // the watchdog stays the safety net and sets the flag if it stops later.
 
   activeRoomId = roomId
-  await attachMpegtsPlayer(info.url, mpegts)
+  // Fresh engage, not a reconnect — start the backoff ladder from the top.
+  streamRecoveryAttempts = 0
+  await attachMpegtsPlayer(info.url, mpegts, roomId, gen)
   if (gen !== engagementGen) {
     // Gen bumped during attach = disengage ran; it already tore down and
     // reloaded. Do NOT destroyAudioPipeline() here — a subsequent engage
