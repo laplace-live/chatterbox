@@ -56,7 +56,6 @@ import {
   settingsRulesOpen,
   settingsUserNotesOpen,
   unlockLiveBlock,
-  unlockSpaceBlock,
 } from '../lib/store'
 import {
   applyUserNotesFile,
@@ -780,14 +779,6 @@ export function SettingsTab() {
                 unlockLiveBlock.value = e.currentTarget.checked
               }}
               label='直播间拉黑/屏蔽解锁（刷新生效，仅布局解锁）'
-            />
-            <Checkbox
-              id='unlockSpaceBlock'
-              checked={unlockSpaceBlock.value}
-              onInput={e => {
-                unlockSpaceBlock.value = e.currentTarget.checked
-              }}
-              label='空间拉黑解锁（刷新生效，仅布局解锁）'
             />
             <Checkbox
               id='optimizeLayout'

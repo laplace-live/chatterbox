@@ -3,7 +3,7 @@ import { effect } from '@preact/signals'
 import { unsafeWindow } from '$'
 import { createDeferredNode } from './deferred-node'
 import { createLiveBlockPill } from './live-block-pill'
-import { unlockLiveBlock, unlockSpaceBlock } from './store'
+import { unlockLiveBlock } from './store'
 
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
 const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
@@ -56,9 +56,6 @@ const deletedSpaceBanner = createSpaceBanner(DELETED_SPACE_BANNER_ID)
 effect(() => {
   if (!unlockLiveBlock.value) liveBlockPill.remove()
 })
-effect(() => {
-  if (!unlockSpaceBlock.value) spaceBlockBanner.remove()
-})
 
 /** Pull the numeric `mid` out of an acc/info URL's query (0 if absent). */
 function midFromUrl(url: string): number {
@@ -92,8 +89,8 @@ function buildDeletedAccountProfile(mid: number) {
 function shouldHijackUrl(url: string): boolean {
   return (
     (unlockLiveBlock.value && url.includes(GET_INFO_BY_USER_PATTERN)) ||
-    (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN)) ||
-    // acc/info revival is always-on — no signal gate.
+    // acc/relation + acc/info unlocks are always-on — no signal gate.
+    url.includes(ACC_RELATION_PATTERN) ||
     url.includes(ACC_INFO_PATTERN)
   )
 }
@@ -116,7 +113,7 @@ function applyTransforms(url: string, data: any): void {
       console.log('[LAPLACE Chatterbox] Blacklist livestream block removed')
       if (wasBlocking) liveBlockPill.ensure(() => unlockLiveBlock.value)
     }
-  } else if (unlockSpaceBlock.value && url.includes(ACC_RELATION_PATTERN)) {
+  } else if (url.includes(ACC_RELATION_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking acc/relation response:', url)
     // Clear the previous user's stale banner (SPA nav) before re-deciding.
     spaceBlockBanner.remove()
@@ -124,7 +121,7 @@ function applyTransforms(url: string, data: any): void {
     if (beRel?.attribute === 128) {
       beRel.attribute = 0
       console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
-      spaceBlockBanner.ensure('✽ LAPLACE 直播助手已解除该用户的部分拉黑限制', () => unlockSpaceBlock.value)
+      spaceBlockBanner.ensure('✽ LAPLACE 直播助手已解除该用户的部分拉黑限制')
     }
   } else if (url.includes(ACC_INFO_PATTERN)) {
     // 注销 accounts return `code:-404`/no `data`, so the SPA short-circuits to
