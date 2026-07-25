@@ -57,6 +57,10 @@ html.laplace-dm-direct-always .${MARKER} {
 
 /** Sendable danmaku string for an event; null if unreconstructable. Reply danmakus get an `@uname ` prefix. */
 function eventToSendableMessage(ev: DanmakuEvent): string | null {
+  // 大表情 carry a display name (e.g. "应援") in `data-danmaku`, not an
+  // `emoticon_unique`, so +1 would post that word as literal text. Null here
+  // suppresses button injection entirely — same call `auto-blend`/`ai-chat` make.
+  if (ev.hasLargeEmote) return null
   if (!ev.isReply) return ev.text
   return ev.uname ? `@${ev.uname} ${ev.text}` : null
 }
