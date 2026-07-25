@@ -54,6 +54,8 @@ import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
 
 const STT_FLUSH_DELAY_MS = 5000
+// A dead socket during graceful shutdown yields neither `finished` nor `error`, so bound the 'stopping' state.
+const STT_STOP_TIMEOUT_MS = 10000
 
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
@@ -110,6 +112,7 @@ export function SttTab() {
   const isFlushing = useRef(false)
   // Translation toggle captured at start() so long-lived handlers see the value picked at click time.
   const translationModeRef = useRef(false)
+  const stopWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const enumerateMics = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return
@@ -152,6 +155,13 @@ export function SttTab() {
     return () => navigator.mediaDevices?.removeEventListener?.('devicechange', onChange)
   }, [])
 
+  const clearStopWatchdog = () => {
+    if (stopWatchdog.current) {
+      clearTimeout(stopWatchdog.current)
+      stopWatchdog.current = null
+    }
+  }
+
   const resetState = () => {
     state.value = 'stopped'
     sttRunning.value = false
@@ -162,6 +172,7 @@ export function SttTab() {
     acc.current = ''
     finalText.value = ''
     nonFinalText.value = ''
+    clearStopWatchdog()
     if (flushTimeout.current) {
       clearTimeout(flushTimeout.current)
       flushTimeout.current = null
@@ -245,6 +256,8 @@ export function SttTab() {
   }
 
   const handleFinished = async () => {
+    // Disarm up front: a terminal event arrived, so a slow flush below must not trip the stop watchdog.
+    clearStopWatchdog()
     // Wait for an in-flight flush to settle, capped at 10s (100 × 100 ms) to avoid hanging on a stuck call.
     let waitCount = 0
     while (isFlushing.current && waitCount < 100) {
@@ -260,6 +273,12 @@ export function SttTab() {
     console.error('STT error:', err)
     const message = err.message || String(err)
     const label = PROVIDER_META[sttProvider.value].label
+    // Terminal on every provider — no `finished` can follow an `error` (Soniox
+    // cleans up + unbinds; the raw-WS engines latch `settled`). So always unwind,
+    // including from 'stopping', which would otherwise leave the tab disabled at
+    // 停止中… forever. Runs before the status paint since resetState clears it.
+    clearStopWatchdog()
+    if (state.value !== 'stopped') resetState()
     // Match by name: DOM throws NotAllowedError/NotFoundError; Soniox adds Audio*Error subclasses.
     if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
@@ -272,7 +291,6 @@ export function SttTab() {
       statusText.value = `错误: ${message}`
     }
     statusColor.value = '#f44'
-    if (state.value !== 'stopping' && state.value !== 'stopped') resetState()
   }
 
   const handleConnected = () => {
@@ -408,6 +426,18 @@ export function SttTab() {
     } else if (state.value === 'running') {
       state.value = 'stopping'
       statusText.value = '正在停止…'
+      // The button is disabled while 'stopping' and there is no cancel affordance,
+      // so a shutdown that emits no terminal event at all (socket died mid-finish,
+      // or a server that never answers) would need a page reload. Disarmed by
+      // handleFinished/handleError the moment either one arrives.
+      clearStopWatchdog()
+      stopWatchdog.current = setTimeout(() => {
+        stopWatchdog.current = null
+        if (state.value !== 'stopping') return
+        appendLog('⚠️ 同传停止超时，已强制结束会话')
+        recording.cancel()
+        resetState()
+      }, STT_STOP_TIMEOUT_MS)
       void recording.stop()
     }
   }
