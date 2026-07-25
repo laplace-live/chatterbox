@@ -608,9 +608,11 @@ async function refreshStream(roomId: number, gen: number): Promise<void> {
  * Engage audio-only: load mpegts, fetch the FLV URL, stop the native HLS
  * pull, start the pipeline. Throws so the caller degrades gracefully (CSS
  * hide stays, native audio keeps playing).
+ *
+ * `gen` is bumped and owned by the caller so its `catch` can tell a failure of
+ * the current attempt from one of a superseded attempt.
  */
-async function engageAudioOnly(): Promise<void> {
-  const gen = ++engagementGen
+async function engageAudioOnly(gen: number): Promise<void> {
   const roomId = await ensureRoomId()
   if (gen !== engagementGen) return
 
@@ -726,11 +728,16 @@ function applyAudioOnlyMode(enabled: boolean): void {
     pendingApplyTimer = null
     // Re-read so a rapid toggle before this macrotask lands on latest intent.
     const desired = audioOnlyEnabled.value
+    // Null until an engage actually starts, so the catch can distinguish
+    // "this engage failed" from "disengage failed" / "never engaged".
+    let engageGen: number | null = null
     try {
       if (desired) {
         // Already engaged on the right room (page reloaded with it persisted on).
         if (mpegtsPlayer && activeRoomId !== null) return
-        await engageAudioOnly()
+        // Bumped here, not inside engageAudioOnly, so the catch below can check it.
+        engageGen = ++engagementGen
+        await engageAudioOnly(engageGen)
       } else {
         // Always disengage, even with no visible pipeline: it bumps
         // `engagementGen` to short-circuit an in-flight engage. The
@@ -738,6 +745,13 @@ function applyAudioOnlyMode(enabled: boolean): void {
         disengageAudioOnly()
       }
     } catch (err) {
+      // A newer engage/disengage superseded this one and now owns the pipeline
+      // and the toggle, so the teardown below would kill a live session. The
+      // rejection is stale — the current attempt reports its own outcome.
+      if (engageGen !== null && engageGen !== engagementGen) {
+        console.warn('[audio-only] ignoring stale engage failure:', err)
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('[audio-only] apply failed:', err)
       appendLog(`⚠️ 仅音频模式启动失败：${msg}`)
