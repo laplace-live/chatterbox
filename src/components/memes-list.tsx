@@ -173,7 +173,7 @@ function MemeItem({
   )
 }
 
-const MEME_RELOAD_INTERVAL = 30_000
+const MEME_RELOAD_INTERVAL = 1000 * 60 * 5 // 5 minutes
 
 export function MemesList() {
   const memes = useSignal<LaplaceInternal.HTTPS.Workers.MemeWithUser[]>([])
