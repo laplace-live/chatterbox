@@ -145,12 +145,14 @@ export const llmActivePromptAiChat = gmSignal('llmActivePromptAiChat', 0)
 // - `aiChatMaxMessageLength`: also fed into the JSON schema as `message.maxLength`.
 // - `aiChatViewerInterval`: viewer-only generation every N viewer messages.
 export const aiChatEnabled = gmSignal('aiChatEnabled', false)
-export const aiChatAutoSend = gmSignal('aiChatAutoSend', false)
+export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
 export const aiChatContextMaxChars = gmSignal('aiChatContextMaxChars', 2048)
 export const aiChatMaxMessageLength = gmSignal('aiChatMaxMessageLength', 40)
-export const aiChatViewerWindow = gmSignal('aiChatViewerWindow', 50)
 export const aiChatViewerInterval = gmSignal('aiChatViewerInterval', 10)
-export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
+export const aiChatViewerWindow = gmSignal('aiChatViewerWindow', 50)
+export const aiChatAutoSend = gmSignal('aiChatAutoSend', false)
+export const aiChatCooldownSec = gmSignal('aiChatCooldownSec', 25)
+export const aiChatMinChars = gmSignal('aiChatMinChars', 20)
 
 // STT (同传) settings. `sttProvider` picks the active realtime provider; each keeps its own api key + model, while output/capture settings are shared under provider-neutral `stt*` keys.
 export const sttProvider = gmSignal<SttProvider>('sttProvider', 'soniox')

@@ -22,6 +22,8 @@ import {
   aiChatTemperature,
   aiChatViewerInterval,
   aiChatViewerWindow,
+  aiChatCooldownSec,
+  aiChatMinChars,
   llmActivePromptAiChat,
   llmPromptsAiChat,
   sttRunning,
@@ -338,6 +340,38 @@ export function AiChatSection() {
                 }}
               />
               <span>条</span>
+            </div>
+            <div class='flex items-center gap-1'>
+              <Label htmlFor='aiChatCooldownSec'>冷却时间</Label>
+              <Input
+                id='aiChatCooldownSec'
+                type='number'
+                min='5'
+                max='300'
+                className='w-15'
+                value={aiChatCooldownSec.value}
+                onInput={e => {
+                  const v = parseInt(e.currentTarget.value, 10)
+                  aiChatCooldownSec.value = Number.isFinite(v) ? Math.max(5, Math.min(300, v)) : 25
+                }}
+              />
+              <span>秒</span>
+            </div>
+            <div class='flex items-center gap-1'>
+              <Label htmlFor='aiChatMinChars'>最少字数</Label>
+              <Input
+                id='aiChatMinChars'
+                type='number'
+                min='1'
+                max='200'
+                className='w-15'
+                value={aiChatMinChars.value}
+                onInput={e => {
+                  const v = parseInt(e.currentTarget.value, 10)
+                  aiChatMinChars.value = Number.isFinite(v) ? Math.max(1, Math.min(200, v)) : 20
+                }}
+              />
+              <span>字</span>
             </div>
             <div class='flex items-center gap-1'>
               <Label htmlFor='aiChatContextMax'>上下文上限</Label>

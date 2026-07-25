@@ -21,6 +21,8 @@ import {
   aiChatTemperature,
   aiChatViewerInterval,
   aiChatViewerWindow,
+  aiChatCooldownSec,
+  aiChatMinChars,
   llmApiBase,
   llmApiKey,
   llmModel,
@@ -103,6 +105,7 @@ let scheduledTimer: ReturnType<typeof setTimeout> | null = null
 let scheduledReason: 'transcript' | 'viewer' | null = null
 let inflight = false
 let startCount = 0
+let lastLlmCallTime = 0
 
 /** Buffer looks ready (endpoint detected / sentence-final / long). */
 const DEBOUNCE_READY_MS = 500
@@ -335,6 +338,12 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
   if (reason === 'transcript' && !transcript.trim()) {
     return
   }
+  // 兜底防走火：如果字数少于15个字且没停顿，退回继续攒，且不清空池子
+  if (reason === 'transcript' && transcript.length < 15 && !sttEndpointReached.value) {
+    // 恢复被我们提出来的 buffer
+    sttTranscriptBuffer.value = transcript + sttTranscriptBuffer.value;
+    return;
+  }
 
   inflight = true
   aiChatStatus.value = 'generating'
@@ -488,6 +497,8 @@ export function startAiChatEngine(): void {
       const text = ev.text.trim()
       if (!text) return
       // Drop our own echoes and 大表情 emotes (display names, not textual context).
+      const myUid = (window as any).getDedeUid ? (window as any).getDedeUid() : null;
+      if (ev.uid && myUid && String(ev.uid) === String(myUid)) return;
       if (isLikelySelfEcho(text)) return
       if (ev.hasLargeEmote) return
       const entry: ViewerChatEntry = {
@@ -505,7 +516,11 @@ export function startAiChatEngine(): void {
       // Viewer-only trigger; only when nothing else is queued, else it double-fires.
       const interval = Math.max(1, aiChatViewerInterval.value)
       if (viewerReceivedSinceLastGen >= interval && !scheduledTimer && !inflight) {
-        scheduleGeneration(DEBOUNCE_AFTER_GEN_VIEWER_MS, 'viewer')
+        const cooldownMs = aiChatCooldownSec.value * 1000
+        if (Date.now() - lastLlmCallTime >= cooldownMs) {
+          lastLlmCallTime = Date.now()
+          scheduleGeneration(DEBOUNCE_AFTER_GEN_VIEWER_MS, 'viewer')
+        }
       }
     },
   })
@@ -516,8 +531,31 @@ export function startAiChatEngine(): void {
     const ep = sttEndpointReached.value
     if (!buffer.trim() && !ep) return
     if (inflight) return
-    const ready = ep || isReadyForGen(buffer)
-    scheduleGeneration(ready ? DEBOUNCE_READY_MS : DEBOUNCE_FALLBACK_MS, 'transcript')
+    
+    const cooldownMs = aiChatCooldownSec.value * 1000
+    // 冷却期拦截
+    if (Date.now() - lastLlmCallTime < cooldownMs) {
+      // 防浪费Token机制：如果冷却期间主播说话字数超标(超过阈值的3倍)，掐掉太老的内容
+      if (buffer.length > aiChatMinChars.value * 3) {
+        // peek is used so we don't trigger a re-run of this effect immediately.
+        // Actually, updating signal in effect is fine, it will queue next run, but we return early.
+        // Wait, doing this will re-trigger the effect, which is fine since we return on cooldown.
+        sttTranscriptBuffer.value = buffer.slice(-(aiChatMinChars.value * 2))
+      }
+      return
+    }
+
+    // 前端自定义字数判定
+    const minChars = aiChatMinChars.value
+    const isTooLong = buffer.length >= minChars * 2 // 字数太多，强制截断
+    const hasPunctuation = /[。.！!？?]$/.test(buffer.trim()) && buffer.length >= minChars // 有标点且够基础字数
+    const isAudioEndpoint = ep && buffer.length >= minChars // 语音停顿且够基础字数
+
+    // 满足条件，进入CD并立刻开枪！
+    if (isTooLong || hasPunctuation || isAudioEndpoint) {
+      lastLlmCallTime = Date.now()
+      scheduleGeneration(0, 'transcript')
+    }
   })
 
   aiChatStatus.value = 'idle'

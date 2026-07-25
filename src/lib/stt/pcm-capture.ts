@@ -54,6 +54,7 @@ export interface PcmCaptureOptions {
 
 export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCapture> {
   let stream: MediaStream | null = null;
+  let isMicStream = false;
   
   if (!opts.deviceId) {
     try {
@@ -88,6 +89,7 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
       },
     }
     stream = await navigator.mediaDevices.getUserMedia(constraints)
+    isMicStream = true;
   }
 
   const context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE })
@@ -127,14 +129,18 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
         node.disconnect()
         source.disconnect()
         zeroGain.disconnect()
-        for (const track of stream.getTracks()) track.stop()
+        if (isMicStream && stream) {
+          for (const track of stream.getTracks()) track.stop()
+        }
         void context.close().catch(() => {})
       },
     }
   } catch (err) {
     // Worklet load / node construction failed (e.g. enforcing host CSP blocks the
     // blob module): release mic + context so they don't leak, then rethrow.
-    for (const track of stream.getTracks()) track.stop()
+    if (isMicStream && stream) {
+      for (const track of stream.getTracks()) track.stop()
+    }
     void context.close().catch(() => {})
     throw err
   }
