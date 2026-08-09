@@ -160,6 +160,13 @@ export function createVadSegmenter(opts: VadSegmenterOptions): VadSegmenter {
 
     flush: (): void => {
       if (!inSpeech) return
+      // Ragged remainder retained by push(): under one sub-block, never gated — append raw so the tail isn't dropped.
+      if (pendingSamples > 0) {
+        segment.push(concat(pending, pendingSamples))
+        segmentSamples += pendingSamples
+        pending = []
+        pendingSamples = 0
+      }
       endSegment(1)
     },
   }

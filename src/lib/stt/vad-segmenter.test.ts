@@ -104,6 +104,18 @@ describe('createVadSegmenter', () => {
     expect(segments.length).toBe(1)
   })
 
+  test('flush includes a ragged remainder retained by push', () => {
+    const { segments, seg } = collect()
+    feed(seg, SILENT, 10)
+    feed(seg, SPEECH, 20)
+    // 100 samples < one sub-block: push() keeps them pending; flush() must not drop them.
+    seg.push(new Int16Array(100).fill(SPEECH))
+    seg.flush()
+    expect(segments.length).toBe(1)
+    // 4 pre-roll + 20 speech blocks + the pending remainder.
+    expect(segments[0].length).toBe(24 * SUB + 100)
+  })
+
   test('flush is a no-op when no segment is open', () => {
     const { segments, seg } = collect()
     feed(seg, SILENT, 10)
