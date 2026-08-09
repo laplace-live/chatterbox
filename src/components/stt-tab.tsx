@@ -50,7 +50,7 @@ import {
 import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
 import { reduceChunks } from '../lib/stt/normalize'
 import { useSttRecording } from '../lib/use-stt-recording'
-import { splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
+import { isHttpUrl, splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { wrapSegment, wrapSplitLen } from '../lib/wrap'
 import { AiChatSection } from './ai-chat-section'
 import { Button } from './ui/button'
@@ -366,7 +366,7 @@ export function SttTab() {
         ...base,
         model: openaiSttModel.value.trim() || OPENAI_STT_DEFAULT_MODEL,
         languageHints: openaiSttLanguage.value ? [openaiSttLanguage.value] : [],
-        // Gate in toggle() blocks an empty base URL, so this is non-empty whenever the engine starts.
+        // Gate in toggle() requires an absolute http(s) URL, so this is valid whenever the engine starts.
         baseUrl: activeBaseUrl,
       }
     }
@@ -420,9 +420,9 @@ export function SttTab() {
 
   const toggle = () => {
     if (state.value === 'stopped') {
-      // Local servers need no key, so this provider gates on the endpoint instead.
-      if (isOpenAiCompat ? !activeBaseUrl : !activeApiKey) {
-        const missing = isOpenAiCompat ? '服务地址' : 'API Key'
+      // Local servers need no key, so this provider gates on a valid endpoint instead.
+      if (isOpenAiCompat ? !isHttpUrl(activeBaseUrl) : !activeApiKey) {
+        const missing = isOpenAiCompat ? '服务地址（http:// 或 https://）' : 'API Key'
         appendLog(`⚠️ 请先输入 ${PROVIDER_META[provider].label} ${missing}`)
         statusText.value = `请输入${missing}`
         statusColor.value = '#f44'

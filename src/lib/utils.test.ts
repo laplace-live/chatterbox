@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { buildOvuContributeUrl, extractBvid, extractOpusAuthorUid, extractOpusPubDate } from './utils'
+import { buildOvuContributeUrl, extractBvid, extractOpusAuthorUid, extractOpusPubDate, isHttpUrl } from './utils'
 
 /** Derives the BV id from bilibili video URLs; `undefined` for non-BV paths (legacy `av`, case-sensitive prefix). */
 describe('extractBvid', () => {
@@ -123,5 +123,27 @@ describe('buildOvuContributeUrl', () => {
     expect(buildOvuContributeUrl(123, { source: 'https://x.test/opus/9' })).toBe(
       'https://laplace.live/ovu?uid=123&source=https%3A%2F%2Fx.test%2Fopus%2F9'
     )
+  })
+})
+
+/** Endpoint gate for user-entered service addresses (openai-compat STT). */
+describe('isHttpUrl', () => {
+  test('accepts absolute http and https URLs', () => {
+    expect(isHttpUrl('http://127.0.0.1:8080/v1')).toBe(true)
+    expect(isHttpUrl('https://api.groq.com/openai/v1')).toBe(true)
+  })
+
+  test('rejects schemeless host:port — new URL parses it with a bogus protocol', () => {
+    expect(isHttpUrl('localhost:8080/v1')).toBe(false)
+  })
+
+  test('rejects empty and non-URL strings', () => {
+    expect(isHttpUrl('')).toBe(false)
+    expect(isHttpUrl('whisper')).toBe(false)
+  })
+
+  test('rejects non-http schemes', () => {
+    expect(isHttpUrl('ftp://example.com')).toBe(false)
+    expect(isHttpUrl('ws://127.0.0.1:8080')).toBe(false)
   })
 })
