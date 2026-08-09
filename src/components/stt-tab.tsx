@@ -9,7 +9,11 @@ import {
   DEEPGRAM_DEFAULT_MODEL,
   ELEVENLABS_DEFAULT_MODEL,
   GLADIA_DEFAULT_MODEL,
+  OPENAI_STT_DEFAULT_BASE_URL,
+  OPENAI_STT_DEFAULT_MODEL,
   SONIOX_DEFAULT_MODEL,
+  STT_STOP_TIMEOUT_MS,
+  WHISPER_CPP_URL,
 } from '../lib/const'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
@@ -24,6 +28,10 @@ import {
   elevenLabsLanguageCode,
   gladiaApiKey,
   gladiaLanguage,
+  openaiSttApiKey,
+  openaiSttBaseUrl,
+  openaiSttLanguage,
+  openaiSttModel,
   sonioxApiKey,
   sonioxLanguageHints,
   sonioxModel,
@@ -54,8 +62,6 @@ import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
 
 const STT_FLUSH_DELAY_MS = 5000
-// A dead socket during graceful shutdown yields neither `finished` nor `error`, so bound the 'stopping' state.
-const STT_STOP_TIMEOUT_MS = 10000
 
 const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
@@ -66,10 +72,15 @@ const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> =
   elevenlabs: { label: 'ElevenLabs', signupUrl: 'https://elevenlabs.io/' },
   deepgram: { label: 'Deepgram', signupUrl: 'https://deepgram.com/' },
   gladia: { label: 'Gladia', signupUrl: 'https://gladia.io/' },
+  'openai-compat': { label: '本地 / OpenAI 兼容', signupUrl: WHISPER_CPP_URL },
 }
 
+/** `PROVIDER_META` is keyed by every provider, so membership is the validity test. */
+const isSttProvider = (value: string): value is SttProvider => value in PROVIDER_META
+
 // Single-value language pickers; Soniox uses multi-hint checkboxes instead.
-const ELEVENLABS_LANGUAGES: Array<{ value: string; label: string }> = [
+// Shared by ElevenLabs / Gladia / openai-compat ('' = auto-detect); Deepgram alone differs ('multi').
+const AUTO_DETECT_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: '', label: '自动检测' },
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
@@ -80,14 +91,6 @@ const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: 'multi', label: '多语种' },
   { value: 'en', label: 'English' },
   { value: 'zh', label: '中文' },
-  { value: 'ja', label: '日本語' },
-  { value: 'ko', label: '한국어' },
-]
-// Gladia takes BCP-47 codes; '' = auto-detect (with code-switching).
-const GLADIA_LANGUAGES: Array<{ value: string; label: string }> = [
-  { value: '', label: '自动检测' },
-  { value: 'zh', label: '中文' },
-  { value: 'en', label: 'English' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
@@ -311,6 +314,8 @@ export function SttTab() {
   // Provider-aware config for the recording hook
   const provider: SttProvider = sttProvider.value
   const isSoniox = provider === 'soniox'
+  // Batch provider: no realtime socket, no interim transcripts, key optional.
+  const isOpenAiCompat = provider === 'openai-compat'
   const apiKeySignal =
     provider === 'soniox'
       ? sonioxApiKey
@@ -318,8 +323,11 @@ export function SttTab() {
         ? elevenLabsApiKey
         : provider === 'deepgram'
           ? deepgramApiKey
-          : gladiaApiKey
+          : provider === 'openai-compat'
+            ? openaiSttApiKey
+            : gladiaApiKey
   const activeApiKey = apiKeySignal.value.trim()
+  const activeBaseUrl = openaiSttBaseUrl.value.trim()
 
   // Fall back to default if the saved device is gone; the persisted reset is deferred to toggle() to avoid a store write during render.
   const savedDeviceIdForHook = sttAudioDeviceId.value
@@ -351,6 +359,15 @@ export function SttTab() {
         ...base,
         model: GLADIA_DEFAULT_MODEL,
         languageHints: gladiaLanguage.value ? [gladiaLanguage.value] : [],
+      }
+    }
+    if (provider === 'openai-compat') {
+      return {
+        ...base,
+        model: openaiSttModel.value.trim() || OPENAI_STT_DEFAULT_MODEL,
+        languageHints: openaiSttLanguage.value ? [openaiSttLanguage.value] : [],
+        // Gate in toggle() blocks an empty base URL, so this is non-empty whenever the engine starts.
+        baseUrl: activeBaseUrl,
       }
     }
     return {
@@ -403,9 +420,11 @@ export function SttTab() {
 
   const toggle = () => {
     if (state.value === 'stopped') {
-      if (!activeApiKey) {
-        appendLog(`⚠️ 请先输入 ${PROVIDER_META[provider].label} API Key`)
-        statusText.value = '请输入 API Key'
+      // Local servers need no key, so this provider gates on the endpoint instead.
+      if (isOpenAiCompat ? !activeBaseUrl : !activeApiKey) {
+        const missing = isOpenAiCompat ? '服务地址' : 'API Key'
+        appendLog(`⚠️ 请先输入 ${PROVIDER_META[provider].label} ${missing}`)
+        statusText.value = `请输入${missing}`
         statusColor.value = '#f44'
         return
       }
@@ -489,32 +508,41 @@ export function SttTab() {
             disabled={state.value !== 'stopped'}
             onChange={e => {
               const next = e.currentTarget.value
-              sttProvider.value =
-                next === 'elevenlabs'
-                  ? 'elevenlabs'
-                  : next === 'deepgram'
-                    ? 'deepgram'
-                    : next === 'gladia'
-                      ? 'gladia'
-                      : 'soniox'
+              if (isSttProvider(next)) sttProvider.value = next
             }}
           >
-            <option value='soniox'>Soniox</option>
-            <option value='elevenlabs'>ElevenLabs</option>
-            <option value='deepgram'>Deepgram</option>
-            <option value='gladia'>Gladia</option>
+            {Object.entries(PROVIDER_META).map(([value, meta]) => (
+              <option key={value} value={value}>
+                {meta.label}
+              </option>
+            ))}
           </NativeSelect>
         </div>
+        {isOpenAiCompat && <div class='text-ga6'>分段识别，延迟约 1–4 秒，无实时预览</div>}
       </div>
 
       <Separator />
 
       <div class={'my-2'}>
         <div class={HEADING_CLASS}>{PROVIDER_META[provider].label} API 设置</div>
+        {isOpenAiCompat && (
+          <div class={ROW_CLASS}>
+            <Label htmlFor='openaiSttBaseUrl'>服务地址</Label>
+            <Input
+              id='openaiSttBaseUrl'
+              className='min-w-37.5 flex-1'
+              placeholder={OPENAI_STT_DEFAULT_BASE_URL}
+              value={openaiSttBaseUrl.value}
+              onInput={e => {
+                openaiSttBaseUrl.value = e.currentTarget.value
+              }}
+            />
+          </div>
+        )}
         <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
-            placeholder={`输入 ${PROVIDER_META[provider].label} API Key`}
+            placeholder={isOpenAiCompat ? 'API Key（本地服务可留空）' : `输入 ${PROVIDER_META[provider].label} API Key`}
             className='min-w-37.5 flex-1'
             value={apiKeySignal.value}
             onInput={e => {
@@ -532,11 +560,23 @@ export function SttTab() {
           </Button>
         </div>
         <div class='my-2 text-ga6'>
-          前往{' '}
-          <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
-            {PROVIDER_META[provider].label}
-          </a>{' '}
-          注册账号并获取 API Key
+          {isOpenAiCompat ? (
+            <>
+              指向任意 OpenAI 兼容的语音识别服务。本地部署可参考{' '}
+              <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
+                whisper.cpp
+              </a>
+              ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要
+            </>
+          ) : (
+            <>
+              前往{' '}
+              <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
+                {PROVIDER_META[provider].label}
+              </a>{' '}
+              注册账号并获取 API Key
+            </>
+          )}
         </div>
       </div>
 
@@ -605,6 +645,20 @@ export function SttTab() {
               </div>
             )}
           </>
+        ) : isOpenAiCompat ? (
+          <div class={ROW_CLASS}>
+            <Label htmlFor='openaiSttModel'>模型</Label>
+            {/* Free text: servers disagree on whether /models exists or lists STT models at all. */}
+            <Input
+              id='openaiSttModel'
+              className='min-w-37.5 flex-1'
+              placeholder={OPENAI_STT_DEFAULT_MODEL}
+              value={openaiSttModel.value}
+              onInput={e => {
+                openaiSttModel.value = e.currentTarget.value
+              }}
+            />
+          </div>
         ) : (
           <div class={ROW_CLASS}>
             <Label>模型</Label>
@@ -640,20 +694,18 @@ export function SttTab() {
                   ? deepgramLanguage.value
                   : provider === 'gladia'
                     ? gladiaLanguage.value
-                    : elevenLabsLanguageCode.value
+                    : provider === 'openai-compat'
+                      ? openaiSttLanguage.value
+                      : elevenLabsLanguageCode.value
               }
               onChange={e => {
                 if (provider === 'deepgram') deepgramLanguage.value = e.currentTarget.value
                 else if (provider === 'gladia') gladiaLanguage.value = e.currentTarget.value
+                else if (provider === 'openai-compat') openaiSttLanguage.value = e.currentTarget.value
                 else elevenLabsLanguageCode.value = e.currentTarget.value
               }}
             >
-              {(provider === 'deepgram'
-                ? DEEPGRAM_LANGUAGES
-                : provider === 'gladia'
-                  ? GLADIA_LANGUAGES
-                  : ELEVENLABS_LANGUAGES
-              ).map(l => (
+              {(provider === 'deepgram' ? DEEPGRAM_LANGUAGES : AUTO_DETECT_LANGUAGES).map(l => (
                 <option key={l.value || 'auto'} value={l.value}>
                   {l.label}
                 </option>

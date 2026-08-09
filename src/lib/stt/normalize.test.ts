@@ -6,6 +6,7 @@ import {
   elevenLabsTextToChunk,
   isGladiaLiveResponse,
   isSingleUseTokenResponse,
+  isWhisperHallucination,
   parseDeepgramModels,
   parseDeepgramResult,
   parseGladiaResult,
@@ -192,5 +193,23 @@ describe('isGladiaLiveResponse', () => {
     expect(isGladiaLiveResponse('wss://x')).toBe(false)
     expect(isGladiaLiveResponse({})).toBe(false)
     expect(isGladiaLiveResponse({ url: 123 })).toBe(false)
+  })
+})
+
+describe('isWhisperHallucination', () => {
+  test('matches stock silence hallucinations', () => {
+    expect(isWhisperHallucination('字幕由Amara.org社区提供')).toBe(true)
+    expect(isWhisperHallucination('由 Amara.org 社群提供的字幕')).toBe(true)
+    expect(isWhisperHallucination('請不吝點贊 訂閱')).toBe(true)
+    expect(isWhisperHallucination('谢谢观看。')).toBe(true)
+    expect(isWhisperHallucination('Thanks for watching!')).toBe(true)
+    expect(isWhisperHallucination('   ')).toBe(true)
+  })
+
+  test('keeps legitimate speech that merely mentions the trigger words', () => {
+    expect(isWhisperHallucination('这个字幕组翻译得很好啊大家去看看')).toBe(false)
+    expect(isWhisperHallucination('感谢大家今天来观看我的直播真的很开心')).toBe(false)
+    expect(isWhisperHallucination('我们来看看这个翻译对不对')).toBe(false)
+    expect(isWhisperHallucination('观看人数已经破万了')).toBe(false)
   })
 })

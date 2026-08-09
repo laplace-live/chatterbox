@@ -73,6 +73,14 @@ const EXTERNAL_SERVICES: ExternalService[] = [
       '通过 WebSocket 连接 Deepgram 实时语音识别服务，将麦克风音频流实时转换为文字。API Key 通过 WebSocket 子协议（Sec-WebSocket-Protocol）在握手时传递，不经过普通请求头，也无需令牌兑换。需要提供 Deepgram API Key。',
   },
   {
+    name: '本地 / OpenAI 兼容语音识别',
+    host: '用户自行填写的服务地址',
+    url: 'https://github.com/ggml-org/whisper.cpp',
+    trigger: '将同传供应商切换为「本地 / OpenAI 兼容」并使用同传功能时',
+    description:
+      '将麦克风音频按静音切分成片段，逐段以 WAV 上传到你在「服务地址」中填写的 OpenAI 兼容接口（/audio/transcriptions）。默认指向本机 127.0.0.1，音频不出本机；若改为云端地址（如 Groq、OpenAI），音频将发送至该服务商。API Key 可留空。',
+  },
+  {
     name: 'mpegts.js',
     host: 'unpkg.com',
     url: 'https://github.com/xqq/mpegts.js',
