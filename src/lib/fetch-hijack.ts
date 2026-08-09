@@ -6,6 +6,10 @@ const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
 const SPACE_BLOCK_BANNER_ID = 'laplace-chatterbox-space-block-banner'
 const DELETED_SPACE_BANNER_ID = 'laplace-chatterbox-deleted-space-banner'
 
+/** `relation.attribute` value meaning 拉黑; mutually exclusive with the follow states. */
+const BLOCK_ATTRIBUTE = 128
+const BLACKLIST_MANAGER_URL = 'https://account.bilibili.com/account/blacklist'
+
 // Matched by `includes` so a query string / version prefix doesn't matter.
 const GET_INFO_BY_USER_PATTERN = '/xlive/web-room/v1/index/getInfoByUser'
 const ACC_RELATION_PATTERN = '/x/space/wbi/acc/relation'
@@ -17,8 +21,13 @@ const liveBlockPill = createLiveBlockPill({
   title: 'LAPLACE 直播助手已解除该直播间的部分拉黑限制',
 })
 
+interface BannerLink {
+  href: string
+  label: string
+}
+
 /** Full-width banner (per-`ensure` text) inserted after B站's space-page header. */
-function buildSpaceBanner(text: string): HTMLElement {
+function buildSpaceBanner(text: string, link?: BannerLink): HTMLElement {
   const el = document.createElement('div')
   el.textContent = text
   el.style.cssText = [
@@ -31,6 +40,15 @@ function buildSpaceBanner(text: string): HTMLElement {
     'width: 100%',
     'line-height: 1',
   ].join(';')
+  if (link) {
+    const anchor = document.createElement('a')
+    anchor.href = link.href
+    anchor.target = '_blank'
+    anchor.rel = 'noreferrer'
+    anchor.textContent = link.label
+    anchor.style.cssText = 'color: inherit; text-decoration: underline'
+    el.appendChild(anchor)
+  }
   return el
 }
 
@@ -42,7 +60,8 @@ function createSpaceBanner(id: string) {
   })
   return {
     remove: () => node.remove(),
-    ensure: (text: string, shouldInject?: () => boolean) => node.ensure(() => buildSpaceBanner(text), shouldInject),
+    ensure: (text: string, link?: BannerLink, shouldInject?: () => boolean) =>
+      node.ensure(() => buildSpaceBanner(text, link), shouldInject),
   }
 }
 
@@ -104,10 +123,28 @@ function applyTransforms(url: string, data: any): void {
     console.log('[LAPLACE Chatterbox] Hijacking acc/relation response:', url)
     // Clear the previous user's stale banner (SPA nav) before re-deciding.
     spaceBlockBanner.remove()
+    // `relation` is our block on them, `be_relation` theirs on us. The SPA's
+    // content gate trips on either (`blockedType` 1 / 2), so clear both.
+    const rel = data?.data?.relation
     const beRel = data?.data?.be_relation
-    if (beRel?.attribute === 128) {
+    const iBlockedThem = rel?.attribute === BLOCK_ATTRIBUTE
+    const theyBlockedMe = beRel?.attribute === BLOCK_ATTRIBUTE
+    if (iBlockedThem) {
+      rel.attribute = 0
+      console.log('[LAPLACE Chatterbox] relation.attribute reset to 0')
+    }
+    if (theyBlockedMe) {
       beRel.attribute = 0
       console.log('[LAPLACE Chatterbox] be_relation.attribute reset to 0')
+    }
+    if (iBlockedThem) {
+      // Zeroing our own attribute also flips the header button back to 关注 and
+      // swaps the ⋮ entry to 加入黑名单, so point at the only remaining way to unblock.
+      spaceBlockBanner.ensure('✽ LAPLACE 直播助手已解除你对该用户的拉黑限制，如需取消拉黑请前往', {
+        href: BLACKLIST_MANAGER_URL,
+        label: '黑名单管理',
+      })
+    } else if (theyBlockedMe) {
       spaceBlockBanner.ensure('✽ LAPLACE 直播助手已解除该用户的部分拉黑限制')
     }
   } else if (url.includes(ACC_INFO_PATTERN)) {
@@ -135,11 +172,13 @@ function applyTransforms(url: string, data: any): void {
   }
 }
 /**
- * Patch `Response.prototype.json`/`.text` rather than `window.fetch`: B站's
- * bundle captures the original `fetch` into a closure at module init, racing our
- * injection (loses with disk cache). Prototype methods resolve at call time —
- * after the network roundtrip — so the hijack is deterministic as long as we
- * patch before the first response is *consumed*, not before the first fetch.
+ * Patch `Response.prototype.json`/`.text` rather than `window.fetch`: B站's bundle
+ * closes over `fetch` at module init. It closes over these methods too, so the real
+ * invariant is landing before that bundle initialises — patching before the response
+ * is merely *consumed* is not enough, since the call never routes through a layer
+ * added after the capture. `document-start` guarantees it; `vite dev`'s async module
+ * graph does not (the hijack evaluates ~600ms in, too late to ever be called), so
+ * verify these unlocks against a build.
  */
 ;(() => {
   console.log('[LAPLACE Chatterbox] fetch-hijack loaded on', location.hostname)
