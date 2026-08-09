@@ -150,6 +150,15 @@ export function extractBvid(url: string): string | undefined {
   return pathSegments.find(segment => /^BV[0-9A-Za-z]+$/.test(segment))
 }
 
+/** True when `raw` is an absolute http(s) URL. Protocol is checked because `new URL` parses schemeless `host:port` with a bogus protocol. */
+export function isHttpUrl(raw: string): boolean {
+  try {
+    return /^https?:$/.test(new URL(raw).protocol)
+  } catch {
+    return false
+  }
+}
+
 /** Narrowed `window.__INITIAL_STATE__` shape for an opus page (author-identity fields only). */
 interface OpusInitialState {
   detail?: {

@@ -6,7 +6,12 @@ import type { SonioxModel } from './soniox-models'
 import type { SttModelOption, SttProvider } from './stt/types'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
-import { DEEPGRAM_DEFAULT_MODEL, SONIOX_DEFAULT_MODEL } from './const'
+import {
+  DEEPGRAM_DEFAULT_MODEL,
+  OPENAI_STT_DEFAULT_BASE_URL,
+  OPENAI_STT_DEFAULT_MODEL,
+  SONIOX_DEFAULT_MODEL,
+} from './const'
 import { gmSignal } from './gm-signal'
 import { appendLog } from './log'
 import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT } from './prompts'
@@ -180,6 +185,13 @@ export const deepgramLanguage = gmSignal('deepgramLanguage', 'multi')
 export const gladiaApiKey = gmSignal('gladiaApiKey', '')
 // One model family (`solaria-1`), no list endpoint, so no model signal (like ElevenLabs). Single language code ('' = auto-detect with code-switching).
 export const gladiaLanguage = gmSignal('gladiaLanguage', '')
+
+// --- OpenAI-compatible batch STT (provider-specific) ---
+// Not realtime: audio is cut on silence and uploaded per segment. `openaiSttApiKey` stays empty for local servers; the start gate requires the base URL instead.
+export const openaiSttBaseUrl = gmSignal('openaiSttBaseUrl', OPENAI_STT_DEFAULT_BASE_URL)
+export const openaiSttApiKey = gmSignal('openaiSttApiKey', '')
+export const openaiSttModel = gmSignal('openaiSttModel', OPENAI_STT_DEFAULT_MODEL)
+export const openaiSttLanguage = gmSignal('openaiSttLanguage', 'zh')
 
 // --- Shared output / capture (every provider) ---
 // Migrate the formerly Soniox-prefixed keys to neutral `stt*` keys. Idempotent, sentinel-guarded per key (copy only if new key unset, then delete old) so a re-imported pre-upgrade backup gets migrated again.

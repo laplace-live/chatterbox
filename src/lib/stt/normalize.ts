@@ -116,3 +116,24 @@ export function parseDeepgramModels(value: unknown): SttModelOption[] {
   models.sort((a, b) => a.id.localeCompare(b.id))
   return models
 }
+
+/**
+ * Whisper's stock hallucinations on near-silence: subtitle credits, sign-offs,
+ * and Amara.org attributions. Anchored to the whole segment on purpose — a
+ * substring test would eat legitimate speech that merely mentions 字幕 or 观看.
+ */
+const WHISPER_HALLUCINATIONS: RegExp[] = [
+  /^字幕(由|製作|制作|志願者?|志愿者?)[^。！？]{0,24}(提供|製作|制作|社[區区群])$/,
+  /^[^。！？]{0,12}Amara\.org[^。！？]{0,24}$/i,
+  /^(請|请)不吝(點贊|点赞|賜教|赐教)[^。！？]{0,24}$/,
+  /^(謝謝|谢谢|感謝|感谢)(大家)?(觀看|观看|收看)$/,
+  /^thanks?\s+for\s+watching$/i,
+  /^(明鏡|明镜)(與|与)?(點點|点点)?(欄目|栏目)$/,
+]
+
+/** Whether a transcript segment is entirely a known Whisper hallucination (or empty). */
+export function isWhisperHallucination(text: string): boolean {
+  const normalized = text.trim().replace(/[\s。．.!！?？、,，~～]+$/u, '')
+  if (!normalized) return true
+  return WHISPER_HALLUCINATIONS.some(pattern => pattern.test(normalized))
+}

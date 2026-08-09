@@ -25,6 +25,18 @@ export const DEEPGRAM_API_BASE = 'https://api.deepgram.com/v1'
 /** Gladia realtime STT. No fixed WS URL: `POST ${GLADIA_API_BASE}/live` (header `x-gladia-key`) returns a one-shot WS URL with an embedded session token. Init endpoint sends permissive CORS, so a plain `fetch` works — no `GM_xmlhttpRequest`. */
 export const GLADIA_API_BASE = 'https://api.gladia.io/v2'
 
+/** OpenAI-compatible batch STT root; `/audio/transcriptions` is appended. whisper.cpp serves `/inference` and has no OpenAI alias, so it must be started with `--request-path /v1 --inference-path /audio/transcriptions` to match this default. Host is user-supplied, hence the wildcard `@connect`. */
+export const OPENAI_STT_DEFAULT_BASE_URL = 'http://127.0.0.1:8080/v1'
+
+/** Ignored by whisper.cpp, required by OpenAI; Groq needs `whisper-large-v3`. Free-text in the UI since servers disagree. */
+export const OPENAI_STT_DEFAULT_MODEL = 'whisper-1'
+
+/** whisper.cpp release downloads; the setup `OPENAI_STT_DEFAULT_BASE_URL` assumes. */
+export const WHISPER_CPP_URL = 'https://github.com/ggml-org/whisper.cpp/releases'
+
+/** Bounds the 'stopping' state when a graceful shutdown yields neither `finished` nor `error`; engine drain timeouts must stay under it. */
+export const STT_STOP_TIMEOUT_MS = 10_000
+
 /** Default realtime model id per provider; fallback when a session passes no model id. */
 export const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
 export const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
