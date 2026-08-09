@@ -566,7 +566,8 @@ export function SttTab() {
               <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
                 whisper.cpp
               </a>
-              ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要
+              ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
+              <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
             </>
           ) : (
             <>

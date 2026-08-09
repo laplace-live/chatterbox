@@ -17,7 +17,7 @@ export interface TranscribeRequest {
   /** Empty for local servers that need no auth. */
   apiKey: string
   model: string
-  /** ISO code; omitted from the request when empty (server auto-detects). */
+  /** ISO code; omitted when empty — OpenAI/Groq then auto-detect, whisper.cpp falls back to its server-side default. */
   language: string
   samples: Int16Array
   sampleRate: number
