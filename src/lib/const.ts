@@ -2,7 +2,7 @@
 export const PROJECT_NAME = 'LAPLACE Chatterbox'
 export const PROJECT_URL = 'https://laplace.live/chatterbox'
 export const GITHUB_URL = 'https://github.com/laplace-live/chatterbox'
-export const DOCUMENT_URL = 'https://subspace.institute/docs/laplace-chatterbox'
+export const DOCUMENT_URL = 'https://laplace.live/chatterbox'
 
 /** Soniox STT SDK. ESM-only; point at the package's self-contained `dist/index.mjs` (no bare-specifier imports) to avoid a transitive-dep waterfall. */
 export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.2.0/dist/index.mjs'

@@ -14,7 +14,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: 'AI 弹幕审核',
     host: 'edge-workers.laplace.cn',
-    url: 'https://subspace.institute/docs/open-platform/chat-audit',
+    url: 'https://edge-workers.vrp.moe/docs#tag/utilities/POST/laplace/chat-audit',
     trigger: '启用「AI 规避」功能时',
     description:
       '当弹幕发送失败且开启了 AI 规避功能后，脚本会将弹幕文本发送至此服务进行敏感词检测，并尝试自动替换敏感词后重新发送。',
@@ -22,7 +22,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '云端替换规则',
     host: 'workers.vrp.moe',
-    url: 'https://subspace.institute/docs/laplace-chatterbox/replacement',
+    url: 'https://laplace.live/chatterbox/replacement',
     trigger: '在设置中启用「云端规则替换」后自动同步',
     description:
       '从云端获取由社区维护的弹幕敏感词替换规则。该功能默认关闭，需在设置页手动开启；开启后会立即同步一次，并每 10 分钟自动同步一次。',
@@ -30,7 +30,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '烂梗列表',
     host: 'workers.vrp.moe',
-    url: 'https://subspace.institute/docs/laplace-chatterbox/memes',
+    url: 'https://laplace.live/chatterbox/memes',
     trigger: '在「烂梗库」面板中勾选「开启烂梗库」后',
     description:
       '从 LAPLACE Live! 服务获取烂梗列表。该功能默认关闭，需在「烂梗库」面板左上角手动勾选开启；开启后每 30 秒自动刷新一次，复制或发送烂梗时会向服务报告使用次数。',
@@ -91,7 +91,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '主播公会 / MCN 信息',
     host: 'workers.vrp.moe',
-    url: 'https://subspace.institute/docs/laplace-chatterbox/streamer-info',
+    url: 'https://laplace.live/chatterbox/streamer-info',
     trigger: '在设置中开启「显示公会」或「显示 MCN」后，打开主播信息面板时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID，获取该主播在 bilibili 的历史公会与 MCN 归属记录。两个开关共享同一个接口，开启其中任意一个即会触发请求。数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
@@ -99,7 +99,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   {
     name: '主播魔法期数据',
     host: 'workers.vrp.moe',
-    url: 'https://subspace.institute/docs/laplace-chatterbox/streamer-info',
+    url: 'https://laplace.live/chatterbox/streamer-info',
     trigger: '在设置中开启「显示魔法期」后，打开主播信息面板时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID（直播间页面为主播 UID，个人空间页面为页面 UID），获取该主播的魔法期记录与预测。仅在开启对应开关后才会请求，数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
