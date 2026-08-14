@@ -11,7 +11,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@preact/signals": "^2.11.0",
+    "@preact/signals": "^2.11.1",
     "@tabler/icons-preact": "^3.46.0",
     "clsx": "^2.1.1",
     "preact": "^10.29.8",
