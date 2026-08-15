@@ -9,6 +9,8 @@ import {
   autoBlendEnabled,
   autoBlendMinOccurrences,
   autoBlendPanelOpen,
+  autoBlendRandomDrop,
+  autoBlendRandomDropPercent,
   autoBlendUniqueUsers,
   autoBlendUseReplacements,
   autoBlendWindowSec,
@@ -251,6 +253,27 @@ export function AutoBlendControls() {
                   }}
                 />
                 次自动发送
+              </span>
+            }
+          />
+          <Checkbox
+            id='autoBlendRandomDrop'
+            checked={autoBlendRandomDrop.value}
+            onInput={e => {
+              autoBlendRandomDrop.value = e.currentTarget.checked
+            }}
+            label={
+              <span class='inline-flex items-center gap-1'>
+                <NumberInput
+                  value={autoBlendRandomDropPercent.value}
+                  min={1}
+                  max={100}
+                  disabled={!autoBlendRandomDrop.value}
+                  onChange={v => {
+                    autoBlendRandomDropPercent.value = v
+                  }}
+                />
+                % 的概率丢弃命中弹幕
               </span>
             }
           />

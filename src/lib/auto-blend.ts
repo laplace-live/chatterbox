@@ -22,6 +22,8 @@ import {
   autoBlendEnabled,
   autoBlendMessageBlacklist,
   autoBlendMinOccurrences,
+  autoBlendRandomDrop,
+  autoBlendRandomDropPercent,
   autoBlendUniqueUsers,
   autoBlendUseReplacements,
   autoBlendUserBlacklist,
@@ -238,6 +240,8 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   // Bail without engaging cooldown if a send is in-flight, so the trend keeps accumulating.
   if (isSending) return
 
+  const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`
+
   // Safety net for the cache-load race that `recordDanmaku` missed; bail before cooldown/clear, drop so it can't re-fire.
   if (isLockedEmoticon(originalText)) {
     counters.delete(originalText)
@@ -249,6 +253,15 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   if (isUnavailableEmoticon(originalText)) {
     counters.delete(originalText)
     appendLog(formatUnavailableEmoticonReject(originalText, '自动融入(表情)'))
+    return
+  }
+
+  // Dice roll before any send work. No cooldown on a drop (nothing was sent); only this trend's counter is
+  // cleared, so it must re-accumulate from scratch instead of re-rolling on its very next repeat.
+  const dropPercent = autoBlendRandomDrop.value ? autoBlendRandomDropPercent.value : 0
+  if (dropPercent > 0 && Math.random() * 100 < dropPercent) {
+    counters.delete(originalText)
+    appendLog(`🎲 自动融入随机丢弃 (${senderInfo}，${dropPercent}%): ${originalText}`)
     return
   }
 
@@ -298,7 +311,6 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     // Drives the `→` arrow in the log when any transform (YOLO or replacement) changed the string.
     const wasReplaced = replaced !== originalText
 
-    const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
     // Record before sending so `autoBlendAvoidRepeat` holds even if the send fails.

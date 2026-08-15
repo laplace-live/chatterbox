@@ -88,6 +88,9 @@ export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', tru
 export const autoBlendAvoidRepeat = gmSignal('autoBlendAvoidRepeat', false)
 // How many recent auto-sends to dedupe against when `autoBlendAvoidRepeat` is on.
 export const autoBlendAvoidRepeatCount = gmSignal('autoBlendAvoidRepeatCount', 3)
+// Randomly skip a share of triggered trends so the bot doesn't fire on every single one. 100 = observe-only.
+export const autoBlendRandomDrop = gmSignal('autoBlendRandomDrop', false)
+export const autoBlendRandomDropPercent = gmSignal('autoBlendRandomDropPercent', 29)
 // YOLO mode for 自动融入: LLM-polish each triggered trend before sending. Once per trigger (not per repeat) to preserve N-repeat semantics and bound LLM cost.
 export const autoBlendYolo = gmSignal('autoBlendYolo', false)
 // Per-room opt-in to remember 自动融入 on/off state across reloads.
