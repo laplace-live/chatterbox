@@ -86,8 +86,8 @@ let unsubscribe: (() => void) | null = null
 let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
 let isSending = false
-// Recent auto-sent trends (counters Map keys); blocks re-fire of any within the last `autoBlendAvoidRepeatCount` when `autoBlendAvoidRepeat` is on.
-let recentAutoSentTexts: string[] = []
+// Recently triggered trends, sent or randomly dropped (counters Map keys); blocks re-fire of any within the last `autoBlendAvoidRepeatCount` when `autoBlendAvoidRepeat` is on.
+let recentTriggeredTexts: string[] = []
 
 /** Live snapshot consumed by `AutoBlendControls`: candidates, CPM, cooldown countdown. */
 export const autoBlendStatus = signal<AutoBlendStatusValue>({
@@ -196,8 +196,8 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   // @ replies target one user, never a trend.
   if (isReply) return
 
-  // Don't let an exact repeat of a recent auto-send re-trigger; dropped pre-counter so it stays off the leaderboard.
-  if (autoBlendAvoidRepeat.value && recentAutoSentTexts.slice(-autoBlendAvoidRepeatCount.value).includes(text)) return
+  // Don't let an exact repeat of a recently triggered trend (sent or randomly dropped) re-trigger; skipped pre-counter so it stays off the leaderboard.
+  if (autoBlendAvoidRepeat.value && recentTriggeredTexts.slice(-autoBlendAvoidRepeatCount.value).includes(text)) return
 
   if (uid) {
     if (uid in autoBlendUserBlacklist.value) return
@@ -236,6 +236,13 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   }
 }
 
+/** Record a triggered trend (sent or randomly dropped) for the `autoBlendAvoidRepeat` last-N check. */
+function recordRecentTrigger(text: string): void {
+  recentTriggeredTexts.push(text)
+  const avoidCap = autoBlendAvoidRepeatCount.value
+  if (recentTriggeredTexts.length > avoidCap) recentTriggeredTexts = recentTriggeredTexts.slice(-avoidCap)
+}
+
 async function triggerSend(originalText: string, uniqueUsers: number, totalCount: number): Promise<void> {
   // Bail without engaging cooldown if a send is in-flight, so the trend keeps accumulating.
   if (isSending) return
@@ -256,11 +263,12 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     return
   }
 
-  // Dice roll before any send work. No cooldown on a drop (nothing was sent); only this trend's counter is
-  // cleared, so it must re-accumulate from scratch instead of re-rolling on its very next repeat.
+  // Dice roll before any send work. No cooldown on a drop (nothing was sent); the counter is cleared so it
+  // must re-accumulate from scratch, and it counts as a recent trigger so `autoBlendAvoidRepeat` mutes it like a real send.
   const dropPercent = autoBlendRandomDrop.value ? autoBlendRandomDropPercent.value : 0
   if (dropPercent > 0 && Math.random() * 100 < dropPercent) {
     counters.delete(originalText)
+    recordRecentTrigger(originalText)
     appendLog(`🎲 自动融入随机丢弃 (${senderInfo}，${dropPercent}%): ${originalText}`)
     return
   }
@@ -314,9 +322,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
     // Record before sending so `autoBlendAvoidRepeat` holds even if the send fails.
-    recentAutoSentTexts.push(originalText)
-    const avoidCap = autoBlendAvoidRepeatCount.value
-    if (recentAutoSentTexts.length > avoidCap) recentAutoSentTexts = recentAutoSentTexts.slice(-avoidCap)
+    recordRecentTrigger(originalText)
 
     let toSend = replaced
     if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend)
@@ -368,6 +374,6 @@ export function stopAutoBlend(): void {
   counters.clear()
   messageTimestamps.length = 0
   cooldownUntil = 0
-  recentAutoSentTexts = []
+  recentTriggeredTexts = []
   autoBlendStatus.value = { candidates: [], cooldownRemainingSec: 0, chatsPerMinute: 0, cooldownEffectiveSec: 0 }
 }
