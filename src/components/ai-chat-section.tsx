@@ -107,6 +107,7 @@ export function AiChatSection() {
   const autoSend = aiChatAutoSend.value
   const candidates = pendingCandidates.value
   const history = aiChatHistory.value
+  const lastEntry = history[history.length - 1]
   const pill = statusPill()
 
   const handleEdit = (id: number, initial: string) => {
@@ -181,6 +182,16 @@ export function AiChatSection() {
           <span>·</span>
           <span>上次生成：{relativeTime(aiChatLastGenAt.value, now.value)}</span>
         </div>
+
+        {/* Latest outcome inline — skips otherwise only live in the collapsed 最近决策 list. */}
+        {lastEntry && (
+          <div class='mb-2 break-all text-ga6'>
+            上次决策：
+            {lastEntry.message
+              ? `${lastEntry.sent ? '✅' : '❌'} ${lastEntry.message}`
+              : `⏭ ${truncateForRow(lastEntry.reason, 60)}`}
+          </div>
+        )}
 
         {/* Pending candidates (Review mode only). */}
         {!autoSend && (

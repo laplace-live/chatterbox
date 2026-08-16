@@ -381,6 +381,7 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
     } else {
       // Record the skip so we don't loop on the same content.
       recordConvHistory(transcript, `[跳过:${decision.reason || '无'}]`)
+      appendLog(`⏭️ [AI 融入] 本轮跳过：${decision.reason || '（无理由）'}`)
       appendHistory({
         id: nextEntryId++,
         transcript,
