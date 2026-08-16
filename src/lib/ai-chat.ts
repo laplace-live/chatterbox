@@ -1,5 +1,5 @@
 /**
- * AI Chat engine — "viewer-persona" generation loop backing the AI 陪聊 section.
+ * AI Chat engine — "viewer-persona" generation loop backing the AI 融入 section.
  * Every outgoing message is recorded in a 30s Set so the danmaku subscription
  * can drop the echo of our own send when Bilibili broadcasts it back (robust to
  * the logged-in account changing mid-session — no stable uid needed).
@@ -208,14 +208,14 @@ function parseDecision(content: string, maxLen: number): AiChatDecision {
 async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null> {
   const systemPrompt = getActiveLlmPrompt('aiChat')
   if (!systemPrompt.trim()) {
-    appendLog('⚠️ [AI 陪聊] 未配置 AI 陪聊提示词')
+    appendLog('⚠️ [AI 融入] 未配置 AI 融入提示词')
     return null
   }
   const base = llmApiBase.value
   const apiKey = llmApiKey.value
   const model = llmModel.value
   if (!base.trim() || !apiKey.trim() || !model.trim()) {
-    appendLog('⚠️ [AI 陪聊] LLM 配置不完整，请检查「设置 → LLM 设置」')
+    appendLog('⚠️ [AI 融入] LLM 配置不完整，请检查「设置 → LLM 设置」')
     return null
   }
   const maxLen = Math.max(1, aiChatMaxMessageLength.value)
@@ -269,11 +269,11 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
     return parseDecision(content, maxLen)
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      appendLog(`⏱️ [AI 陪聊] LLM 调用超时（${Math.round(LLM_CALL_TIMEOUT_MS / 1000)} 秒），已跳过本次生成`)
+      appendLog(`⏱️ [AI 融入] LLM 调用超时（${Math.round(LLM_CALL_TIMEOUT_MS / 1000)} 秒），已跳过本次生成`)
       return null
     }
     const msg = err instanceof Error ? err.message : String(err)
-    appendLog(`❌ [AI 陪聊] LLM 调用失败：${msg}`)
+    appendLog(`❌ [AI 融入] LLM 调用失败：${msg}`)
     return null
   } finally {
     clearTimeout(timeoutId)
@@ -285,17 +285,17 @@ async function sendAiChatDanmaku(message: string): Promise<boolean> {
     const roomId = await ensureRoomId()
     const csrfToken = getCsrfToken()
     if (!csrfToken) {
-      appendLog('❌ [AI 陪聊] 未找到登录信息，请先登录 Bilibili')
+      appendLog('❌ [AI 融入] 未找到登录信息，请先登录 Bilibili')
       return false
     }
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO)
-    appendLog(result, 'AI 陪聊', message)
+    appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    appendLog(`❌ [AI 陪聊] 发送失败：${msg}`)
+    appendLog(`❌ [AI 融入] 发送失败：${msg}`)
     return false
   }
 }
@@ -421,7 +421,7 @@ export function acceptCandidate(id: number, editedMessage?: string): void {
   const raw = editedMessage ?? cand.decision.message
   const message = raw.trim()
   if (!message) {
-    appendLog('⚠️ [AI 陪聊] 发送内容为空')
+    appendLog('⚠️ [AI 融入] 发送内容为空')
     return
   }
   pendingCandidates.value = pendingCandidates.value.filter(c => c.id !== id)
