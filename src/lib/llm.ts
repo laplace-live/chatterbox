@@ -141,18 +141,20 @@ export interface LlmChatMessage {
   content: string
 }
 
-/** OpenAI-style structured-output directive; unrecognizing vendors silently ignore it, so still instruct JSON via the system prompt. */
-export interface ChatCompletionResponseFormat {
-  type: 'json_schema'
-  json_schema: {
-    /** Schema identifier; required by OpenAI, ignored by tolerant implementations. */
-    name: string
-    /** Reject unknown properties; call sites default to true to fail loudly. */
-    strict?: boolean
-    /** JSON Schema body (the subset OpenAI accepts). */
-    schema: unknown
-  }
-}
+/** OpenAI-style structured-output directive. Vendor support varies (DeepSeek 400s on `json_schema`, only takes `json_object`), so still instruct JSON via the system prompt and parse defensively. */
+export type ChatCompletionResponseFormat =
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema'
+      json_schema: {
+        /** Schema identifier; required by OpenAI, ignored by tolerant implementations. */
+        name: string
+        /** Reject unknown properties; call sites default to true to fail loudly. */
+        strict?: boolean
+        /** JSON Schema body (the subset OpenAI accepts). */
+        schema: unknown
+      }
+    }
 
 export interface ChatCompletionOptions {
   base: string

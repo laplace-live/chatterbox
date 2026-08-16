@@ -204,6 +204,37 @@ function parseDecision(content: string, maxLen: number): AiChatDecision {
   return { send, message, reason }
 }
 
+// Vendor support for structured output varies (DeepSeek's native API 400s on `json_schema`, accepting only `json_object`). Remember the best working mode per provider config for the session; downgrade json_schema → json_object → none on rejection.
+type ResponseFormatMode = 'json_schema' | 'json_object' | 'none'
+const responseFormatModes = new Map<string, ResponseFormatMode>()
+
+function buildResponseFormat(mode: ResponseFormatMode, maxLen: number): ChatCompletionResponseFormat | undefined {
+  if (mode === 'none') return undefined
+  if (mode === 'json_object') return { type: 'json_object' }
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'ai_chat_response',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          send: { type: 'boolean' },
+          message: { type: 'string', maxLength: maxLen },
+          reason: { type: 'string' },
+        },
+        required: ['send', 'message', 'reason'],
+        additionalProperties: false,
+      },
+    },
+  }
+}
+
+/** HTTP 4xx whose body mentions response_format = the vendor rejecting the directive, not a transient failure. */
+function isResponseFormatRejection(err: unknown): boolean {
+  return err instanceof Error && /HTTP 4\d\d/.test(err.message) && err.message.toLowerCase().includes('response_format')
+}
+
 async function callAiChatLlm(sourceText: string, hasTranscript: boolean): Promise<AiChatDecision | null> {
   const systemPrompt = getActiveLlmPrompt('aiChat')
   if (!systemPrompt.trim()) {
@@ -232,44 +263,42 @@ async function callAiChatLlm(sourceText: string, hasTranscript: boolean): Promis
     '你必须返回一个 JSON 对象，包含三个字段：\n' +
     '- "send" (boolean)：当前内容是否值得作为弹幕发送\n' +
     `- "message" (string)：要发送的弹幕，长度不超过 ${maxLen} 个字符；send 为 false 时为空串\n` +
-    '- "reason" (string)：你做此决定的简短理由\n'
+    '- "reason" (string)：你做此决定的简短理由\n' +
+    // Literal example required by DeepSeek's json_object mode; harmless elsewhere.
+    '返回示例：{"send": true, "message": "要发送的弹幕", "reason": "简短理由"}\n'
   const userContent = contextSummary
     ? `上下文（最近的发送 / 观众弹幕）：\n"""\n${contextSummary}\n"""\n\n主播刚刚说：\n"""\n${sourceText}\n"""\n`
     : `主播刚刚说："${sourceText}"`
-  const responseFormat: ChatCompletionResponseFormat = {
-    type: 'json_schema',
-    json_schema: {
-      name: 'ai_chat_response',
-      strict: true,
-      schema: {
-        type: 'object',
-        properties: {
-          send: { type: 'boolean' },
-          message: { type: 'string', maxLength: maxLen },
-          reason: { type: 'string' },
-        },
-        required: ['send', 'message', 'reason'],
-        additionalProperties: false,
-      },
-    },
-  }
+  const modeKey = `${provider?.id ?? ''}:${base}`
+  let rfMode = responseFormatModes.get(modeKey) ?? 'json_schema'
   // Bound the request so a stalled fetch can't wedge the engine (see LLM_CALL_TIMEOUT_MS).
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
   try {
-    const content = await chatCompletion({
-      base,
-      apiKey,
-      model,
-      messages: [
-        { role: 'system', content: decoratedSystem },
-        { role: 'user', content: userContent },
-      ],
-      temperature: aiChatTemperature.value,
-      responseFormat,
-      signal: controller.signal,
-    })
-    return parseDecision(content, maxLen)
+    while (true) {
+      try {
+        const content = await chatCompletion({
+          base,
+          apiKey,
+          model,
+          messages: [
+            { role: 'system', content: decoratedSystem },
+            { role: 'user', content: userContent },
+          ],
+          temperature: aiChatTemperature.value,
+          responseFormat: buildResponseFormat(rfMode, maxLen),
+          signal: controller.signal,
+        })
+        return parseDecision(content, maxLen)
+      } catch (err) {
+        const next: ResponseFormatMode | null =
+          rfMode === 'json_schema' ? 'json_object' : rfMode === 'json_object' ? 'none' : null
+        if (next === null || !isResponseFormatRejection(err)) throw err
+        rfMode = next
+        responseFormatModes.set(modeKey, next)
+        appendLog(`ℹ️ [AI 融入] 服务商不支持当前结构化输出格式，已降级为 ${next === 'none' ? '纯提示词' : next} 重试`)
+      }
+    }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       appendLog(`⏱️ [AI 融入] LLM 调用超时（${Math.round(LLM_CALL_TIMEOUT_MS / 1000)} 秒），已跳过本次生成`)
