@@ -3,6 +3,7 @@ import type { TargetedPointerEvent } from 'preact'
 import { cn } from '../lib/cn'
 import { activeTab, dialogOpen, dialogWidth, optimizeLayout } from '../lib/store'
 import { AboutTab } from './about-tab'
+import { AiChatSection } from './ai-chat-section'
 import { AutoBlendControls } from './auto-blend-controls'
 import { AutoSendControls } from './auto-send-controls'
 import { LogPanel } from './log-panel'
@@ -61,6 +62,9 @@ export function Configurator() {
         <AutoSendControls />
         <div class='my-1'>
           <AutoBlendControls />
+        </div>
+        <div class='my-1'>
+          <AiChatSection />
         </div>
         <div class='my-1'>
           <MemesList />

@@ -19,6 +19,7 @@ import {
   aiChatContextMaxChars,
   aiChatEnabled,
   aiChatMaxMessageLength,
+  aiChatPanelOpen,
   aiChatTemperature,
   aiChatViewerInterval,
   aiChatViewerWindow,
@@ -33,9 +34,6 @@ import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 
-// Match section visual rhythm in stt-tab.tsx.
-const SECTION_CLASS = 'my-2 border-b border-b-solid border-b-ga2'
-const HEADING_CLASS = 'font-bold mb-2'
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
 function relativeTime(ts: number | null, now: number): string {
@@ -131,254 +129,263 @@ export function AiChatSection() {
   }
 
   return (
-    <div class={SECTION_CLASS} data-section='ai-chat'>
-      <div class={`${HEADING_CLASS} flex flex-wrap items-center gap-2`}>
-        <span>AI 陪聊</span>
-        <span class='font-normal' style={{ color: pill.color }}>
-          · {pill.label}
-        </span>
-      </div>
+    <AccordionItem
+      open={aiChatPanelOpen.value}
+      onOpenChange={v => {
+        aiChatPanelOpen.value = v
+      }}
+      data-section='ai-chat'
+    >
+      <AccordionTrigger>AI 融入{enabled ? ' 🟡' : ''}</AccordionTrigger>
+      <AccordionContent>
+        <div class={`${ROW_CLASS} mt-2`}>
+          <Checkbox
+            id='aiChatEnabled'
+            checked={enabled}
+            onInput={e => {
+              aiChatEnabled.value = e.currentTarget.checked
+            }}
+            label='启用 AI 融入'
+          />
+          {/* Auto / Review toggle; filled when active. */}
+          <Button
+            variant={autoSend ? 'default' : 'outline'}
+            size='sm'
+            disabled={!enabled || !llmReady}
+            onClick={() => {
+              aiChatAutoSend.value = !aiChatAutoSend.value
+            }}
+            title={autoSend ? '当前：自动发送（点击切换到候选审核）' : '当前：候选审核（点击切换到自动发送）'}
+          >
+            {autoSend ? '自动发送' : '候选审核'}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={!enabled || !llmReady}
+            onClick={() => triggerNow()}
+            title='立即触发一次 LLM 生成（无论缓冲区状态如何）'
+          >
+            立即生成
+          </Button>
+        </div>
 
-      <div class={ROW_CLASS}>
-        <Checkbox
-          id='aiChatEnabled'
-          checked={enabled}
-          onInput={e => {
-            aiChatEnabled.value = e.currentTarget.checked
-          }}
-          label='启用 AI 陪聊'
-        />
-        {/* Auto / Review toggle; filled when active. */}
-        <Button
-          variant={autoSend ? 'default' : 'outline'}
-          size='sm'
-          disabled={!enabled || !llmReady}
-          onClick={() => {
-            aiChatAutoSend.value = !aiChatAutoSend.value
-          }}
-          title={autoSend ? '当前：自动发送（点击切换到候选审核）' : '当前：候选审核（点击切换到自动发送）'}
-        >
-          {autoSend ? '自动发送' : '候选审核'}
-        </Button>
-        <Button
-          variant='outline'
-          size='sm'
-          disabled={!enabled || !llmReady}
-          onClick={() => triggerNow()}
-          title='立即触发一次 LLM 生成（无论缓冲区状态如何）'
-        >
-          立即生成
-        </Button>
-      </div>
+        {!llmReady && enabled && <div class='mb-2 text-[#f44]'>{gap ?? 'LLM 未就绪'}</div>}
 
-      {!llmReady && enabled && <div class='mb-2 text-[#f44]'>{gap ?? 'LLM 未就绪'}</div>}
+        <div class={`${ROW_CLASS} text-ga6`}>
+          <span style={{ color: pill.color }}>{pill.label}</span>
+          <span>·</span>
+          <span>同传：{sttRunning.value ? '已启动' : '未启动（可选）'}</span>
+          <span>·</span>
+          <span>本次观众消息：{aiChatViewerCount.value}</span>
+          <span>·</span>
+          <span>上次生成：{relativeTime(aiChatLastGenAt.value, now.value)}</span>
+        </div>
 
-      <div class={`${ROW_CLASS} text-ga6`}>
-        <span>同传：{sttRunning.value ? '已启动' : '未启动'}</span>
-        <span>·</span>
-        <span>本次观众消息：{aiChatViewerCount.value}</span>
-        <span>·</span>
-        <span>上次生成：{relativeTime(aiChatLastGenAt.value, now.value)}</span>
-      </div>
-
-      {/* Pending candidates (Review mode only). */}
-      {!autoSend && (
-        <div class='mb-2'>
-          <div class='mb-1 font-bold'>
-            候选弹幕
-            {candidates.length > 0 && <span class='font-normal text-ga6'> ({candidates.length})</span>}
-          </div>
-          {candidates.length === 0 ? (
-            <div class='text-ga4'>暂无候选 — 等待主播说话或观众消息触发生成</div>
-          ) : (
-            <div class='max-h-45 overflow-y-auto'>
-              {/* Engine appends to the end; reverse for newest-first display. */}
-              {[...candidates].reverse().map(cand => (
-                <div key={cand.id} class='border-b border-b-ga2 border-b-solid py-1'>
-                  {editingId.value === cand.id ? (
-                    <div class='flex flex-wrap items-center gap-1'>
-                      <Input
-                        className='min-w-40 flex-1'
-                        value={editingText.value}
-                        onInput={e => {
-                          editingText.value = e.currentTarget.value
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && !e.isComposing) {
-                            e.preventDefault()
-                            handleConfirmEdit()
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault()
-                            handleCancelEdit()
-                          }
-                        }}
-                      />
-                      <Button variant='default' size='sm' onClick={handleConfirmEdit}>
-                        发送
-                      </Button>
-                      <Button variant='outline' size='sm' onClick={handleCancelEdit}>
-                        取消
-                      </Button>
-                    </div>
-                  ) : (
-                    <div>
-                      <div class='flex flex-wrap items-baseline gap-1'>
-                        <span class='flex-1 break-all'>{cand.decision.message}</span>
-                        <Button variant='default' size='sm' onClick={() => acceptCandidate(cand.id)}>
+        {/* Pending candidates (Review mode only). */}
+        {!autoSend && (
+          <div class='mb-2'>
+            <div class='mb-1 font-bold'>
+              候选弹幕
+              {candidates.length > 0 && <span class='font-normal text-ga6'> ({candidates.length})</span>}
+            </div>
+            {candidates.length === 0 ? (
+              <div class='text-ga4'>暂无候选 — 等待观众消息或同传语音触发生成</div>
+            ) : (
+              <div class='max-h-45 overflow-y-auto'>
+                {/* Engine appends to the end; reverse for newest-first display. */}
+                {[...candidates].reverse().map(cand => (
+                  <div key={cand.id} class='border-b border-b-ga2 border-b-solid py-1'>
+                    {editingId.value === cand.id ? (
+                      <div class='flex flex-wrap items-center gap-1'>
+                        <Input
+                          className='min-w-40 flex-1'
+                          value={editingText.value}
+                          onInput={e => {
+                            editingText.value = e.currentTarget.value
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.isComposing) {
+                              e.preventDefault()
+                              handleConfirmEdit()
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault()
+                              handleCancelEdit()
+                            }
+                          }}
+                        />
+                        <Button variant='default' size='sm' onClick={handleConfirmEdit}>
                           发送
                         </Button>
-                        <Button variant='outline' size='sm' onClick={() => handleEdit(cand.id, cand.decision.message)}>
-                          编辑
-                        </Button>
-                        <Button variant='ghost' size='sm' onClick={() => skipCandidate(cand.id)}>
-                          跳过
+                        <Button variant='outline' size='sm' onClick={handleCancelEdit}>
+                          取消
                         </Button>
                       </div>
-                      {cand.transcript && (
-                        <div class='break-all text-ga6'>主播: {truncateForRow(cand.transcript, 80)}</div>
-                      )}
-                      {cand.decision.reason && <div class='break-all text-ga6'>理由: {cand.decision.reason}</div>}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Decision feed; folded into an Accordion to cap panel height. */}
-      <AccordionItem className='mb-2'>
-        <AccordionTrigger>
-          最近决策
-          {history.length > 0 && <span class='font-normal text-ga6'> ({history.length})</span>}
-        </AccordionTrigger>
-        <AccordionContent>
-          <div class='max-h-40 overflow-y-auto'>
-            {history.length === 0 ? (
-              <div class='text-ga4'>暂无决策记录</div>
-            ) : (
-              [...history].reverse().map(entry => <HistoryRow key={entry.id} entry={entry} />)
+                    ) : (
+                      <div>
+                        <div class='flex flex-wrap items-baseline gap-1'>
+                          <span class='flex-1 break-all'>{cand.decision.message}</span>
+                          <Button variant='default' size='sm' onClick={() => acceptCandidate(cand.id)}>
+                            发送
+                          </Button>
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            onClick={() => handleEdit(cand.id, cand.decision.message)}
+                          >
+                            编辑
+                          </Button>
+                          <Button variant='ghost' size='sm' onClick={() => skipCandidate(cand.id)}>
+                            跳过
+                          </Button>
+                        </div>
+                        {cand.transcript && (
+                          <div class='break-all text-ga6'>主播: {truncateForRow(cand.transcript, 80)}</div>
+                        )}
+                        {cand.decision.reason && <div class='break-all text-ga6'>理由: {cand.decision.reason}</div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-          {history.length > 0 && (
-            <div class='mt-1'>
-              <Button variant='outline' size='sm' onClick={() => clearAiChatHistory()}>
-                清空记录
-              </Button>
-            </div>
-          )}
-        </AccordionContent>
-      </AccordionItem>
+        )}
 
-      {/* Prompt picker shown unconditionally: setting an active prompt is what makes the LLM usable. */}
-      <div class={ROW_CLASS}>
-        <Label htmlFor='aiChatPrompt'>提示词：</Label>
-        <PromptPicker
-          id='aiChatPrompt'
-          className='min-w-30 flex-1 truncate'
-          prompts={llmPromptsAiChat.value}
-          activeIndex={llmActivePromptAiChat.value}
-          onActiveIndexChange={v => {
-            llmActivePromptAiChat.value = v
-          }}
-          emptyText='暂无提示词，请前往「设置 → LLM 提示词 → AI 陪聊」添加'
-          previewGraphemes={20}
-        />
-      </div>
+        {/* Decision feed; folded into an Accordion to cap panel height. */}
+        <AccordionItem className='mb-2'>
+          <AccordionTrigger>
+            最近决策
+            {history.length > 0 && <span class='font-normal text-ga6'> ({history.length})</span>}
+          </AccordionTrigger>
+          <AccordionContent>
+            <div class='max-h-40 overflow-y-auto'>
+              {history.length === 0 ? (
+                <div class='text-ga4'>暂无决策记录</div>
+              ) : (
+                [...history].reverse().map(entry => <HistoryRow key={entry.id} entry={entry} />)
+              )}
+            </div>
+            {history.length > 0 && (
+              <div class='mt-1'>
+                <Button variant='outline' size='sm' onClick={() => clearAiChatHistory()}>
+                  清空记录
+                </Button>
+              </div>
+            )}
+          </AccordionContent>
+        </AccordionItem>
 
-      <AccordionItem>
-        <AccordionTrigger>陪聊高级设置</AccordionTrigger>
-        <AccordionContent>
-          <div class='mt-1 grid grid-cols-2 gap-2'>
-            <div class='flex items-center gap-1'>
-              <Label htmlFor='aiChatMaxMsgLen'>弹幕最长</Label>
-              <Input
-                id='aiChatMaxMsgLen'
-                type='number'
-                min='1'
-                max='200'
-                className='w-15'
-                value={aiChatMaxMessageLength.value}
-                onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10)
-                  aiChatMaxMessageLength.value = Number.isFinite(v) ? Math.max(1, Math.min(200, v)) : 30
-                }}
-              />
-              <span>字</span>
+        {/* Prompt picker shown unconditionally: setting an active prompt is what makes the LLM usable. */}
+        <div class={ROW_CLASS}>
+          <Label htmlFor='aiChatPrompt'>提示词：</Label>
+          <PromptPicker
+            id='aiChatPrompt'
+            className='min-w-30 flex-1 truncate'
+            prompts={llmPromptsAiChat.value}
+            activeIndex={llmActivePromptAiChat.value}
+            onActiveIndexChange={v => {
+              llmActivePromptAiChat.value = v
+            }}
+            emptyText='暂无提示词，请前往「设置 → LLM 提示词 → AI 融入」添加'
+            previewGraphemes={20}
+          />
+        </div>
+
+        <AccordionItem>
+          <AccordionTrigger>AI 融入高级设置</AccordionTrigger>
+          <AccordionContent>
+            <div class='mt-1 grid grid-cols-2 gap-2'>
+              <div class='flex items-center gap-1'>
+                <Label htmlFor='aiChatMaxMsgLen'>弹幕最长</Label>
+                <Input
+                  id='aiChatMaxMsgLen'
+                  type='number'
+                  min='1'
+                  max='200'
+                  className='w-15'
+                  value={aiChatMaxMessageLength.value}
+                  onInput={e => {
+                    const v = parseInt(e.currentTarget.value, 10)
+                    aiChatMaxMessageLength.value = Number.isFinite(v) ? Math.max(1, Math.min(200, v)) : 30
+                  }}
+                />
+                <span>字</span>
+              </div>
+              <div class='flex items-center gap-1'>
+                <Label htmlFor='aiChatViewerInterval'>每</Label>
+                <Input
+                  id='aiChatViewerInterval'
+                  type='number'
+                  min='1'
+                  max='1000'
+                  className='w-15'
+                  value={aiChatViewerInterval.value}
+                  onInput={e => {
+                    const v = parseInt(e.currentTarget.value, 10)
+                    aiChatViewerInterval.value = Number.isFinite(v) ? Math.max(1, Math.min(1000, v)) : 10
+                  }}
+                />
+                <span>条弹幕触发</span>
+              </div>
+              <div class='flex items-center gap-1'>
+                <Label htmlFor='aiChatViewerWindow'>观众窗口</Label>
+                <Input
+                  id='aiChatViewerWindow'
+                  type='number'
+                  min='1'
+                  max='500'
+                  className='w-15'
+                  value={aiChatViewerWindow.value}
+                  onInput={e => {
+                    const v = parseInt(e.currentTarget.value, 10)
+                    aiChatViewerWindow.value = Number.isFinite(v) ? Math.max(1, Math.min(500, v)) : 50
+                  }}
+                />
+                <span>条</span>
+              </div>
+              <div class='flex items-center gap-1'>
+                <Label htmlFor='aiChatContextMax'>上下文上限</Label>
+                <Input
+                  id='aiChatContextMax'
+                  type='number'
+                  min='256'
+                  max='32768'
+                  step='128'
+                  className='w-20'
+                  value={aiChatContextMaxChars.value}
+                  onInput={e => {
+                    const v = parseInt(e.currentTarget.value, 10)
+                    aiChatContextMaxChars.value = Number.isFinite(v) ? Math.max(256, Math.min(32_768, v)) : 2048
+                  }}
+                />
+                <span>字</span>
+              </div>
+              <div class='flex items-center gap-1'>
+                <Label htmlFor='aiChatTemperature'>采样温度</Label>
+                <Input
+                  id='aiChatTemperature'
+                  type='number'
+                  min='0'
+                  max='2'
+                  step='0.1'
+                  className='w-15'
+                  value={aiChatTemperature.value}
+                  onInput={e => {
+                    const v = parseFloat(e.currentTarget.value)
+                    aiChatTemperature.value = Number.isFinite(v) ? Math.max(0, Math.min(2, v)) : 0.7
+                  }}
+                />
+              </div>
             </div>
-            <div class='flex items-center gap-1'>
-              <Label htmlFor='aiChatViewerInterval'>每</Label>
-              <Input
-                id='aiChatViewerInterval'
-                type='number'
-                min='1'
-                max='1000'
-                className='w-15'
-                value={aiChatViewerInterval.value}
-                onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10)
-                  aiChatViewerInterval.value = Number.isFinite(v) ? Math.max(1, Math.min(1000, v)) : 10
-                }}
-              />
-              <span>条弹幕触发</span>
+            <div class='text-ga6'>
+              观众触发：累积一定数量的新观众弹幕后自动调用 LLM。观众窗口：每次提示词中携带的最近 N
+              条观众消息。上下文上限：发送到 LLM 的上下文（历史 +
+              观众）字符总数预算。未启动同传时仅由观众弹幕与「立即生成」触发。
             </div>
-            <div class='flex items-center gap-1'>
-              <Label htmlFor='aiChatViewerWindow'>观众窗口</Label>
-              <Input
-                id='aiChatViewerWindow'
-                type='number'
-                min='1'
-                max='500'
-                className='w-15'
-                value={aiChatViewerWindow.value}
-                onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10)
-                  aiChatViewerWindow.value = Number.isFinite(v) ? Math.max(1, Math.min(500, v)) : 50
-                }}
-              />
-              <span>条</span>
-            </div>
-            <div class='flex items-center gap-1'>
-              <Label htmlFor='aiChatContextMax'>上下文上限</Label>
-              <Input
-                id='aiChatContextMax'
-                type='number'
-                min='256'
-                max='32768'
-                step='128'
-                className='w-20'
-                value={aiChatContextMaxChars.value}
-                onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10)
-                  aiChatContextMaxChars.value = Number.isFinite(v) ? Math.max(256, Math.min(32_768, v)) : 2048
-                }}
-              />
-              <span>字</span>
-            </div>
-            <div class='flex items-center gap-1'>
-              <Label htmlFor='aiChatTemperature'>采样温度</Label>
-              <Input
-                id='aiChatTemperature'
-                type='number'
-                min='0'
-                max='2'
-                step='0.1'
-                className='w-15'
-                value={aiChatTemperature.value}
-                onInput={e => {
-                  const v = parseFloat(e.currentTarget.value)
-                  aiChatTemperature.value = Number.isFinite(v) ? Math.max(0, Math.min(2, v)) : 0.7
-                }}
-              />
-            </div>
-          </div>
-          <div class='text-ga6'>
-            观众触发：累积一定数量的新观众弹幕后自动调用 LLM。观众窗口：每次提示词中携带的最近 N
-            条观众消息。上下文上限：发送到 LLM 的上下文（历史 + 观众）字符总数预算。
-          </div>
-        </AccordionContent>
-      </AccordionItem>
-    </div>
+          </AccordionContent>
+        </AccordionItem>
+      </AccordionContent>
+    </AccordionItem>
   )
 }

@@ -58,6 +58,7 @@ export const activeTemplateIndex = gmSignal('activeTemplateIndex', 0)
 export const logPanelOpen = gmSignal('logPanelOpen', false)
 export const autoSendPanelOpen = gmSignal('autoSendPanelOpen', true)
 export const autoBlendPanelOpen = gmSignal('autoBlendPanelOpen', true)
+export const aiChatPanelOpen = gmSignal('aiChatPanelOpen', true)
 export const normalSendPanelOpen = gmSignal('normalSendPanelOpen', true)
 export const memesPanelOpen = gmSignal('memesPanelOpen', true)
 // Master switch for the 烂梗库's networking: when off, no requests at all (no list fetch, no 30s polling, no copy-count reports).
@@ -146,7 +147,7 @@ export const llmActivePromptAutoSend = gmSignal('llmActivePromptAutoSend', 0)
 export const llmPromptsAiChat = gmSignal<string[]>('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
 export const llmActivePromptAiChat = gmSignal('llmActivePromptAiChat', 0)
 
-// AI Chat ("AI 陪聊") settings; defaults mirror laplace-cap's `useAiChatter`.
+// AI Chat ("AI 融入") settings; defaults mirror laplace-cap's `useAiChatter`.
 // - `aiChatAutoSend`: Review mode by default; on = bypass candidate list, enqueue straight away.
 // - `aiChatMaxMessageLength`: also fed into the JSON schema as `message.maxLength`.
 // - `aiChatViewerInterval`: viewer-only generation every N viewer messages.

@@ -28,7 +28,7 @@ const FEATURE_LABELS: Record<LlmPromptFeature, string> = {
   normalSend: '常规发送',
   autoBlend: '自动融入',
   autoSend: '独轮车',
-  aiChat: 'AI 陪聊',
+  aiChat: 'AI 融入',
 }
 
 /** Whether the bare API config (base + key + model) is filled in; does NOT check any prompt. */

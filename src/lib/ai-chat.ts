@@ -1,5 +1,5 @@
 /**
- * AI Chat engine — "viewer-persona" generation loop backing the AI 陪聊 section.
+ * AI Chat engine — "viewer-persona" generation loop backing the AI 融入 section.
  * Every outgoing message is recorded in a 30s Set so the danmaku subscription
  * can drop the echo of our own send when Bilibili broadcasts it back (robust to
  * the logged-in account changing mid-session — no stable uid needed).
@@ -164,7 +164,8 @@ function buildContextSummary(
   }
   for (let i = history.length - 1; i >= 0; i--) {
     const { transcript, chat } = history[i]
-    const block = `[主播]: ${transcript}\n[你已发送]: ${chat}`
+    // Viewer-only rounds have no transcript; an empty [主播] line just confuses the model.
+    const block = transcript.trim() ? `[主播]: ${transcript}\n[你已发送]: ${chat}` : `[你已发送]: ${chat}`
     if (totalLength + block.length > maxChars) break
     combined.unshift(block)
     totalLength += block.length
@@ -205,27 +206,30 @@ function parseDecision(content: string, maxLen: number): AiChatDecision {
   return { send, message, reason }
 }
 
-async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null> {
+async function callAiChatLlm(sourceText: string, hasTranscript: boolean): Promise<AiChatDecision | null> {
   const systemPrompt = getActiveLlmPrompt('aiChat')
   if (!systemPrompt.trim()) {
-    appendLog('⚠️ [AI 陪聊] 未配置 AI 陪聊提示词')
+    appendLog('⚠️ [AI 融入] 未配置 AI 融入提示词')
     return null
   }
   const base = llmApiBase.value
   const apiKey = llmApiKey.value
   const model = llmModel.value
   if (!base.trim() || !apiKey.trim() || !model.trim()) {
-    appendLog('⚠️ [AI 陪聊] LLM 配置不完整，请检查「设置 → LLM 设置」')
+    appendLog('⚠️ [AI 融入] LLM 配置不完整，请检查「设置 → LLM 设置」')
     return null
   }
   const maxLen = Math.max(1, aiChatMaxMessageLength.value)
   // Snapshot guards against the buffer mutating mid-call.
   const viewerSnapshot = viewerBuffer.slice(-aiChatViewerWindow.value)
   const contextSummary = buildContextSummary(conversationHistory, aiChatContextMaxChars.value, viewerSnapshot)
+  const sourceFraming = hasTranscript
+    ? '主播的语音文字来自实时语音识别，可能是片段化的句子。上下文中包含最近的发送记录与最新观众弹幕，请综合理解后再决定是否发送。\n\n'
+    : '当前未启用主播语音识别，没有主播语音文字。上下文中包含最近的发送记录与最新观众弹幕，请仅基于观众弹幕综合判断后再决定是否发送。\n\n'
   const decoratedSystem =
     `${systemPrompt}\n\n` +
     `当前时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n` +
-    '主播的语音文字来自实时语音识别，可能是片段化的句子。上下文中包含最近的发送记录与最新观众弹幕，请综合理解后再决定是否发送。\n\n' +
+    sourceFraming +
     '你必须返回一个 JSON 对象，包含三个字段：\n' +
     '- "send" (boolean)：当前内容是否值得作为弹幕发送\n' +
     `- "message" (string)：要发送的弹幕，长度不超过 ${maxLen} 个字符；send 为 false 时为空串\n` +
@@ -269,11 +273,11 @@ async function callAiChatLlm(sourceText: string): Promise<AiChatDecision | null>
     return parseDecision(content, maxLen)
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      appendLog(`⏱️ [AI 陪聊] LLM 调用超时（${Math.round(LLM_CALL_TIMEOUT_MS / 1000)} 秒），已跳过本次生成`)
+      appendLog(`⏱️ [AI 融入] LLM 调用超时（${Math.round(LLM_CALL_TIMEOUT_MS / 1000)} 秒），已跳过本次生成`)
       return null
     }
     const msg = err instanceof Error ? err.message : String(err)
-    appendLog(`❌ [AI 陪聊] LLM 调用失败：${msg}`)
+    appendLog(`❌ [AI 融入] LLM 调用失败：${msg}`)
     return null
   } finally {
     clearTimeout(timeoutId)
@@ -285,17 +289,17 @@ async function sendAiChatDanmaku(message: string): Promise<boolean> {
     const roomId = await ensureRoomId()
     const csrfToken = getCsrfToken()
     if (!csrfToken) {
-      appendLog('❌ [AI 陪聊] 未找到登录信息，请先登录 Bilibili')
+      appendLog('❌ [AI 融入] 未找到登录信息，请先登录 Bilibili')
       return false
     }
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO)
-    appendLog(result, 'AI 陪聊', message)
+    appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    appendLog(`❌ [AI 陪聊] 发送失败：${msg}`)
+    appendLog(`❌ [AI 融入] 发送失败：${msg}`)
     return false
   }
 }
@@ -307,6 +311,14 @@ function appendHistory(entry: AiChatHistoryEntry): void {
 }
 
 function recordConvHistory(transcript: string, chat: string): void {
+  // Collapse consecutive viewer-only skips: without STT they'd flood the context
+  // with identical [跳过] blocks and bias the LLM into a keep-skipping spiral.
+  const last = conversationHistory[conversationHistory.length - 1]
+  const isViewerSkip = (t: string, c: string) => !t.trim() && c.startsWith('[跳过:')
+  if (last && isViewerSkip(transcript, chat) && isViewerSkip(last.transcript, last.chat)) {
+    last.chat = chat
+    return
+  }
   conversationHistory.push({ transcript, chat })
   while (conversationHistory.length > HISTORY_ENTRIES_CAP) conversationHistory.shift()
 }
@@ -339,8 +351,9 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
   inflight = true
   aiChatStatus.value = 'generating'
   try {
-    const sourceText = transcript.trim() || '（暂无主播语音；请仅基于上下文中的观众弹幕做出反应）'
-    const decision = await callAiChatLlm(sourceText)
+    const trimmedTranscript = transcript.trim()
+    const sourceText = trimmedTranscript || '（暂无主播语音；请仅基于上下文中的观众弹幕做出反应）'
+    const decision = await callAiChatLlm(sourceText, trimmedTranscript.length > 0)
     if (!decision) {
       // callAiChatLlm already logged the failure
       return
@@ -421,7 +434,7 @@ export function acceptCandidate(id: number, editedMessage?: string): void {
   const raw = editedMessage ?? cand.decision.message
   const message = raw.trim()
   if (!message) {
-    appendLog('⚠️ [AI 陪聊] 发送内容为空')
+    appendLog('⚠️ [AI 融入] 发送内容为空')
     return
   }
   pendingCandidates.value = pendingCandidates.value.filter(c => c.id !== id)

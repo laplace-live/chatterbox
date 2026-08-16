@@ -32,8 +32,8 @@ export function Tabs() {
             {tab.label}
             {tab.id === 'fasong' && sendMsg.value ? ' 🟢' : ''}
             {tab.id === 'fasong' && autoBlendEnabled.value ? ' 🟣' : ''}
+            {tab.id === 'fasong' && aiChatEnabled.value ? ' 🟡' : ''}
             {tab.id === 'tongchuan' && sttRunning.value ? ' 🔵' : ''}
-            {tab.id === 'tongchuan' && aiChatEnabled.value ? ' 🟡' : ''}
           </button>
         )
       })}

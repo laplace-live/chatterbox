@@ -1393,10 +1393,10 @@ export function SettingsTab() {
 
             <div>
               <Label htmlFor='llmPromptAiChat' className='mb-1 block font-bold'>
-                AI 陪聊
+                AI 融入
               </Label>
               <div class='mb-1 text-ga6'>
-                用于「同传 → AI 陪聊」根据语音转录和观众弹幕生成模拟观众弹幕的角色设定与生成规则
+                用于「发送 → AI 融入」根据观众弹幕（及可选的同传语音转录）生成模拟观众弹幕的角色设定与生成规则
               </div>
               <PromptManager
                 selectId='llmPromptAiChat'

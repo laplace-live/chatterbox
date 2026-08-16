@@ -52,7 +52,6 @@ import { reduceChunks } from '../lib/stt/normalize'
 import { useSttRecording } from '../lib/use-stt-recording'
 import { isHttpUrl, splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { wrapSegment, wrapSplitLen } from '../lib/wrap'
-import { AiChatSection } from './ai-chat-section'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Combobox } from './ui/combobox'
@@ -808,11 +807,6 @@ export function SttTab() {
           </div>
         </div>
       </div>
-
-      <Separator />
-
-      {/* AI Chat consumes the same final transcript stream the captions above render. */}
-      <AiChatSection />
     </>
   )
 }
