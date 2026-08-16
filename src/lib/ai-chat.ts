@@ -15,15 +15,13 @@ import { appendLog } from './log'
 import { getActiveLlmPrompt } from './prompts'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
+  activeLlmProvider,
   aiChatAutoSend,
   aiChatContextMaxChars,
   aiChatMaxMessageLength,
   aiChatTemperature,
   aiChatViewerInterval,
   aiChatViewerWindow,
-  llmApiBase,
-  llmApiKey,
-  llmModel,
   sttEndpointReached,
   sttTranscriptBuffer,
 } from './store'
@@ -212,9 +210,10 @@ async function callAiChatLlm(sourceText: string, hasTranscript: boolean): Promis
     appendLog('⚠️ [AI 融入] 未配置 AI 融入提示词')
     return null
   }
-  const base = llmApiBase.value
-  const apiKey = llmApiKey.value
-  const model = llmModel.value
+  const provider = activeLlmProvider.value
+  const base = provider?.apiBase ?? ''
+  const apiKey = provider?.apiKey ?? ''
+  const model = provider?.model ?? ''
   if (!base.trim() || !apiKey.trim() || !model.trim()) {
     appendLog('⚠️ [AI 融入] LLM 配置不完整，请检查「设置 → LLM 设置」')
     return null

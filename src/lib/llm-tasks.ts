@@ -2,7 +2,7 @@
 
 import { chatCompletion } from './llm'
 import { getActiveLlmPrompt, type LlmPromptFeature } from './prompts'
-import { llmApiBase, llmApiKey, llmModel } from './store'
+import { activeLlmProvider } from './store'
 
 /** Strip one layer of matched surrounding quotes; models wrap output despite instructions. Only when the same pair bookends the text, so unmatched quotes survive. */
 function dequote(text: string): string {
@@ -31,9 +31,10 @@ const FEATURE_LABELS: Record<LlmPromptFeature, string> = {
   aiChat: 'AI 融入',
 }
 
-/** Whether the bare API config (base + key + model) is filled in; does NOT check any prompt. */
+/** Whether the active provider's API config (base + key + model) is filled in; does NOT check any prompt. */
 export function isLlmApiConfigured(): boolean {
-  return !!llmApiBase.value.trim() && !!llmApiKey.value.trim() && !!llmModel.value.trim()
+  const p = activeLlmProvider.value
+  return !!p && !!p.apiBase.trim() && !!p.apiKey.trim() && !!p.model.trim()
 }
 
 /**
@@ -41,9 +42,11 @@ export function isLlmApiConfigured(): boolean {
  * Checks in settings-section order; reads signals so render-body callers auto-subscribe.
  */
 export function describeLlmGap(feature: LlmPromptFeature): string | null {
-  if (!llmApiBase.value.trim()) return '请先在「设置 → LLM 设置」中填写 API 地址'
-  if (!llmApiKey.value.trim()) return '请先在「设置 → LLM 设置」中填写 API Key'
-  if (!llmModel.value.trim()) return '请先在「设置 → LLM 设置」中选择模型'
+  const p = activeLlmProvider.value
+  if (!p) return '请先在「设置 → LLM 设置」中添加服务商'
+  if (!p.apiBase.trim()) return '请先在「设置 → LLM 设置」中填写 API 地址'
+  if (!p.apiKey.trim()) return '请先在「设置 → LLM 设置」中填写 API Key'
+  if (!p.model.trim()) return '请先在「设置 → LLM 设置」中选择模型'
   if (!getActiveLlmPrompt(feature).trim()) {
     return `请先在「设置 → LLM 提示词 → ${FEATURE_LABELS[feature]}」中配置提示词`
   }
@@ -73,10 +76,13 @@ export async function polishWithLlm(
   const trimmedUser = userText.trim()
   if (!trimmedUser) throw new Error('输入内容为空')
 
+  const provider = activeLlmProvider.value
+  if (!provider) throw new Error('未配置 LLM 服务商')
+
   const response = await chatCompletion({
-    base: llmApiBase.value,
-    apiKey: llmApiKey.value,
-    model: llmModel.value,
+    base: provider.apiBase,
+    apiKey: provider.apiKey,
+    model: provider.model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: trimmedUser },

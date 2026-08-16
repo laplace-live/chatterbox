@@ -11,6 +11,8 @@ import { isRegexEntry, validateRegexEntry } from '../lib/message-blacklist'
 import { buildReplacementMap } from '../lib/replacement'
 import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/settings-io'
 import {
+  activeLlmProvider,
+  addLlmProvider,
   autoBlendMessageBlacklist,
   autoBlendUserBlacklist,
   autoQualityEnabled,
@@ -32,21 +34,20 @@ import {
   llmActivePromptAutoSend,
   llmActivePromptGlobal,
   llmActivePromptNormalSend,
-  llmApiBase,
-  llmApiKey,
-  llmModel,
-  llmModels,
+  llmActiveProviderId,
   llmPromptsAiChat,
   llmPromptsAutoBlend,
   llmPromptsAutoSend,
   llmPromptsGlobal,
   llmPromptsNormalSend,
+  llmProviders,
   localGlobalRules,
   localRoomRules,
   optimizeLayout,
   remoteKeywords,
   remoteKeywordsLastSync,
   remoteRulesEnabled,
+  removeLlmProvider,
   settingsAutoSeekOpen,
   settingsBlacklistOpen,
   settingsFeaturesOpen,
@@ -55,6 +56,7 @@ import {
   settingsLogOpen,
   settingsRulesOpen,
   settingsUserNotesOpen,
+  updateLlmProvider,
 } from '../lib/store'
 import {
   applyUserNotesFile,
@@ -139,6 +141,186 @@ function AutoSeekMetrics(props: AutoSeekMetricsProps) {
   )
 }
 
+/** "LLM 设置" sub-section: multiple stored provider profiles, one active; fields edit the active profile. */
+function LlmProviderSettings() {
+  const keyVisible = useSignal(false)
+  const fetching = useSignal(false)
+  const fetchStatus = useSignal('')
+  const fetchStatusColor = useSignal('#666')
+
+  const provider = activeLlmProvider.value
+
+  const refreshModels = async () => {
+    const p = activeLlmProvider.value
+    if (!p || fetching.value) return
+    fetching.value = true
+    fetchStatus.value = '正在获取模型列表…'
+    fetchStatusColor.value = '#666'
+    try {
+      const ids = await fetchLlmModels(p.apiBase, p.apiKey)
+      updateLlmProvider(p.id, { models: ids })
+      // Keep a now-missing selected id (don't auto-clobber); rendered as a stale sentinel.
+      fetchStatus.value = `已获取 ${ids.length} 个模型`
+      fetchStatusColor.value = '#36a185'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      fetchStatus.value = `获取失败：${msg}`
+      fetchStatusColor.value = '#f44'
+      appendLog(`❌ LLM 模型列表获取失败：${msg}`)
+    } finally {
+      fetching.value = false
+    }
+  }
+
+  // Key visibility and fetch status are per-provider transient UI; reset on switch so they can't leak across profiles.
+  const resetTransient = () => {
+    keyVisible.value = false
+    fetchStatus.value = ''
+  }
+
+  const switchProvider = (id: string) => {
+    llmActiveProviderId.value = id
+    resetTransient()
+  }
+
+  const addProvider = () => {
+    addLlmProvider()
+    resetTransient()
+  }
+
+  const removeProvider = () => {
+    const p = activeLlmProvider.value
+    if (!p) return
+    if (!confirm(`确定删除服务商「${p.name || '未命名'}」？其 API Key 与模型配置将一并删除。`)) return
+    removeLlmProvider(p.id)
+    resetTransient()
+  }
+
+  return (
+    <div class={SUB_SECTION_CLASS}>
+      <div class={HEADING_CLASS}>LLM 设置</div>
+      <div class={HINT_CLASS}>
+        配置兼容 OpenAI API 的大语言模型，用于 AI 集成。可保存多个服务商配置（各自记住 API Key
+        与模型），同一时间只有选中的一个生效。模型列表通过 <code>GET {'{API 地址}'}/models</code>{' '}
+        获取，因此需要服务端允许浏览器跨域访问
+      </div>
+      <div class={ROW_CLASS}>
+        <Label htmlFor='llmProviderSelect'>服务商</Label>
+        {llmProviders.value.length > 0 && (
+          <NativeSelect
+            id='llmProviderSelect'
+            className='min-w-25 flex-1'
+            value={provider?.id ?? ''}
+            onChange={e => switchProvider(e.currentTarget.value)}
+          >
+            {llmProviders.value.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name || '未命名'}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+        <Button variant='outline' size='sm' onClick={addProvider}>
+          添加
+        </Button>
+        {provider && (
+          <Button variant='outline' size='sm' className={DELETE_BTN_CLASS} onClick={removeProvider}>
+            删除
+          </Button>
+        )}
+      </div>
+      {provider ? (
+        <>
+          <div class={ROW_CLASS}>
+            <Label htmlFor='llmProviderName'>名称</Label>
+            <Input
+              id='llmProviderName'
+              placeholder='为该服务商起个名字'
+              className='min-w-37.5 flex-1'
+              value={provider.name}
+              onInput={e => updateLlmProvider(provider.id, { name: e.currentTarget.value })}
+            />
+          </div>
+          <div class={ROW_CLASS}>
+            <Label htmlFor='llmApiBase'>API 地址</Label>
+            <Input
+              id='llmApiBase'
+              placeholder='https://api.openai.com/v1'
+              className='min-w-37.5 flex-1'
+              value={provider.apiBase}
+              onInput={e => updateLlmProvider(provider.id, { apiBase: e.currentTarget.value })}
+            />
+          </div>
+          <div class={ROW_CLASS}>
+            <Label htmlFor='llmApiKey'>API Key</Label>
+            <Input
+              id='llmApiKey'
+              type={keyVisible.value ? 'text' : 'password'}
+              placeholder='sk-...'
+              className='min-w-37.5 flex-1'
+              value={provider.apiKey}
+              onInput={e => updateLlmProvider(provider.id, { apiKey: e.currentTarget.value })}
+            />
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                keyVisible.value = !keyVisible.value
+              }}
+            >
+              {keyVisible.value ? '隐藏' : '显示'}
+            </Button>
+          </div>
+          <div class={ROW_CLASS}>
+            <Label htmlFor='llmModel'>模型</Label>
+            <Combobox
+              id='llmModel'
+              className='min-w-37.5 flex-1'
+              value={provider.model}
+              // Built inline: the cached list only changes on 刷新, and the Combobox handles identity changes.
+              options={provider.models.map(m => {
+                const priceStr = formatLlmPricing(m.pricing)
+                return {
+                  value: m.id,
+                  // Use the id, not `m.name`: friendly names are longer and push pricing off-row.
+                  label: m.id,
+                  searchText: [m.id, m.name, priceStr].filter(Boolean).join(' '),
+                  model: m,
+                  priceStr,
+                }
+              })}
+              onChange={v => updateLlmProvider(provider.id, { model: v })}
+              placeholder='选择模型'
+              searchPlaceholder='输入关键词过滤模型…'
+              emptyText='未找到匹配模型'
+              unloadedText='请点击「刷新」获取模型列表'
+              // Surface a saved-but-missing id so the user sees it instead of a silent placeholder.
+              missingLabel={v => `${v}（已保存，不在当前列表中）`}
+              renderItem={opt => (
+                <div class='flex flex-col gap-0.5'>
+                  <span class={cn('break-all', opt.value === provider.model && 'font-bold')}>{opt.value}</span>
+                  {opt.priceStr && <span class='text-ga6'>{opt.priceStr}</span>}
+                </div>
+              )}
+            />
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={fetching.value || !provider.apiBase.trim() || !provider.apiKey.trim()}
+              onClick={() => void refreshModels()}
+            >
+              {fetching.value ? '加载中…' : '刷新'}
+            </Button>
+          </div>
+          {fetchStatus.value && <div style={{ color: fetchStatusColor.value }}>{fetchStatus.value}</div>}
+        </>
+      ) : (
+        <div class={EMPTY_CLASS}>暂无服务商，点击「添加」创建配置</div>
+      )}
+    </div>
+  )
+}
+
 export function SettingsTab() {
   const syncStatus = useSignal('未同步')
   const syncStatusColor = useSignal('#666')
@@ -160,32 +342,6 @@ export function SettingsTab() {
 
   // String mirror so typing "1." isn't collapsed to `1` mid-keystroke, eating the dot.
   const autoSeekThresholdDraft = useSignal(autoSeekBufferThreshold.value.toString())
-
-  const llmKeyVisible = useSignal(false)
-  const llmFetching = useSignal(false)
-  const llmFetchStatus = useSignal('')
-  const llmFetchStatusColor = useSignal('#666')
-
-  const refreshLlmModels = async () => {
-    if (llmFetching.value) return
-    llmFetching.value = true
-    llmFetchStatus.value = '正在获取模型列表…'
-    llmFetchStatusColor.value = '#666'
-    try {
-      const ids = await fetchLlmModels(llmApiBase.value, llmApiKey.value)
-      llmModels.value = ids
-      // Keep a now-missing selected id (don't auto-clobber); rendered as a stale sentinel.
-      llmFetchStatus.value = `已获取 ${ids.length} 个模型`
-      llmFetchStatusColor.value = '#36a185'
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      llmFetchStatus.value = `获取失败：${msg}`
-      llmFetchStatusColor.value = '#f44'
-      appendLog(`❌ LLM 模型列表获取失败：${msg}`)
-    } finally {
-      llmFetching.value = false
-    }
-  }
 
   const updateRemoteStatus = () => {
     if (!remoteRulesEnabled.value) {
@@ -1215,91 +1371,7 @@ export function SettingsTab() {
       >
         <AccordionTrigger>LLM 大语言模型</AccordionTrigger>
         <AccordionContent className={ACCORDION_CONTENT_CLASS}>
-          <div class={SUB_SECTION_CLASS}>
-            <div class={HEADING_CLASS}>LLM 设置</div>
-            <div class={HINT_CLASS}>
-              配置兼容 OpenAI API 的大语言模型，用于 AI 集成。模型列表通过 <code>GET {'{API 地址}'}/models</code>{' '}
-              获取，因此需要服务端允许浏览器跨域访问
-            </div>
-            <div class={ROW_CLASS}>
-              <Label htmlFor='llmApiBase'>API 地址</Label>
-              <Input
-                id='llmApiBase'
-                placeholder='https://api.openai.com/v1'
-                className='min-w-37.5 flex-1'
-                value={llmApiBase.value}
-                onInput={e => {
-                  llmApiBase.value = e.currentTarget.value
-                }}
-              />
-            </div>
-            <div class={ROW_CLASS}>
-              <Label htmlFor='llmApiKey'>API Key</Label>
-              <Input
-                id='llmApiKey'
-                type={llmKeyVisible.value ? 'text' : 'password'}
-                placeholder='sk-...'
-                className='min-w-37.5 flex-1'
-                value={llmApiKey.value}
-                onInput={e => {
-                  llmApiKey.value = e.currentTarget.value
-                }}
-              />
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => {
-                  llmKeyVisible.value = !llmKeyVisible.value
-                }}
-              >
-                {llmKeyVisible.value ? '隐藏' : '显示'}
-              </Button>
-            </div>
-            <div class={ROW_CLASS}>
-              <Label htmlFor='llmModel'>模型</Label>
-              <Combobox
-                id='llmModel'
-                className='min-w-37.5 flex-1'
-                value={llmModel.value}
-                // Built inline: llmModels only changes on 刷新, and the Combobox handles identity changes.
-                options={llmModels.value.map(m => {
-                  const priceStr = formatLlmPricing(m.pricing)
-                  return {
-                    value: m.id,
-                    // Use the id, not `m.name`: friendly names are longer and push pricing off-row.
-                    label: m.id,
-                    searchText: [m.id, m.name, priceStr].filter(Boolean).join(' '),
-                    model: m,
-                    priceStr,
-                  }
-                })}
-                onChange={v => {
-                  llmModel.value = v
-                }}
-                placeholder='选择模型'
-                searchPlaceholder='输入关键词过滤模型…'
-                emptyText='未找到匹配模型'
-                unloadedText='请点击「刷新」获取模型列表'
-                // Surface a saved-but-missing id so the user sees it instead of a silent placeholder.
-                missingLabel={v => `${v}（已保存，不在当前列表中）`}
-                renderItem={opt => (
-                  <div class='flex flex-col gap-0.5'>
-                    <span class={cn('break-all', opt.value === llmModel.value && 'font-bold')}>{opt.value}</span>
-                    {opt.priceStr && <span class='text-ga6'>{opt.priceStr}</span>}
-                  </div>
-                )}
-              />
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={llmFetching.value || !llmApiBase.value.trim() || !llmApiKey.value.trim()}
-                onClick={() => void refreshLlmModels()}
-              >
-                {llmFetching.value ? '加载中…' : '刷新'}
-              </Button>
-            </div>
-            {llmFetchStatus.value && <div style={{ color: llmFetchStatusColor.value }}>{llmFetchStatus.value}</div>}
-          </div>
+          <LlmProviderSettings />
 
           <Separator />
 

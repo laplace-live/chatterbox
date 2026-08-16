@@ -1,4 +1,4 @@
-import { effect, signal } from '@preact/signals'
+import { computed, effect, signal } from '@preact/signals'
 
 import type { BilibiliEmoticonPackage, FavoriteEmote } from '../types'
 import type { LlmModel } from './llm'
@@ -101,12 +101,82 @@ export const autoBlendUserBlacklist = gmSignal<Record<string, string>>('autoBlen
 // Cross-room message blacklist: drop danmaku whose trimmed text matches. Keyed by the same trimmed text `auto-blend` counts by; value always `1` (Record not Set for cheap JSON GM round-tripping).
 export const autoBlendMessageBlacklist = gmSignal<Record<string, 1>>('autoBlendMessageBlacklist', {})
 
-// LLM settings. `llmApiBase` is the OpenAI-compatible root (`${llmApiBase}/models`, `/chat/completions`). `llmModels` caches full {id, name?, pricing?} objects so the dropdown shows metadata across reloads without re-fetching.
-export const llmApiBase = gmSignal('llmApiBase', 'https://api.openai.com/v1')
-export const llmApiKey = gmSignal('llmApiKey', '')
-export const llmModel = gmSignal('llmModel', '')
-export const llmModels = gmSignal<LlmModel[]>('llmModels', [])
+// LLM providers: multiple stored profiles, exactly one active. `apiBase` is the OpenAI-compatible root (`${apiBase}/models`, `/chat/completions`); `models` caches the fetched list per profile so switching providers keeps dropdowns populated without re-fetching.
+export interface LlmProviderProfile {
+  id: string
+  name: string
+  apiBase: string
+  apiKey: string
+  model: string
+  models: LlmModel[]
+}
 
+export const LLM_DEFAULT_API_BASE = 'https://api.openai.com/v1'
+
+// Migrate legacy single-provider keys → one profile. Value-based (gmSignal persists defaults, so key existence means nothing) and re-runnable: importing a pre-upgrade backup restores the legacy keys and clears `llmProviders`.
+;(() => {
+  const existing = GM_getValue<LlmProviderProfile[]>('llmProviders', [])
+  if (existing.length > 0) return
+  const base = GM_getValue('llmApiBase', '').trim()
+  const apiKey = GM_getValue('llmApiKey', '').trim()
+  const model = GM_getValue('llmModel', '').trim()
+  const configured = !!apiKey || !!model || (!!base && base !== LLM_DEFAULT_API_BASE)
+  if (configured) {
+    let name = '默认'
+    try {
+      name = new URL(base).host || name
+    } catch {}
+    const profile: LlmProviderProfile = {
+      id: crypto.randomUUID(),
+      name,
+      apiBase: base || LLM_DEFAULT_API_BASE,
+      apiKey,
+      model,
+      models: GM_getValue<LlmModel[]>('llmModels', []),
+    }
+    GM_setValue('llmProviders', [profile])
+    GM_setValue('llmActiveProviderId', profile.id)
+  }
+  for (const key of ['llmApiBase', 'llmApiKey', 'llmModel', 'llmModels']) GM_deleteValue(key)
+})()
+
+export const llmProviders = gmSignal<LlmProviderProfile[]>('llmProviders', [])
+export const llmActiveProviderId = gmSignal('llmActiveProviderId', '')
+
+/** Active provider profile; falls back to the first when the stored id is stale (e.g. hand-edited import), null when none exist. */
+export const activeLlmProvider = computed<LlmProviderProfile | null>(() => {
+  const list = llmProviders.value
+  return list.find(p => p.id === llmActiveProviderId.value) ?? list[0] ?? null
+})
+
+/** Append a blank provider profile and make it active. */
+export function addLlmProvider(): LlmProviderProfile {
+  const profile: LlmProviderProfile = {
+    id: crypto.randomUUID(),
+    name: `服务商 ${llmProviders.value.length + 1}`,
+    apiBase: LLM_DEFAULT_API_BASE,
+    apiKey: '',
+    model: '',
+    models: [],
+  }
+  llmProviders.value = [...llmProviders.value, profile]
+  llmActiveProviderId.value = profile.id
+  return profile
+}
+
+/** Remove a provider profile; if it was active, the first remaining becomes active. */
+export function removeLlmProvider(id: string): void {
+  const rest = llmProviders.value.filter(p => p.id !== id)
+  llmProviders.value = rest
+  if (llmActiveProviderId.value === id || rest.length === 0) {
+    llmActiveProviderId.value = rest[0]?.id ?? ''
+  }
+}
+
+/** Patch one provider profile immutably (in-place mutation wouldn't persist through gmSignal). */
+export function updateLlmProvider(id: string, patch: Partial<Omit<LlmProviderProfile, 'id'>>): void {
+  llmProviders.value = llmProviders.value.map(p => (p.id === id ? { ...p, ...patch } : p))
+}
 // Seed the default global prompt. Uses a dedicated `llmPromptsGlobalSeeded` flag, not the gmSignal default, because testers with `llmPromptsGlobal: []` already persisted would suppress that default; the flag also stops a deliberately-deleted default from being re-added.
 ;(() => {
   const seeded = GM_getValue<boolean>('llmPromptsGlobalSeeded', false)
