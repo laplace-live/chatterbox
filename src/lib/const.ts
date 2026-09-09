@@ -44,7 +44,7 @@ export const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
 export const GLADIA_DEFAULT_MODEL = 'solaria-1'
 
 /** mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns to `window.mpegts` at runtime. */
-export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.0/dist/mpegts.js'
+export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.2/dist/mpegts.js'
 
 /** API endpoint URLs used by the script. */
 export const BASE_URL = {

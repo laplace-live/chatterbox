@@ -24,7 +24,7 @@
     "@soniox/client": "^2.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "^1.4.2",
-    "mpegts.js": "1.8.0",
+    "mpegts.js": "1.8.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
