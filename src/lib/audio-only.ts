@@ -23,7 +23,14 @@ import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
 import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR, resolveLivePlayer } from './player-dom'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
-import { isIpHost } from './utils'
+import { isIpHost, isRecord } from './utils'
+
+// Installed by the lazy-loaded UMD; narrowed by `isMpegts`.
+declare global {
+  interface Window {
+    mpegts?: unknown
+  }
+}
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
@@ -179,9 +186,14 @@ function waitForLivePlayer(maxWaitMs = 3000): Promise<LivePlayerLike | null> {
   })
 }
 
+/** Checks the members `attachMpegtsPlayer` uses. */
+function isMpegts(value: unknown): value is typeof Mpegts {
+  return isRecord(value) && typeof value.createPlayer === 'function' && isRecord(value.Events)
+}
+
 function getMpegtsFromWindow(): typeof Mpegts | null {
-  const candidate = (unsafeWindow as unknown as { mpegts?: typeof Mpegts }).mpegts
-  return candidate ?? null
+  const candidate = unsafeWindow.mpegts
+  return isMpegts(candidate) ? candidate : null
 }
 
 // Lazy-injected (not @require/externalGlobals) so users who never enable

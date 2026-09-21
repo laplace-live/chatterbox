@@ -1,6 +1,7 @@
 /** OpenAI-compatible LLM client helpers. */
 
 import { GITHUB_URL, PROJECT_NAME } from './const'
+import { isRecord } from './utils'
 
 /** Per-token pricing from the /models endpoint; raw strings, not coerced. */
 export interface LlmModelPricing {
@@ -31,8 +32,8 @@ export function formatLlmPricing(p: LlmModelPricing | undefined): string | null 
   if ((prompt ?? 0) === 0 && (completion ?? 0) === 0) return '免费'
   const fmt = (n: number) => `$${parseFloat((n * 1_000_000).toFixed(4))}`
   const parts: string[] = []
-  if (validPrompt) parts.push(`输入 ${fmt(prompt as number)}`)
-  if (validCompletion) parts.push(`输出 ${fmt(completion as number)}`)
+  if (validPrompt) parts.push(`输入 ${fmt(prompt)}`)
+  if (validCompletion) parts.push(`输出 ${fmt(completion)}`)
   return `${parts.join(' · ')} / 1M tokens`
 }
 
@@ -43,8 +44,8 @@ function normalizeBase(base: string): string {
 
 /** Read a string field off an arbitrary record; undefined when missing or wrong-typed. */
 function readString(obj: unknown, key: string): string | undefined {
-  if (!obj || typeof obj !== 'object') return undefined
-  const v = (obj as Record<string, unknown>)[key]
+  if (!isRecord(obj)) return undefined
+  const v = obj[key]
   return typeof v === 'string' ? v : undefined
 }
 
@@ -110,21 +111,21 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
   }
 
   // OpenAI shape: { object: "list", data: [{ id, ... }] }.
-  if (!json || typeof json !== 'object' || !Array.isArray((json as { data?: unknown }).data)) {
+  if (!isRecord(json) || !Array.isArray(json.data)) {
     throw new Error('返回数据缺少 data 数组')
   }
-  const data = (json as { data: Array<unknown> }).data
+  const data: unknown[] = json.data
   const models: LlmModel[] = []
   const seen = new Set<string>()
   for (const entry of data) {
-    if (!entry || typeof entry !== 'object') continue
+    if (!isRecord(entry)) continue
     const id = readString(entry, 'id')?.trim()
     if (!id || seen.has(id)) continue
     seen.add(id)
     const model: LlmModel = { id }
     const name = readString(entry, 'name')?.trim()
     if (name && name !== id) model.name = name
-    const pricing = parsePricing((entry as Record<string, unknown>).pricing)
+    const pricing = parsePricing(entry.pricing)
     if (pricing) model.pricing = pricing
     models.push(model)
   }
@@ -244,11 +245,12 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
   }
 
   // OpenAI shape: { choices: [{ message: { role, content } }] }; empty choices (e.g. filtered) is an error.
-  const choices = (json as { choices?: unknown }).choices
+  const choices = isRecord(json) ? json.choices : undefined
   if (!Array.isArray(choices) || choices.length === 0) {
     throw new Error('返回数据缺少 choices 数组')
   }
-  const message = (choices[0] as { message?: unknown }).message
+  const first: unknown = choices[0]
+  const message = isRecord(first) ? first.message : undefined
   const content = readString(message, 'content')
   if (!content) throw new Error('返回数据缺少 content 字段')
   return content

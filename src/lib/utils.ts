@@ -161,14 +161,16 @@ export function isHttpUrl(raw: string): boolean {
   }
 }
 
-/** Narrowed `window.__INITIAL_STATE__` shape for an opus page (author-identity fields only). */
-interface OpusInitialState {
-  detail?: {
-    /** Author uid as a string, e.g. `"1802654492"`. */
-    basic?: { uid?: string | number }
-    /** Author lives in the `MODULE_TYPE_AUTHOR` entry; `pub_ts` is Unix seconds. */
-    modules?: Array<{ module_type?: string; module_author?: { mid?: number; pub_ts?: string | number } }>
-  }
+/** True for any non-null object (arrays included), so untyped JSON/page globals can be read key-by-key as `unknown`. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** `module_author` of the `MODULE_TYPE_AUTHOR` entry in an opus `__INITIAL_STATE__.detail`; `pub_ts` is Unix seconds. */
+function findOpusModuleAuthor(detail: unknown): Record<string, unknown> | undefined {
+  const modules: unknown[] = isRecord(detail) && Array.isArray(detail.modules) ? detail.modules : []
+  const authorModule = modules.find(m => isRecord(m) && m.module_type === 'MODULE_TYPE_AUTHOR')
+  return isRecord(authorModule) && isRecord(authorModule.module_author) ? authorModule.module_author : undefined
 }
 
 /**
@@ -177,13 +179,13 @@ interface OpusInitialState {
  * DOM is deliberately not scraped: opus pages link to unrelated users (fav lists, recs). Traverses defensively.
  */
 export function extractOpusAuthorUid(initialState: unknown): number | undefined {
-  const detail = (initialState as OpusInitialState | undefined)?.detail
-  if (!detail) return undefined
+  const detail = isRecord(initialState) ? initialState.detail : undefined
+  if (!isRecord(detail)) return undefined
 
-  const authorMid = detail.modules?.find(m => m?.module_type === 'MODULE_TYPE_AUTHOR')?.module_author?.mid
+  const authorMid = findOpusModuleAuthor(detail)?.mid
   if (typeof authorMid === 'number' && Number.isFinite(authorMid) && authorMid > 0) return authorMid
 
-  const uid = Number(detail.basic?.uid)
+  const uid = Number(isRecord(detail.basic) ? detail.basic.uid : undefined)
   if (Number.isFinite(uid) && uid > 0) return uid
 
   return undefined
@@ -194,8 +196,8 @@ export function extractOpusAuthorUid(initialState: unknown): number | undefined 
  * Uses `pub_ts` not `pub_time` (the latter reads "编辑于 …" after an edit). Asia/Shanghai: timestamps are Beijing time.
  */
 export function extractOpusPubDate(initialState: unknown): string | undefined {
-  const detail = (initialState as OpusInitialState | undefined)?.detail
-  const pubTs = detail?.modules?.find(m => m?.module_type === 'MODULE_TYPE_AUTHOR')?.module_author?.pub_ts
+  const detail = isRecord(initialState) ? initialState.detail : undefined
+  const pubTs = findOpusModuleAuthor(detail)?.pub_ts
   const seconds = Number(pubTs)
   if (!Number.isFinite(seconds) || seconds <= 0) return undefined
   return new Date(seconds * 1000).toLocaleDateString('en-CA', {

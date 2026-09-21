@@ -7,6 +7,7 @@
  */
 
 import { gmSignal } from './gm-signal'
+import { isRecord } from './utils'
 
 export interface UserNote {
   /** Free-form note text. May contain newlines. No length limit. */
@@ -124,18 +125,16 @@ export function parseUserNotesFile(text: string): UserNotesFile {
   } catch (err) {
     throw new Error(`JSON 解析失败：${err instanceof Error ? err.message : String(err)}`)
   }
-  if (!parsed || typeof parsed !== 'object') {
+  if (!isRecord(parsed)) {
     throw new Error('备注文件格式无效')
   }
-  const obj = parsed as Record<string, unknown>
-  const rawNotes = obj.notes
-  if (!rawNotes || typeof rawNotes !== 'object' || Array.isArray(rawNotes)) {
+  const rawNotes = parsed.notes
+  if (!isRecord(rawNotes) || Array.isArray(rawNotes)) {
     throw new Error('备注文件缺少 notes 字段')
   }
   const notes: Record<string, UserNote> = {}
-  for (const [key, value] of Object.entries(rawNotes as Record<string, unknown>)) {
-    if (!value || typeof value !== 'object') continue
-    const v = value as Record<string, unknown>
+  for (const [key, v] of Object.entries(rawNotes)) {
+    if (!isRecord(v)) continue
     const note = typeof v.note === 'string' ? v.note : null
     const updatedAt = typeof v.updatedAt === 'number' && Number.isFinite(v.updatedAt) ? v.updatedAt : Date.now()
     if (note === null) continue
@@ -144,8 +143,8 @@ export function parseUserNotesFile(text: string): UserNotesFile {
     notes[key] = { note, updatedAt }
   }
   return {
-    version: typeof obj.version === 'number' ? obj.version : 0,
-    exportedAt: typeof obj.exportedAt === 'string' ? obj.exportedAt : '',
+    version: typeof parsed.version === 'number' ? parsed.version : 0,
+    exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : '',
     notes,
   }
 }

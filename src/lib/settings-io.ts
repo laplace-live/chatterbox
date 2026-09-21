@@ -1,4 +1,5 @@
 import { GM_deleteValue, GM_getValue, GM_listValues, GM_setValue } from '$'
+import { isRecord } from './utils'
 import { VERSION } from './version'
 
 /** Export file format version; bump only on non-backwards-compatible changes. */
@@ -63,19 +64,18 @@ export function parseSettingsFile(text: string): SettingsFile {
   } catch (err) {
     throw new Error(`JSON 解析失败：${err instanceof Error ? err.message : String(err)}`)
   }
-  if (!parsed || typeof parsed !== 'object') {
+  if (!isRecord(parsed)) {
     throw new Error('设置文件格式无效')
   }
-  const obj = parsed as Record<string, unknown>
-  const data = obj.data
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+  const data = parsed.data
+  if (!isRecord(data) || Array.isArray(data)) {
     throw new Error('设置文件缺少 data 字段')
   }
   return {
-    version: typeof obj.version === 'number' ? obj.version : 0,
-    scriptVersion: typeof obj.scriptVersion === 'string' ? obj.scriptVersion : '',
-    exportedAt: typeof obj.exportedAt === 'string' ? obj.exportedAt : '',
-    data: data as Record<string, unknown>,
+    version: typeof parsed.version === 'number' ? parsed.version : 0,
+    scriptVersion: typeof parsed.scriptVersion === 'string' ? parsed.scriptVersion : '',
+    exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : '',
+    data,
   }
 }
 

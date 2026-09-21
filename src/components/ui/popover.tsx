@@ -53,14 +53,14 @@ export function Popover({ open, onOpenChange, className, children }: PopoverProp
 // preserved and runs first.
 
 export interface PopoverTriggerProps {
-  children: VNode
+  children: VNode<{ onClick?: (e: MouseEvent) => void }>
 }
 
 export function PopoverTrigger({ children }: PopoverTriggerProps) {
   const { open, setOpen } = usePopover()
-  if (!isValidElement(children)) return children as unknown as VNode
+  if (!isValidElement(children)) return children
 
-  const originalOnClick = (children.props as { onClick?: (e: MouseEvent) => void } | null)?.onClick
+  const originalOnClick = children.props.onClick
 
   // Gotcha: function-component children that don't forward onClick silently
   // swallow the toggle; for those use the controlled form instead.
@@ -69,7 +69,7 @@ export function PopoverTrigger({ children }: PopoverTriggerProps) {
       if (typeof originalOnClick === 'function') originalOnClick(e)
       setOpen(!open)
     },
-  } as Record<string, unknown>)
+  })
 }
 
 // Fixed-positioned content shown when `open`. Outside-click (mousedown) and Escape close it.

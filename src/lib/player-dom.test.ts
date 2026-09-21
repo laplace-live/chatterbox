@@ -8,15 +8,15 @@ type FakeWin = { livePlayer?: unknown; parent?: FakeWin }
 /** Signal is `<video>` src: `blob:` = streaming; post-`stopPlayback()` poster `.mp4` or empty = not. */
 describe('isNativePlayerStreaming', () => {
   test('blob: src (MediaSource attached) → streaming', () => {
-    expect(isNativePlayerStreaming({ src: 'blob:https://live.bilibili.com/abc-123' } as HTMLVideoElement)).toBe(true)
+    expect(isNativePlayerStreaming({ src: 'blob:https://live.bilibili.com/abc-123' })).toBe(true)
   })
 
   test('https poster .mp4 (post-stopPlayback) → not streaming', () => {
-    expect(isNativePlayerStreaming({ src: 'https://i0.hdslb.com/bfs/live/poster.mp4' } as HTMLVideoElement)).toBe(false)
+    expect(isNativePlayerStreaming({ src: 'https://i0.hdslb.com/bfs/live/poster.mp4' })).toBe(false)
   })
 
   test('empty src (reset / unmounted element) → not streaming', () => {
-    expect(isNativePlayerStreaming({ src: '' } as HTMLVideoElement)).toBe(false)
+    expect(isNativePlayerStreaming({ src: '' })).toBe(false)
   })
 })
 

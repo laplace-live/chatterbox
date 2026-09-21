@@ -39,12 +39,13 @@ function captureFromClick(e: MouseEvent): void {
 /**
  * Build a menu item that toggles `uid` in `autoBlendUserBlacklist`.
  */
-function buildUserToggleItem(template: HTMLElement, uid: string, uname: string | null): HTMLElement {
+function buildUserToggleItem(template: HTMLElement, uid: string, uname: string | null): HTMLElement | null {
   const isBlacklisted = uid in autoBlendUserBlacklist.value
 
   // Deep-clone to inherit B站's scoped styling; Vue @click lives on vnodes,
   // so the clone is inert until we wire our own listener.
-  const div = template.cloneNode(true) as HTMLElement
+  const div = template.cloneNode(true)
+  if (!(div instanceof HTMLElement)) return null
   div.classList.add(USER_INJECTED_CLASS)
   // First item (`.go-space`) carries `target="_blank"`; we're not a link.
   div.removeAttribute('target')
@@ -81,12 +82,13 @@ function buildUserToggleItem(template: HTMLElement, uid: string, uname: string |
  * Build a menu item that toggles `text` in `autoBlendMessageBlacklist`.
  * Same cloning trick as `buildUserToggleItem`; only the action and class differ.
  */
-function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElement {
+function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElement | null {
   // `Object.hasOwn` not `in`: keys are arbitrary user text, and `in` would
   // match prototype props like "toString".
   const isBlacklisted = Object.hasOwn(autoBlendMessageBlacklist.value, text)
 
-  const div = template.cloneNode(true) as HTMLElement
+  const div = template.cloneNode(true)
+  if (!(div instanceof HTMLElement)) return null
   div.classList.add(MESSAGE_INJECTED_CLASS)
   div.removeAttribute('target')
   for (const a of Array.from(div.querySelectorAll('a'))) {
@@ -130,10 +132,12 @@ function ensureTogglesInMenu(): void {
   list.querySelector(`.${MESSAGE_INJECTED_CLASS}`)?.remove()
 
   if (pendingUid) {
-    list.appendChild(buildUserToggleItem(template, pendingUid, pendingUname))
+    const item = buildUserToggleItem(template, pendingUid, pendingUname)
+    if (item) list.appendChild(item)
   }
   if (pendingText) {
-    list.appendChild(buildMessageToggleItem(template, pendingText))
+    const item = buildMessageToggleItem(template, pendingText)
+    if (item) list.appendChild(item)
   }
 }
 

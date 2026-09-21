@@ -12,6 +12,7 @@ function setCachedWbiKeys(keys: BilibiliWbiKeys) {
 ;(() => {
   const originalOpen = XMLHttpRequest.prototype.open
   const originalSend = XMLHttpRequest.prototype.send
+  const xhrUrls = new WeakMap<XMLHttpRequest, string>()
 
   XMLHttpRequest.prototype.open = function (
     method: string,
@@ -20,12 +21,12 @@ function setCachedWbiKeys(keys: BilibiliWbiKeys) {
     username?: string | null,
     password?: string | null
   ) {
-    ;(this as XMLHttpRequest & { _url?: string })._url = typeof url === 'string' ? url : url.toString()
+    xhrUrls.set(this, typeof url === 'string' ? url : url.toString())
     return originalOpen.call(this, method, url, async ?? true, username ?? null, password ?? null)
   }
 
   XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-    const url = (this as XMLHttpRequest & { _url?: string })._url
+    const url = xhrUrls.get(this)
     if (url?.includes('/x/web-interface/nav')) {
       console.log('[LAPLACE Chatterbox] Intercepted request:', url)
 

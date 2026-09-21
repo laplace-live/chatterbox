@@ -6,6 +6,7 @@
  */
 
 import { SONIOX_API_BASE } from './const'
+import { isRecord } from './utils'
 
 export interface SonioxModel {
   /** Model id used in the realtime session config (e.g. `stt-rt-v5`). */
@@ -16,8 +17,8 @@ export interface SonioxModel {
 
 /** Pull a string field off an arbitrary record, returning undefined on missing/wrong-typed values. */
 function readString(obj: unknown, key: string): string | undefined {
-  if (!obj || typeof obj !== 'object') return undefined
-  const v = (obj as Record<string, unknown>)[key]
+  if (!isRecord(obj)) return undefined
+  const v = obj[key]
   return typeof v === 'string' ? v : undefined
 }
 
@@ -64,10 +65,10 @@ export async function fetchSonioxModels(apiKey: string): Promise<SonioxModel[]> 
   }
 
   // Soniox shape: { models: [{ id, name, transcription_mode, ... }] }.
-  if (!json || typeof json !== 'object' || !Array.isArray((json as { models?: unknown }).models)) {
+  if (!isRecord(json) || !Array.isArray(json.models)) {
     throw new Error('返回数据缺少 models 数组')
   }
-  const data = (json as { models: Array<unknown> }).models
+  const data: unknown[] = json.models
   const models: SonioxModel[] = []
   const seen = new Set<string>()
   for (const entry of data) {

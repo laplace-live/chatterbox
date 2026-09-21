@@ -18,7 +18,7 @@ export function getPlayerVideo(): HTMLVideoElement | null {
  * `stopPlayback()` the src reverts to a static poster `.mp4` and a reset
  * element is empty — both "not streaming".
  */
-export function isNativePlayerStreaming(video: HTMLVideoElement): boolean {
+export function isNativePlayerStreaming(video: Pick<HTMLVideoElement, 'src'>): boolean {
   return video.src.startsWith('blob:')
 }
 

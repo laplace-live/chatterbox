@@ -15,7 +15,8 @@ declare global {
   }
 }
 
-const inFlight = new Map<string, Promise<unknown>>()
+// Settles once a URL's script has run; each caller re-probes through its own typed getter.
+const inFlight = new Map<string, Promise<void>>()
 
 /**
  * Inject `url` as a UMD `<script>`, resolving once `getGlobal()` reports
@@ -29,19 +30,21 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
   const existing = getGlobal()
   if (existing) return Promise.resolve(existing)
 
-  const cached = inFlight.get(url)
-  if (cached) return cached as Promise<T>
+  const probe = (): T => {
+    const g = getGlobal()
+    if (!g) throw new Error(`script loaded but expected global not found: ${url}`)
+    return g
+  }
 
-  const promise = new Promise<T>((resolve, reject) => {
+  const cached = inFlight.get(url)
+  if (cached) return cached.then(probe)
+
+  const promise = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script')
     script.src = url
     // unpkg sends `access-control-allow-origin: *`, so anonymous CORS works.
     script.crossOrigin = 'anonymous'
-    script.onload = () => {
-      const g = getGlobal()
-      if (g) resolve(g)
-      else reject(new Error(`script loaded but expected global not found: ${url}`))
-    }
+    script.onload = () => resolve()
     script.onerror = () => {
       // Evict so a later caller can retry instead of reusing the failed promise.
       inFlight.delete(url)
@@ -50,7 +53,7 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
     document.head.appendChild(script)
   })
   inFlight.set(url, promise)
-  return promise
+  return promise.then(probe)
 }
 
 /**
@@ -61,17 +64,22 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
  * @param globalKey - Page-window property where the shim parks the
  *   namespace; we pick it, so use an underscored prefix to avoid
  *   colliding with the host page.
+ * @param getGlobal - Reads `unsafeWindow[globalKey]` back, narrowed to `T` (`null` if absent).
  */
-export function loadEsmScript<T>(url: string, globalKey: string): Promise<T> {
-  const getGlobal = () => ((unsafeWindow as unknown as Record<string, unknown>)[globalKey] as T | undefined) ?? null
-
+export function loadEsmScript<T>(url: string, globalKey: string, getGlobal: () => T | null): Promise<T> {
   const existing = getGlobal()
   if (existing) return Promise.resolve(existing)
 
-  const cached = inFlight.get(url)
-  if (cached) return cached as Promise<T>
+  const probe = (): T => {
+    const mod = getGlobal()
+    if (!mod) throw new Error(`module loaded but global not set: ${url}`)
+    return mod
+  }
 
-  const promise = new Promise<T>((resolve, reject) => {
+  const cached = inFlight.get(url)
+  if (cached) return cached.then(probe)
+
+  const promise = new Promise<void>((resolve, reject) => {
     // resolve/reject go through temporary `window.*` slots because
     // functions can't cross the userscript sandbox boundary; only the
     // plain namespace object travels back via `unsafeWindow[globalKey]`.
@@ -89,9 +97,7 @@ export function loadEsmScript<T>(url: string, globalKey: string): Promise<T> {
 
     win[resolveKey] = () => {
       cleanup()
-      const mod = getGlobal()
-      if (mod) resolve(mod)
-      else reject(new Error(`module loaded but global not set: ${url}`))
+      resolve()
     }
     win[rejectKey] = (msg: string) => {
       cleanup()
@@ -122,5 +128,5 @@ export function loadEsmScript<T>(url: string, globalKey: string): Promise<T> {
     document.head.appendChild(script)
   })
   inFlight.set(url, promise)
-  return promise
+  return promise.then(probe)
 }

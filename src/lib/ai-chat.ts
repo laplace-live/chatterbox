@@ -25,6 +25,7 @@ import {
   sttEndpointReached,
   sttTranscriptBuffer,
 } from './store'
+import { isRecord } from './utils'
 
 export interface ViewerChatEntry {
   uname: string | null
@@ -193,14 +194,13 @@ function parseDecision(content: string, maxLen: number): AiChatDecision {
       } catch {}
     }
   }
-  if (!obj || typeof obj !== 'object') {
+  if (!isRecord(obj)) {
     throw new Error('LLM 返回内容无法解析为 JSON')
   }
-  const o = obj as { send?: unknown; message?: unknown; reason?: unknown }
-  const send = o.send === true
-  let message = typeof o.message === 'string' ? o.message.trim() : ''
+  const send = obj.send === true
+  let message = typeof obj.message === 'string' ? obj.message.trim() : ''
   if (message.length > maxLen) message = message.slice(0, maxLen)
-  const reason = typeof o.reason === 'string' ? o.reason : ''
+  const reason = typeof obj.reason === 'string' ? obj.reason : ''
   return { send, message, reason }
 }
 

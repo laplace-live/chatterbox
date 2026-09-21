@@ -16,7 +16,7 @@ const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA'])
 function isEditable(el: Element | null): boolean {
   if (!el) return false
   if (EDITABLE_TAGS.has(el.tagName)) return true
-  return (el as HTMLElement).isContentEditable === true
+  return el instanceof HTMLElement && el.isContentEditable
 }
 
 /** True for a bare printable keystroke (no modifier) — what page hotkeys grab. */

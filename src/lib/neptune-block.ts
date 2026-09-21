@@ -1,18 +1,12 @@
-const NEPTUNE_KEY = '__NEPTUNE_IS_MY_WAIFU__'
+import { isRecord } from './utils'
 
-/** Relevant slice of B站's SSR global; every field optional — we traverse defensively. */
-interface NeptuneState {
-  roomInfoRes?: {
-    data?: {
-      block_info?: { block?: boolean; desc?: string; business?: number }
-    }
-  }
-}
+const NEPTUNE_KEY = '__NEPTUNE_IS_MY_WAIFU__'
 
 /** Clear the room-display block (`roomInfoRes.data.block_info.block`) in place. Idempotent; true iff it changed something. */
 export function stripRoomBlock(neptune: unknown): boolean {
-  const blockInfo = (neptune as NeptuneState | null | undefined)?.roomInfoRes?.data?.block_info
-  if (blockInfo?.block) {
+  const data = isRecord(neptune) && isRecord(neptune.roomInfoRes) ? neptune.roomInfoRes.data : undefined
+  const blockInfo = isRecord(data) ? data.block_info : undefined
+  if (isRecord(blockInfo) && blockInfo.block) {
     blockInfo.block = false
     console.log('[LAPLACE Chatterbox] Room display block removed (block_info)')
     return true
@@ -26,11 +20,10 @@ export function stripRoomBlock(neptune: unknown): boolean {
  * `onStripped` fires only when a block was actually cleared. Fails open.
  */
 export function installNeptuneBlockTrap(target: object, onStripped?: () => void): void {
-  const win = target as Record<string, unknown>
   try {
     // Lost the race (global already assigned): strip in place, no trap needed.
-    if (win[NEPTUNE_KEY]) {
-      if (stripRoomBlock(win[NEPTUNE_KEY])) onStripped?.()
+    if (NEPTUNE_KEY in target && target[NEPTUNE_KEY]) {
+      if (stripRoomBlock(target[NEPTUNE_KEY])) onStripped?.()
       return
     }
     let backing: unknown

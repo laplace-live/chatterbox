@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { installNeptuneBlockTrap, stripRoomBlock } from './neptune-block'
+import { isRecord } from './utils'
 
 const NEPTUNE_KEY = '__NEPTUNE_IS_MY_WAIFU__'
 
@@ -18,9 +19,9 @@ function makeNeptune(block: boolean) {
   }
 }
 
-function blockOf(n: unknown): boolean | undefined {
-  return (n as { roomInfoRes?: { data?: { block_info?: { block?: boolean } } } } | null)?.roomInfoRes?.data?.block_info
-    ?.block
+function blockOf(n: unknown): unknown {
+  const data = isRecord(n) && isRecord(n.roomInfoRes) ? n.roomInfoRes.data : undefined
+  return isRecord(data) && isRecord(data.block_info) ? data.block_info.block : undefined
 }
 
 describe('stripRoomBlock', () => {

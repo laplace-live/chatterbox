@@ -11,6 +11,14 @@ import { unsafeWindow } from '$'
 import { appendLog } from './log'
 import { getPlayerVideo } from './player-dom'
 import { audioOnlyEnabled, autoQualityEnabled } from './store'
+import { isRecord } from './utils'
+
+// bilibili's page global; narrowed by `isLivePlayer`.
+declare global {
+  interface Window {
+    livePlayer?: unknown
+  }
+}
 
 /** Retry delay (ms) for the race where `<video>` is mounted but `getPlayerInfo()` isn't populated yet. */
 const STATE_LAG_RETRY_MS = 200
@@ -27,17 +35,22 @@ interface QualityCandidate {
   qn?: string | number
 }
 interface LivePlayerLike {
-  getPlayerInfo?: () => {
+  getPlayerInfo: () => {
     quality?: string | number
     qualityCandidates?: QualityCandidate[]
   } | null
-  switchQuality?: (qn: string) => unknown
+  switchQuality: (qn: string) => unknown
+}
+
+/** Checks both methods are callable; `getPlayerInfo()`'s result shape is still trusted. */
+function isLivePlayer(value: unknown): value is LivePlayerLike {
+  return isRecord(value) && typeof value.getPlayerInfo === 'function' && typeof value.switchQuality === 'function'
 }
 
 function getLivePlayer(): LivePlayerLike | null {
   // `livePlayer` lives on the page's real window; `unsafeWindow` reaches past the sandbox.
-  const candidate = (unsafeWindow as unknown as { livePlayer?: LivePlayerLike }).livePlayer
-  return candidate ?? null
+  const candidate = unsafeWindow.livePlayer
+  return isLivePlayer(candidate) ? candidate : null
 }
 
 let mountObserver: MutationObserver | null = null
@@ -61,7 +74,7 @@ function tryApply(): ApplyResult {
   if (!getPlayerVideo()) return 'wait-mount'
 
   const player = getLivePlayer()
-  if (!player?.getPlayerInfo || !player.switchQuality) {
+  if (!player) {
     return 'wait-state' // `<video>` mounted but `livePlayer` not installed yet
   }
 
