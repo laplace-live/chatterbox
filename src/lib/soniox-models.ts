@@ -6,6 +6,7 @@
  */
 
 import { SONIOX_API_BASE } from './const'
+import { readStringField } from './stt/normalize'
 import { isRecord } from './utils'
 
 export interface SonioxModel {
@@ -13,13 +14,6 @@ export interface SonioxModel {
   id: string
   /** Friendly display name; kept to widen the dropdown's search filter (renders id-only). */
   name?: string
-}
-
-/** Pull a string field off an arbitrary record, returning undefined on missing/wrong-typed values. */
-function readString(obj: unknown, key: string): string | undefined {
-  if (!isRecord(obj)) return undefined
-  const v = obj[key]
-  return typeof v === 'string' ? v : undefined
 }
 
 /**
@@ -72,14 +66,13 @@ export async function fetchSonioxModels(apiKey: string): Promise<SonioxModel[]> 
   const models: SonioxModel[] = []
   const seen = new Set<string>()
   for (const entry of data) {
-    if (!entry || typeof entry !== 'object') continue
     // Async models are unusable in the streaming STT session.
-    if (readString(entry, 'transcription_mode') !== 'real_time') continue
-    const id = readString(entry, 'id')?.trim()
+    if (readStringField(entry, 'transcription_mode') !== 'real_time') continue
+    const id = readStringField(entry, 'id')?.trim()
     if (!id || seen.has(id)) continue
     seen.add(id)
     const model: SonioxModel = { id }
-    const name = readString(entry, 'name')?.trim()
+    const name = readStringField(entry, 'name')?.trim()
     if (name && name !== id) model.name = name
     models.push(model)
   }

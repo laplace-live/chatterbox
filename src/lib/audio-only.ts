@@ -191,15 +191,10 @@ function isMpegts(value: unknown): value is typeof Mpegts {
   return isRecord(value) && typeof value.createPlayer === 'function' && isRecord(value.Events)
 }
 
-function getMpegtsFromWindow(): typeof Mpegts | null {
-  const candidate = unsafeWindow.mpegts
-  return isMpegts(candidate) ? candidate : null
-}
-
 // Lazy-injected (not @require/externalGlobals) so users who never enable
 // audio-only skip the ~120 KB CDN fetch.
 function loadMpegts(): Promise<typeof Mpegts> {
-  return loadUmdScript(MPEGTS_CDN_URL, getMpegtsFromWindow)
+  return loadUmdScript(MPEGTS_CDN_URL, 'mpegts', isMpegts)
 }
 
 // Only the Android app endpoint honours `only_audio=1` (verified audio-only

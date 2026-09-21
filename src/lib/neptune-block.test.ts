@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
 import { installNeptuneBlockTrap, stripRoomBlock } from './neptune-block'
-import { isRecord } from './utils'
 
 const NEPTUNE_KEY = '__NEPTUNE_IS_MY_WAIFU__'
 
@@ -17,11 +16,6 @@ function makeNeptune(block: boolean) {
       },
     },
   }
-}
-
-function blockOf(n: unknown): unknown {
-  const data = isRecord(n) && isRecord(n.roomInfoRes) ? n.roomInfoRes.data : undefined
-  return isRecord(data) && isRecord(data.block_info) ? data.block_info.block : undefined
 }
 
 describe('stripRoomBlock', () => {
@@ -63,8 +57,9 @@ describe('installNeptuneBlockTrap', () => {
   test('strips an assignment made after install', () => {
     const win: Record<string, unknown> = {}
     installNeptuneBlockTrap(win)
-    win[NEPTUNE_KEY] = makeNeptune(true)
-    expect(blockOf(win[NEPTUNE_KEY])).toBe(false)
+    const n = makeNeptune(true)
+    win[NEPTUNE_KEY] = n
+    expect(n.roomInfoRes.data.block_info.block).toBe(false)
   })
 
   test('getter returns the same object identity B站 assigned', () => {
@@ -77,17 +72,19 @@ describe('installNeptuneBlockTrap', () => {
   })
 
   test('already-present global stripped on install', () => {
-    const win: Record<string, unknown> = { [NEPTUNE_KEY]: makeNeptune(true) }
+    const n = makeNeptune(true)
+    const win: Record<string, unknown> = { [NEPTUNE_KEY]: n }
     installNeptuneBlockTrap(win)
-    expect(blockOf(win[NEPTUNE_KEY])).toBe(false)
+    expect(n.roomInfoRes.data.block_info.block).toBe(false)
   })
 
   test('strips every assignment, not just the first', () => {
     const win: Record<string, unknown> = {}
     installNeptuneBlockTrap(win)
     win[NEPTUNE_KEY] = makeNeptune(true)
-    win[NEPTUNE_KEY] = makeNeptune(true)
-    expect(blockOf(win[NEPTUNE_KEY])).toBe(false)
+    const second = makeNeptune(true)
+    win[NEPTUNE_KEY] = second
+    expect(second.roomInfoRes.data.block_info.block).toBe(false)
   })
 
   test('fires onStripped once when a block is cleared', () => {

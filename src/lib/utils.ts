@@ -166,11 +166,22 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-/** `module_author` of the `MODULE_TYPE_AUTHOR` entry in an opus `__INITIAL_STATE__.detail`; `pub_ts` is Unix seconds. */
-function findOpusModuleAuthor(detail: unknown): Record<string, unknown> | undefined {
-  const modules: unknown[] = isRecord(detail) && Array.isArray(detail.modules) ? detail.modules : []
-  const authorModule = modules.find(m => isRecord(m) && m.module_type === 'MODULE_TYPE_AUTHOR')
-  return isRecord(authorModule) && isRecord(authorModule.module_author) ? authorModule.module_author : undefined
+/** Reads `value[k0][k1]…` off untyped data via plain property access; undefined once a hop isn't an object. */
+export function readPath(value: unknown, ...keys: string[]): unknown {
+  let current = value
+  for (const key of keys) {
+    if (!isRecord(current)) return undefined
+    current = current[key]
+  }
+  return current
+}
+
+/** `module_author` of the `MODULE_TYPE_AUTHOR` entry in an opus `__INITIAL_STATE__`; `pub_ts` is Unix seconds. */
+function findOpusModuleAuthor(initialState: unknown): unknown {
+  const modules = readPath(initialState, 'detail', 'modules')
+  if (!Array.isArray(modules)) return undefined
+  const authorModule: unknown = modules.find(m => readPath(m, 'module_type') === 'MODULE_TYPE_AUTHOR')
+  return readPath(authorModule, 'module_author')
 }
 
 /**
@@ -179,13 +190,10 @@ function findOpusModuleAuthor(detail: unknown): Record<string, unknown> | undefi
  * DOM is deliberately not scraped: opus pages link to unrelated users (fav lists, recs). Traverses defensively.
  */
 export function extractOpusAuthorUid(initialState: unknown): number | undefined {
-  const detail = isRecord(initialState) ? initialState.detail : undefined
-  if (!isRecord(detail)) return undefined
-
-  const authorMid = findOpusModuleAuthor(detail)?.mid
+  const authorMid = readPath(findOpusModuleAuthor(initialState), 'mid')
   if (typeof authorMid === 'number' && Number.isFinite(authorMid) && authorMid > 0) return authorMid
 
-  const uid = Number(isRecord(detail.basic) ? detail.basic.uid : undefined)
+  const uid = Number(readPath(initialState, 'detail', 'basic', 'uid'))
   if (Number.isFinite(uid) && uid > 0) return uid
 
   return undefined
@@ -196,9 +204,7 @@ export function extractOpusAuthorUid(initialState: unknown): number | undefined 
  * Uses `pub_ts` not `pub_time` (the latter reads "编辑于 …" after an edit). Asia/Shanghai: timestamps are Beijing time.
  */
 export function extractOpusPubDate(initialState: unknown): string | undefined {
-  const detail = isRecord(initialState) ? initialState.detail : undefined
-  const pubTs = findOpusModuleAuthor(detail)?.pub_ts
-  const seconds = Number(pubTs)
+  const seconds = Number(readPath(findOpusModuleAuthor(initialState), 'pub_ts'))
   if (!Number.isFinite(seconds) || seconds <= 0) return undefined
   return new Date(seconds * 1000).toLocaleDateString('en-CA', {
     timeZone: 'Asia/Shanghai',

@@ -1,11 +1,10 @@
-import { isRecord } from './utils'
+import { isRecord, readPath } from './utils'
 
 const NEPTUNE_KEY = '__NEPTUNE_IS_MY_WAIFU__'
 
 /** Clear the room-display block (`roomInfoRes.data.block_info.block`) in place. Idempotent; true iff it changed something. */
 export function stripRoomBlock(neptune: unknown): boolean {
-  const data = isRecord(neptune) && isRecord(neptune.roomInfoRes) ? neptune.roomInfoRes.data : undefined
-  const blockInfo = isRecord(data) ? data.block_info : undefined
+  const blockInfo = readPath(neptune, 'roomInfoRes', 'data', 'block_info')
   if (isRecord(blockInfo) && blockInfo.block) {
     blockInfo.block = false
     console.log('[LAPLACE Chatterbox] Room display block removed (block_info)')

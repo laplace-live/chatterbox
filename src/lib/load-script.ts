@@ -1,7 +1,7 @@
 /**
  * Lazy CDN-bundle loaders sharing one in-flight cache. Lazy injection
  * avoids the eager fetch of `externalGlobals`/`@require` on every page.
- * Injected scripts run in the page context, so callers must probe via
+ * Injected scripts run in the page context, so globals are read back via
  * `unsafeWindow`, not the sandboxed `window`.
  */
 
@@ -15,45 +15,62 @@ declare global {
   }
 }
 
-// Settles once a URL's script has run; each caller re-probes through its own typed getter.
+// Untyped so one map serves every loader without casts; `loadOnce` re-validates per caller.
 const inFlight = new Map<string, Promise<void>>()
 
-/**
- * Inject `url` as a UMD `<script>`, resolving once `getGlobal()` reports
- * the global. Concurrent callers for the same URL share one fetch.
- *
- * @param getGlobal - Probe for the installed global (`null` if absent).
- *   Run after `onload` too, since `onload` proves only that bytes
- *   downloaded — an empty-body 200 would otherwise silently succeed.
- */
-export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promise<T> {
-  const existing = getGlobal()
+/** Resolve with `unsafeWindow[globalKey]` once `isValid` accepts it, sharing one `inject` per URL. */
+function loadOnce<T>(
+  url: string,
+  globalKey: keyof Window,
+  isValid: (value: unknown) => value is T,
+  inject: () => Promise<void>
+): Promise<T> {
+  const read = (): T | null => {
+    const value: unknown = unsafeWindow[globalKey]
+    return isValid(value) ? value : null
+  }
+  const existing = read()
   if (existing) return Promise.resolve(existing)
 
-  const probe = (): T => {
-    const g = getGlobal()
-    if (!g) throw new Error(`script loaded but expected global not found: ${url}`)
-    return g
+  let pending = inFlight.get(url)
+  if (!pending) {
+    pending = inject().catch((err: unknown) => {
+      // Evict so a later caller can retry instead of reusing the failed promise.
+      inFlight.delete(url)
+      throw err
+    })
+    inFlight.set(url, pending)
   }
+  // Re-check after load: `onload` proves only that bytes arrived, so an empty-body 200 would otherwise pass.
+  return pending.then(() => {
+    const loaded = read()
+    if (!loaded) throw new Error(`script loaded but window.${globalKey} is missing: ${url}`)
+    return loaded
+  })
+}
 
-  const cached = inFlight.get(url)
-  if (cached) return cached.then(probe)
+/**
+ * Inject `url` as a UMD `<script>` and resolve with the global it installs
+ * at `unsafeWindow[globalKey]`. Concurrent callers for the same URL share one fetch.
+ */
+export function loadUmdScript<T>(
+  url: string,
+  globalKey: keyof Window,
+  isValid: (value: unknown) => value is T
+): Promise<T> {
+  return loadOnce(url, globalKey, isValid, () => injectUmdScript(url))
+}
 
-  const promise = new Promise<void>((resolve, reject) => {
+function injectUmdScript(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
     const script = document.createElement('script')
     script.src = url
     // unpkg sends `access-control-allow-origin: *`, so anonymous CORS works.
     script.crossOrigin = 'anonymous'
     script.onload = () => resolve()
-    script.onerror = () => {
-      // Evict so a later caller can retry instead of reusing the failed promise.
-      inFlight.delete(url)
-      reject(new Error(`failed to load script from ${url}`))
-    }
+    script.onerror = () => reject(new Error(`failed to load script from ${url}`))
     document.head.appendChild(script)
   })
-  inFlight.set(url, promise)
-  return promise.then(probe)
 }
 
 /**
@@ -64,22 +81,17 @@ export function loadUmdScript<T>(url: string, getGlobal: () => T | null): Promis
  * @param globalKey - Page-window property where the shim parks the
  *   namespace; we pick it, so use an underscored prefix to avoid
  *   colliding with the host page.
- * @param getGlobal - Reads `unsafeWindow[globalKey]` back, narrowed to `T` (`null` if absent).
  */
-export function loadEsmScript<T>(url: string, globalKey: string, getGlobal: () => T | null): Promise<T> {
-  const existing = getGlobal()
-  if (existing) return Promise.resolve(existing)
+export function loadEsmScript<T>(
+  url: string,
+  globalKey: keyof Window,
+  isValid: (value: unknown) => value is T
+): Promise<T> {
+  return loadOnce(url, globalKey, isValid, () => injectEsmScript(url, globalKey))
+}
 
-  const probe = (): T => {
-    const mod = getGlobal()
-    if (!mod) throw new Error(`module loaded but global not set: ${url}`)
-    return mod
-  }
-
-  const cached = inFlight.get(url)
-  if (cached) return cached.then(probe)
-
-  const promise = new Promise<void>((resolve, reject) => {
+function injectEsmScript(url: string, globalKey: keyof Window): Promise<void> {
+  return new Promise((resolve, reject) => {
     // resolve/reject go through temporary `window.*` slots because
     // functions can't cross the userscript sandbox boundary; only the
     // plain namespace object travels back via `unsafeWindow[globalKey]`.
@@ -101,7 +113,6 @@ export function loadEsmScript<T>(url: string, globalKey: string, getGlobal: () =
     }
     win[rejectKey] = (msg: string) => {
       cleanup()
-      inFlight.delete(url)
       reject(new Error(msg))
     }
 
@@ -122,11 +133,8 @@ export function loadEsmScript<T>(url: string, globalKey: string, getGlobal: () =
     `
     script.onerror = () => {
       cleanup()
-      inFlight.delete(url)
       reject(new Error(`failed to inject module loader for ${url}`))
     }
     document.head.appendChild(script)
   })
-  inFlight.set(url, promise)
-  return promise.then(probe)
 }

@@ -1,7 +1,8 @@
 /** OpenAI-compatible LLM client helpers. */
 
 import { GITHUB_URL, PROJECT_NAME } from './const'
-import { isRecord } from './utils'
+import { readStringField } from './stt/normalize'
+import { isRecord, readPath } from './utils'
 
 /** Per-token pricing from the /models endpoint; raw strings, not coerced. */
 export interface LlmModelPricing {
@@ -42,16 +43,9 @@ function normalizeBase(base: string): string {
   return base.trim().replace(/\/+$/, '')
 }
 
-/** Read a string field off an arbitrary record; undefined when missing or wrong-typed. */
-function readString(obj: unknown, key: string): string | undefined {
-  if (!isRecord(obj)) return undefined
-  const v = obj[key]
-  return typeof v === 'string' ? v : undefined
-}
-
 function parsePricing(raw: unknown): LlmModelPricing | undefined {
-  const prompt = readString(raw, 'prompt')
-  const completion = readString(raw, 'completion')
+  const prompt = readStringField(raw, 'prompt')
+  const completion = readStringField(raw, 'completion')
   if (prompt === undefined && completion === undefined) return undefined
   const out: LlmModelPricing = {}
   if (prompt !== undefined) out.prompt = prompt
@@ -119,11 +113,11 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
   const seen = new Set<string>()
   for (const entry of data) {
     if (!isRecord(entry)) continue
-    const id = readString(entry, 'id')?.trim()
+    const id = readStringField(entry, 'id')?.trim()
     if (!id || seen.has(id)) continue
     seen.add(id)
     const model: LlmModel = { id }
-    const name = readString(entry, 'name')?.trim()
+    const name = readStringField(entry, 'name')?.trim()
     if (name && name !== id) model.name = name
     const pricing = parsePricing(entry.pricing)
     if (pricing) model.pricing = pricing
@@ -245,13 +239,11 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
   }
 
   // OpenAI shape: { choices: [{ message: { role, content } }] }; empty choices (e.g. filtered) is an error.
-  const choices = isRecord(json) ? json.choices : undefined
+  const choices = readPath(json, 'choices')
   if (!Array.isArray(choices) || choices.length === 0) {
     throw new Error('返回数据缺少 choices 数组')
   }
-  const first: unknown = choices[0]
-  const message = isRecord(first) ? first.message : undefined
-  const content = readString(message, 'content')
+  const content = readStringField(readPath(choices[0], 'message'), 'content')
   if (!content) throw new Error('返回数据缺少 content 字段')
   return content
 }
