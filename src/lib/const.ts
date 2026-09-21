@@ -46,6 +46,22 @@ export const GLADIA_DEFAULT_MODEL = 'solaria-1'
 /** mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns to `window.mpegts` at runtime. */
 export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.2/dist/mpegts.js'
 
+/** Char inserted by 随机字符 (dedup-bypass) and AI规避 (splits sensitive words): U+00AD SOFT HYPHEN. */
+export const DEFAULT_INVISIBLE_CHAR = '\u00AD'
+
+/** Built-in choices for the inserted char; several, since B站 may filter any one of them. */
+export const INVISIBLE_CHAR_PRESETS = [
+  { char: DEFAULT_INVISIBLE_CHAR, name: '软连字符' },
+  { char: '\u200B', name: '零宽空格' },
+  { char: '\u200C', name: '零宽非连接符' },
+  { char: '\u200D', name: '零宽连接符' },
+  { char: '\u2060', name: '词连接符' },
+  { char: '\uFEFF', name: '零宽不换行空格' },
+] as const
+
+/** `invisibleCharPreset` value that selects the user-typed `invisibleCharCustom` instead of a preset. */
+export const INVISIBLE_CHAR_CUSTOM = 'custom'
+
 /** API endpoint URLs used by the script. */
 export const BASE_URL = {
   /** Fetches room basic info. GET, param: id (room ID). */

@@ -8,6 +8,7 @@ import type { SttModelOption, SttProvider } from './stt/types'
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import {
   DEEPGRAM_DEFAULT_MODEL,
+  DEFAULT_INVISIBLE_CHAR,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
   SONIOX_DEFAULT_MODEL,
@@ -15,6 +16,7 @@ import {
 import { gmSignal } from './gm-signal'
 import { appendLog } from './log'
 import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT } from './prompts'
+import { resolveInvisibleChar } from './utils'
 
 // GM-persisted settings
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
@@ -23,6 +25,11 @@ export const randomColor = gmSignal('randomColor', false)
 export const randomInterval = gmSignal('randomInterval', false)
 export const randomChar = gmSignal('randomChar', false)
 export const aiEvasion = gmSignal('aiEvasion', false)
+// Char both of the above insert: a preset char, or `INVISIBLE_CHAR_CUSTOM` to use `invisibleCharCustom` (raw input, parsed on read).
+export const invisibleCharPreset = gmSignal<string>('invisibleCharPreset', DEFAULT_INVISIBLE_CHAR)
+export const invisibleCharCustom = gmSignal('invisibleCharCustom', '')
+/** Resolved char for `randomChar` / `aiEvasion`; always non-empty. */
+export const invisibleChar = computed(() => resolveInvisibleChar(invisibleCharPreset.value, invisibleCharCustom.value))
 // Wrap each 常规发送 segment in full-width 【】. Split length reserves the two wrapper graphemes (see `wrapSplitLen`) so a wrapped segment still fits `maxLength`.
 export const normalSendWrapBrackets = gmSignal('normalSendWrapBrackets', false)
 // YOLO mode for 常规发送: Enter auto-polishes text via the LLM before sending.

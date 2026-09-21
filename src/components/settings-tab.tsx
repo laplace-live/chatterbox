@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'preact/hooks'
 import { ensureRoomId, getCsrfToken, sendDanmaku } from '../lib/api'
 import { MIN_STABLE_THRESHOLD } from '../lib/auto-seek-rate'
 import { cn } from '../lib/cn'
-import { BASE_URL } from '../lib/const'
+import { BASE_URL, DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM, INVISIBLE_CHAR_PRESETS } from '../lib/const'
 import { fetchLlmModels, formatLlmPricing } from '../lib/llm'
 import { appendLog, maxLogLines } from '../lib/log'
 import { isRegexEntry, validateRegexEntry } from '../lib/message-blacklist'
@@ -29,6 +29,9 @@ import {
   infoFertilityEnabled,
   infoGuildEnabled,
   infoMcnEnabled,
+  invisibleChar,
+  invisibleCharCustom,
+  invisibleCharPreset,
   llmActivePromptAiChat,
   llmActivePromptAutoBlend,
   llmActivePromptAutoSend,
@@ -65,6 +68,7 @@ import {
   type UserNotesImportMode,
   userNotes,
 } from '../lib/user-notes'
+import { formatCodePoints, parseCustomChar } from '../lib/utils'
 import { PromptManager } from './prompt-manager'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -316,6 +320,51 @@ function LlmProviderSettings() {
         </>
       ) : (
         <div class={EMPTY_CLASS}>暂无服务商，点击「添加」创建配置</div>
+      )}
+    </div>
+  )
+}
+
+/** "隐形字符" sub-section: the char 随机字符 / AI规避 insert, picked from presets or typed in. */
+function InvisibleCharSettings() {
+  const isCustom = invisibleCharPreset.value === INVISIBLE_CHAR_CUSTOM
+
+  return (
+    <div class={SUB_SECTION_CLASS}>
+      <div class={HEADING_CLASS}>隐形字符</div>
+      <div class={HINT_CLASS}>「随机字符」与「AI规避」插入的字符。若被 B站 过滤导致失效，可换用其他字符或自定义</div>
+      <div class={ROW_CLASS}>
+        <NativeSelect
+          className='min-w-25 flex-1'
+          value={invisibleCharPreset.value}
+          onChange={e => {
+            invisibleCharPreset.value = e.currentTarget.value
+          }}
+        >
+          {INVISIBLE_CHAR_PRESETS.map(p => (
+            <option key={p.char} value={p.char}>
+              {p.name} {formatCodePoints(p.char)}
+              {p.char === DEFAULT_INVISIBLE_CHAR && '（默认）'}
+            </option>
+          ))}
+          <option value={INVISIBLE_CHAR_CUSTOM}>自定义</option>
+        </NativeSelect>
+        {isCustom && (
+          <Input
+            placeholder='字符或码位，如 U+200B'
+            className={FILL_INPUT_CLASS}
+            value={invisibleCharCustom.value}
+            onInput={e => {
+              invisibleCharCustom.value = e.currentTarget.value
+            }}
+          />
+        )}
+      </div>
+      {isCustom && (
+        <div class={HINT_CLASS}>
+          将插入 {formatCodePoints(invisibleChar.value)}
+          {!parseCustomChar(invisibleCharCustom.value) && '（输入为空或码位无效，已回退为默认字符）'}
+        </div>
       )}
     </div>
   )
@@ -1212,6 +1261,10 @@ export function SettingsTab() {
               <div class={EMPTY_CLASS}>请选择或添加一个直播间</div>
             )}
           </div>
+
+          <Separator />
+
+          <InvisibleCharSettings />
         </AccordionContent>
       </AccordionItem>
 

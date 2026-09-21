@@ -1,7 +1,7 @@
 import { BASE_URL } from './const'
 import { appendLog } from './log'
 import { enqueueDanmaku, SendPriority } from './send-queue'
-import { aiEvasion } from './store'
+import { aiEvasion, invisibleChar } from './store'
 import { getGraphemes } from './utils'
 
 interface DetectionResult {
@@ -34,7 +34,7 @@ export async function detectSensitiveWords(text: string): Promise<DetectionResul
 
 function insertInvisibleChars(word: string): string {
   const graphemes = getGraphemes(word)
-  return graphemes.join('­')
+  return graphemes.join(invisibleChar.value)
 }
 
 export function replaceSensitiveWords(text: string, sensitiveWords: string[]): string {

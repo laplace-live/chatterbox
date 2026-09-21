@@ -1,6 +1,18 @@
 import { describe, expect, test } from 'bun:test'
 
-import { buildOvuContributeUrl, extractBvid, extractOpusAuthorUid, extractOpusPubDate, isHttpUrl } from './utils'
+import { DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM } from './const'
+import {
+  addRandomCharacter,
+  buildOvuContributeUrl,
+  extractBvid,
+  extractOpusAuthorUid,
+  extractOpusPubDate,
+  formatCodePoints,
+  isHttpUrl,
+  parseCustomChar,
+  processMessages,
+  resolveInvisibleChar,
+} from './utils'
 
 /** Derives the BV id from bilibili video URLs; `undefined` for non-BV paths (legacy `av`, case-sensitive prefix). */
 describe('extractBvid', () => {
@@ -145,5 +157,100 @@ describe('isHttpUrl', () => {
   test('rejects non-http schemes', () => {
     expect(isHttpUrl('ftp://example.com')).toBe(false)
     expect(isHttpUrl('ws://127.0.0.1:8080')).toBe(false)
+  })
+})
+
+/** Inserts the given char exactly once at a grapheme boundary, never inside a balanced `[...]` emote. */
+describe('addRandomCharacter', () => {
+  test('inserts the char exactly once, leaving the text otherwise intact', () => {
+    for (let i = 0; i < 50; i++) {
+      const out = addRandomCharacter('你好世界', '\u200B')
+      expect(out.split('\u200B')).toHaveLength(2)
+      expect(out.replace('\u200B', '')).toBe('你好世界')
+    }
+  })
+
+  test('never lands inside an emote bracket', () => {
+    for (let i = 0; i < 50; i++) {
+      expect(['~[doge]', '[doge]~']).toContain(addRandomCharacter('[doge]', '~'))
+    }
+  })
+
+  test('multi-char strings are inserted as one unit', () => {
+    for (let i = 0; i < 50; i++) {
+      expect(['XYab', 'aXYb', 'abXY']).toContain(addRandomCharacter('ab', 'XY'))
+    }
+  })
+
+  test('empty text is returned unchanged', () => {
+    expect(addRandomCharacter('', '~')).toBe('')
+  })
+})
+
+/** Per-line split with optional char insertion; blank lines are dropped. */
+describe('processMessages', () => {
+  test('inserts the char into every non-blank line when given', () => {
+    const out = processMessages('ab\n\ncd', 10, '~')
+    expect(out).toHaveLength(2)
+    for (const msg of out) expect(msg.split('~')).toHaveLength(2)
+  })
+
+  test('leaves lines untouched without a char', () => {
+    expect(processMessages('ab\n\ncd', 10)).toEqual(['ab', 'cd'])
+  })
+})
+
+/** Code point readout for the settings UI. */
+describe('formatCodePoints', () => {
+  test('pads BMP code points to 4 hex digits', () => {
+    expect(formatCodePoints('\u00AD')).toBe('U+00AD')
+  })
+
+  test('keeps astral code points whole', () => {
+    expect(formatCodePoints('a\u{1F600}')).toBe('U+0061 U+1F600')
+  })
+})
+
+/** Custom insert-char field: `U+XXXX`-only input decodes, anything else is literal. */
+describe('parseCustomChar', () => {
+  test('decodes a code point, case-insensitively', () => {
+    expect(parseCustomChar('U+200B')).toBe('\u200B')
+    expect(parseCustomChar('u+200b')).toBe('\u200B')
+  })
+
+  test('decodes whitespace-separated sequences, including astral code points', () => {
+    expect(parseCustomChar(' U+200B  U+1F600 ')).toBe('\u200B\u{1F600}')
+  })
+
+  test('takes anything else literally', () => {
+    expect(parseCustomChar('~')).toBe('~')
+    expect(parseCustomChar('aU+200B')).toBe('aU+200B')
+    expect(parseCustomChar('')).toBe('')
+  })
+
+  test('rejects surrogates and out-of-range code points', () => {
+    expect(parseCustomChar('U+D800')).toBeNull()
+    expect(parseCustomChar('U+110000')).toBeNull()
+  })
+})
+
+/** Preset / custom resolution, falling back to `DEFAULT_INVISIBLE_CHAR`. */
+describe('resolveInvisibleChar', () => {
+  test('uses a known preset', () => {
+    expect(resolveInvisibleChar('\u200B', '')).toBe('\u200B')
+  })
+
+  test('unknown preset falls back to the default', () => {
+    expect(resolveInvisibleChar('x', '')).toBe(DEFAULT_INVISIBLE_CHAR)
+  })
+
+  test('custom mode uses the parsed input', () => {
+    expect(resolveInvisibleChar(INVISIBLE_CHAR_CUSTOM, 'U+2063')).toBe('\u2063')
+    expect(resolveInvisibleChar(INVISIBLE_CHAR_CUSTOM, '~')).toBe('~')
+  })
+
+  test('empty or invalid custom input falls back to the default', () => {
+    expect(resolveInvisibleChar(INVISIBLE_CHAR_CUSTOM, '')).toBe(DEFAULT_INVISIBLE_CHAR)
+    expect(resolveInvisibleChar(INVISIBLE_CHAR_CUSTOM, 'U+D800')).toBe(DEFAULT_INVISIBLE_CHAR)
   })
 })

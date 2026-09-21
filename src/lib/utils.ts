@@ -1,3 +1,5 @@
+import { DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM, INVISIBLE_CHAR_PRESETS } from './const'
+
 /** 1σ of send-interval jitter as a fraction of the base interval; samples clamped to ±2σ. */
 const SEND_JITTER_SIGMA = 0.2
 
@@ -225,10 +227,10 @@ export function whenDomReady(cb: () => void): void {
 }
 
 /**
- * Inserts a random soft hyphen (U+00AD) for dedup-bypass. Grapheme-safe and emote-safe:
+ * Inserts `char` at a random position for dedup-bypass. Grapheme-safe and emote-safe:
  * never lands inside a balanced `[...]` bracket (would break B站 emote rendering). Falls back to appending.
  */
-export function addRandomCharacter(text: string): string {
+export function addRandomCharacter(text: string, char: string): string {
   if (!text || text.length === 0) return text
 
   const graphemes = getGraphemes(text)
@@ -258,8 +260,34 @@ export function addRandomCharacter(text: string): string {
   const idx =
     allowed.length > 0 ? (allowed[Math.floor(Math.random() * allowed.length)] ?? graphemes.length) : graphemes.length
 
-  graphemes.splice(idx, 0, '­')
+  graphemes.splice(idx, 0, char)
   return graphemes.join('')
+}
+
+/** Formats each code point as `U+XXXX`, space-separated. */
+export function formatCodePoints(str: string): string {
+  return Array.from(str, c => `U+${(c.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`).join(' ')
+}
+
+/**
+ * Parses the custom insert-char field. Input made only of `U+XXXX` code points (whitespace-separated) is decoded,
+ * since invisible chars can't be typed; anything else is literal. `null` = surrogate or out-of-range code point.
+ */
+export function parseCustomChar(input: string): string | null {
+  if (!/^\s*(?:U\+[0-9a-f]{4,6}\s*)+$/i.test(input)) return input
+  let out = ''
+  for (const [, hex] of input.matchAll(/U\+([0-9a-f]{4,6})/gi)) {
+    const cp = Number.parseInt(hex, 16)
+    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return null
+    out += String.fromCodePoint(cp)
+  }
+  return out
+}
+
+/** Resolves the char to insert; an unknown preset or empty/invalid custom input falls back to `DEFAULT_INVISIBLE_CHAR`. */
+export function resolveInvisibleChar(preset: string, custom: string): string {
+  if (preset === INVISIBLE_CHAR_CUSTOM) return parseCustomChar(custom) || DEFAULT_INVISIBLE_CHAR
+  return INVISIBLE_CHAR_PRESETS.some(p => p.char === preset) ? preset : DEFAULT_INVISIBLE_CHAR
 }
 
 /**
@@ -295,15 +323,15 @@ export function formatDanmakuError(error: string | undefined): string {
 }
 
 /**
- * Splits lines, optionally adds random chars, trims to max length per message.
+ * Splits lines, optionally inserts `randomChar` into each (see `addRandomCharacter`), trims to max length per message.
  */
-export function processMessages(text: string, maxLength: number, addRandomChar = false): string[] {
+export function processMessages(text: string, maxLength: number, randomChar?: string): string[] {
   return text
     .split('\n')
     .flatMap(line => {
       let l = line
-      if (addRandomChar && l?.trim()) {
-        l = addRandomCharacter(l)
+      if (randomChar && l?.trim()) {
+        l = addRandomCharacter(l, randomChar)
       }
       return trimText(l, maxLength)
     })

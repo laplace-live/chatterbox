@@ -19,6 +19,7 @@ import {
   availableDanmakuColors,
   cachedRoomId,
   forceScrollDanmaku,
+  invisibleChar,
   maxLength,
   msgSendInterval,
   msgTemplates,
@@ -138,7 +139,7 @@ export async function loop(): Promise<void> {
       const interval = msgSendInterval.value
       const enableRandomColor = randomColor.value
       const enableRandomInterval = randomInterval.value
-      const enableRandomChar = randomChar.value
+      const randomCharToInsert = randomChar.value ? invisibleChar.value : undefined
 
       // Parsed once so both YOLO and legacy paths share the same input.
       const rawLines = currentTemplate
@@ -158,12 +159,12 @@ export async function loop(): Promise<void> {
           currentAbort = null
           continue
         }
-        // randomChar (U+00AD dedup marker) suppressed on LLM input — the LLM would ignore or "fix" it; re-applied on output in the polish branch below.
+        // randomChar (dedup marker) suppressed on LLM input — the LLM would ignore or "fix" it; re-applied on output in the polish branch below.
         for (const line of rawLines) {
           if (isEmoticonUnique(line)) {
             tasks.push({ kind: 'direct', text: line })
           } else {
-            for (const chunk of processMessages(line, maxLength.value, false)) {
+            for (const chunk of processMessages(line, maxLength.value)) {
               tasks.push({ kind: 'polish', text: chunk })
             }
           }
@@ -174,7 +175,7 @@ export async function loop(): Promise<void> {
           if (isEmoticonUnique(line)) {
             tasks.push({ kind: 'direct', text: line })
           } else {
-            for (const chunk of processMessages(line, maxLength.value, enableRandomChar)) {
+            for (const chunk of processMessages(line, maxLength.value, randomCharToInsert)) {
               tasks.push({ kind: 'direct', text: chunk })
             }
           }
@@ -209,7 +210,7 @@ export async function loop(): Promise<void> {
             }
             appendLog(`✨ 独轮车 AI 润色：${task.text} → ${polished}`)
             // Re-process: output may exceed maxLength, and randomChar (suppressed on input) applies now.
-            sendItems = processMessages(polished, maxLength.value, enableRandomChar)
+            sendItems = processMessages(polished, maxLength.value, randomCharToInsert)
           } catch (err) {
             // AbortError = 停车 mid-polish; propagate as "round aborted" so the success log doesn't fire.
             if (err instanceof DOMException && err.name === 'AbortError') {

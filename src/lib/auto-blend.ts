@@ -29,6 +29,7 @@ import {
   autoBlendUserBlacklist,
   autoBlendWindowSec,
   autoBlendYolo,
+  invisibleChar,
   maxLength,
   randomChar,
   randomColor,
@@ -325,7 +326,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     recordRecentTrigger(originalText)
 
     let toSend = replaced
-    if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend)
+    if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend, invisibleChar.value)
     if (!isEmote) toSend = trimText(toSend, maxLength.value)[0] ?? toSend
 
     if (!isEmote && randomColor.value) {
