@@ -32,6 +32,8 @@ export const invisibleCharCustom = gmSignal('invisibleCharCustom', '')
 export const invisibleChar = computed(() => resolveInvisibleChar(invisibleCharPreset.value, invisibleCharCustom.value))
 // Wrap each 常规发送 segment in full-width 【】. Split length reserves the two wrapper graphemes (see `wrapSplitLen`) so a wrapped segment still fits `maxLength`.
 export const normalSendWrapBrackets = gmSignal('normalSendWrapBrackets', false)
+// 路怒模式 for 常规发送: when re-sending the exact same text, inject `invisibleChar` at a fresh position (see `NormalSendTab`) so B站's duplicate filter doesn't drop the repeat.
+export const normalSendRoadRage = gmSignal('normalSendRoadRage', false)
 // YOLO mode for 常规发送: Enter auto-polishes text via the LLM before sending.
 export const normalSendYolo = gmSignal('normalSendYolo', false)
 // YOLO mode for 独轮车 (auto-send): polish upfront per round (one LLM call per non-emote template line) before the send loop, keeping the per-send `msgSendInterval` cadence untouched.

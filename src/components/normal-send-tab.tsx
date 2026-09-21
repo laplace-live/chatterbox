@@ -16,14 +16,16 @@ import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   aiEvasion,
   fasongText,
+  invisibleChar,
   llmActivePromptNormalSend,
   llmPromptsNormalSend,
   maxLength,
   normalSendPanelOpen,
+  normalSendRoadRage,
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { processMessages } from '../lib/utils'
+import { insertRandomChar, processMessages } from '../lib/utils'
 import { wrapSegment, wrapSplitLen } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
@@ -31,6 +33,11 @@ import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordio
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
+
+// 路怒模式 tracking (module-scoped so it survives re-renders): the last text sent via 常规发送 and the
+// grapheme slot the invisible char last landed in, so a repeat varies at a different position each time.
+let lastRoadRageText = ''
+let lastRoadRageIndex: number | undefined
 
 export function NormalSendTab() {
   // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
@@ -91,9 +98,23 @@ export function NormalSendTab() {
     }
 
     const isEmote = isEmoticonUnique(originalMessage)
-    const processedMessage = isEmote ? originalMessage : applyReplacements(originalMessage)
+    let processedMessage = isEmote ? originalMessage : applyReplacements(originalMessage)
     const wasReplaced = !isEmote && originalMessage !== processedMessage
     fasongText.value = ''
+
+    // 路怒模式: re-sending the exact same text would be dropped by B站's duplicate filter, so vary the
+    // repeat with one invisible char at a slot different from last time. Emotes are left alone (a char
+    // inside the id breaks it). Keyed on the original text so replacements don't mask a repeat.
+    let roadRaged = false
+    if (!isEmote && normalSendRoadRage.value && originalMessage === lastRoadRageText) {
+      const { text, index } = insertRandomChar(processedMessage, invisibleChar.value, lastRoadRageIndex)
+      processedMessage = text
+      lastRoadRageIndex = index
+      roadRaged = true
+    } else {
+      lastRoadRageIndex = undefined
+    }
+    lastRoadRageText = originalMessage
 
     try {
       const roomId = await ensureRoomId()
@@ -113,7 +134,7 @@ export function NormalSendTab() {
       for (let i = 0; i < total; i++) {
         const segment = segments[i]
         const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL)
-        const baseLabel = result.isEmoticon ? '手动表情' : '手动'
+        const baseLabel = result.isEmoticon ? '手动表情' : roadRaged ? '手动·路怒' : '手动'
         const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
         const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
 
@@ -224,6 +245,14 @@ export function NormalSendTab() {
               normalSendWrapBrackets.value = e.currentTarget.checked
             }}
             label='使用【】包裹弹幕内容'
+          />
+          <Checkbox
+            id='normalSendRoadRage'
+            checked={normalSendRoadRage.value}
+            onInput={e => {
+              normalSendRoadRage.value = e.currentTarget.checked
+            }}
+            label='路怒模式（重复发送相同弹幕时自动降重）'
           />
         </div>
       </AccordionContent>

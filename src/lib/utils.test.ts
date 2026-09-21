@@ -8,6 +8,7 @@ import {
   extractOpusAuthorUid,
   extractOpusPubDate,
   formatCodePoints,
+  insertRandomChar,
   isHttpUrl,
   parseCustomChar,
   processMessages,
@@ -252,5 +253,51 @@ describe('resolveInvisibleChar', () => {
   test('empty or invalid custom input falls back to the default', () => {
     expect(resolveInvisibleChar(INVISIBLE_CHAR_CUSTOM, '')).toBe(DEFAULT_INVISIBLE_CHAR)
     expect(resolveInvisibleChar(INVISIBLE_CHAR_CUSTOM, 'U+D800')).toBe(DEFAULT_INVISIBLE_CHAR)
+  })
+})
+
+/** Position-returning insert used by 路怒模式; avoids reusing the previous slot. */
+describe('insertRandomChar', () => {
+  test('returns text with the char at the reported index', () => {
+    for (let i = 0; i < 50; i++) {
+      const { text, index } = insertRandomChar('abcd', '~')
+      expect(text.replace('~', '')).toBe('abcd')
+      expect(text[index]).toBe('~')
+    }
+  })
+
+  test('avoids the given index when another slot exists', () => {
+    // 'ab' has slots 0,1,2; avoiding one must always yield a different index.
+    for (let i = 0; i < 100; i++) {
+      const { index } = insertRandomChar('ab', '~', 1)
+      expect(index).not.toBe(1)
+    }
+  })
+
+  test('consecutive inserts never repeat the same slot', () => {
+    let prev = insertRandomChar('hello', '~').index
+    for (let i = 0; i < 100; i++) {
+      const { index } = insertRandomChar('hello', '~', prev)
+      expect(index).not.toBe(prev)
+      prev = index
+    }
+  })
+
+  test('stays out of emote brackets and reports a valid outer slot', () => {
+    for (let i = 0; i < 50; i++) {
+      const { text, index } = insertRandomChar('[doge]', '~')
+      expect([0, 6]).toContain(index)
+      expect(['~[doge]', '[doge]~']).toContain(text)
+    }
+  })
+
+  test('empty text returns index -1 and is unchanged', () => {
+    expect(insertRandomChar('', '~')).toEqual({ text: '', index: -1 })
+  })
+
+  test('avoidIndex is ignored when it is the only slot', () => {
+    // A fully-bracketed string leaves only the two outer slots; avoiding one still yields the other.
+    const { index } = insertRandomChar('[ab]', '~', 0)
+    expect(index).toBe(4)
   })
 })

@@ -227,19 +227,12 @@ export function whenDomReady(cb: () => void): void {
 }
 
 /**
- * Inserts `char` at a random position for dedup-bypass. Grapheme-safe and emote-safe:
- * never lands inside a balanced `[...]` bracket (would break B站 emote rendering). Falls back to appending.
+ * Emote-safe insertion slots for `graphemes`: slot `k` inserts before `graphemes[k]` (or at the end
+ * when `k === length`). Every slot strictly inside a balanced `[...]` bracket is excluded, since a
+ * char there breaks B站 emote rendering; unbalanced brackets restrict nothing. Outer ends are always
+ * valid, so a non-empty string always has ≥2 slots.
  */
-export function addRandomCharacter(text: string, char: string): string {
-  if (!text || text.length === 0) return text
-
-  const graphemes = getGraphemes(text)
-
-  // Insertion at index k means "before graphemes[k]" (or at the end
-  // when k === graphemes.length). Mark every k that falls strictly
-  // inside a balanced `[...]` bmote as forbidden — i.e. k between
-  // (open+1) and (close), inclusive of close, since position `close`
-  // inserts BEFORE the `]` and is still inside the bracket.
+function allowedInsertIndices(graphemes: string[]): number[] {
   const forbidden = new Set<number>()
   let openAt = -1
   for (let i = 0; i < graphemes.length; i++) {
@@ -247,21 +240,45 @@ export function addRandomCharacter(text: string, char: string): string {
     if (g === '[') {
       openAt = i
     } else if (g === ']' && openAt !== -1) {
+      // `close` inclusive: inserting before `]` is still inside the bracket.
       for (let k = openAt + 1; k <= i; k++) forbidden.add(k)
       openAt = -1
     }
   }
-
   const allowed: number[] = []
   for (let k = 0; k <= graphemes.length; k++) {
     if (!forbidden.has(k)) allowed.push(k)
   }
+  return allowed
+}
 
-  const idx =
-    allowed.length > 0 ? (allowed[Math.floor(Math.random() * allowed.length)] ?? graphemes.length) : graphemes.length
+/**
+ * Inserts `char` at a random emote-safe position. When `avoidIndex` is set and another slot exists,
+ * that slot is skipped so a repeated message never varies at the same spot twice in a row.
+ * @returns the new text and the chosen grapheme index (offset into the ORIGINAL `text`; -1 for empty input).
+ */
+export function insertRandomChar(text: string, char: string, avoidIndex?: number): { text: string; index: number } {
+  if (!text || text.length === 0) return { text, index: -1 }
 
+  const graphemes = getGraphemes(text)
+  let allowed = allowedInsertIndices(graphemes)
+  if (allowed.length === 0) allowed = [graphemes.length]
+  if (avoidIndex !== undefined && allowed.length > 1) {
+    const pruned = allowed.filter(k => k !== avoidIndex)
+    if (pruned.length > 0) allowed = pruned
+  }
+
+  const idx = allowed[Math.floor(Math.random() * allowed.length)] ?? graphemes.length
   graphemes.splice(idx, 0, char)
-  return graphemes.join('')
+  return { text: graphemes.join(''), index: idx }
+}
+
+/**
+ * Inserts `char` at a random position for dedup-bypass. Grapheme-safe and emote-safe:
+ * never lands inside a balanced `[...]` bracket (would break B站 emote rendering). Falls back to appending.
+ */
+export function addRandomCharacter(text: string, char: string): string {
+  return insertRandomChar(text, char).text
 }
 
 /** Formats each code point as `U+XXXX`, space-separated. */
