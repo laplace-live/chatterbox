@@ -1,4 +1,5 @@
 import { BASE_URL } from './const'
+import { isEmoticonUnique } from './emoticon'
 import { appendLog } from './log'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import { aiEvasion, invisibleChar } from './store'
@@ -59,6 +60,10 @@ export async function tryAiEvasion(
   logPrefix: string
 ): Promise<TryAiEvasionResult> {
   if (!aiEvasion.value) return { success: false }
+
+  // Never evade an emote id: inserting chars breaks the exact match, so B站 re-sends it as literal text.
+  // A fast emote send fails on rate-limit/dup, not a sensitive word, so evasion is the wrong remedy anyway.
+  if (isEmoticonUnique(message)) return { success: false }
 
   appendLog(`🤖 ${logPrefix}AI规避：正在检测敏感词…`)
 
