@@ -69,6 +69,7 @@ import {
   userNotes,
 } from '../lib/user-notes'
 import { formatCodePoints, parseCustomChar } from '../lib/utils'
+import { DecisionModelSettings } from './decision-model-settings'
 import { PromptManager } from './prompt-manager'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -1539,6 +1540,8 @@ export function SettingsTab() {
           </div>
         </AccordionContent>
       </AccordionItem>
+
+      <DecisionModelSettings />
 
       <AccordionItem
         open={settingsAutoSeekOpen.value}

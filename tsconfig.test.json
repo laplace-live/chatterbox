@@ -5,7 +5,7 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "include": ["src/vite-env.d.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
   // Reset the parent's exclude, which filters out exactly these test files.
   "exclude": []
 }

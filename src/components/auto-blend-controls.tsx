@@ -1,7 +1,16 @@
 import { autoBlendStatus, CANDIDATE_LIMIT } from '../lib/auto-blend'
 import { cn } from '../lib/cn'
+import {
+  autoBlendDecisionEnabled,
+  autoBlendDecisionPresetId,
+  decisionPending,
+  decisionPresets,
+  describeDecisionGap,
+  settingsDecisionOpen,
+} from '../lib/decision-settings'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import {
+  activeTab,
   autoBlendAvoidRepeat,
   autoBlendAvoidRepeatCount,
   autoBlendCooldownAuto,
@@ -26,6 +35,7 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { NativeSelect } from './ui/native-select'
 
 function NumberInput({
   value,
@@ -121,6 +131,7 @@ export function AutoBlendControls() {
   const llmGap = describeLlmGap('autoBlend')
   const llmReady = llmGap === null
   const showPromptPicker = isLlmApiConfigured() && llmPromptsAutoBlend.value.length > 0
+  const decisionGap = autoBlendDecisionEnabled.value ? describeDecisionGap() : null
 
   return (
     <AccordionItem
@@ -291,6 +302,55 @@ export function AutoBlendControls() {
             }}
             label='保持当前直播间自动融入开关状态'
           />
+        </div>
+
+        <div class='my-2 flex flex-col gap-2'>
+          <Checkbox
+            id='autoBlendDecisionEnabled'
+            label='决策模型判断是否发送'
+            checked={autoBlendDecisionEnabled.value}
+            onInput={e => {
+              autoBlendDecisionEnabled.value = e.currentTarget.checked
+            }}
+          />
+          {autoBlendDecisionEnabled.value && (
+            <>
+              <div class='flex flex-wrap items-center gap-2'>
+                <NativeSelect
+                  aria-label='判断预设'
+                  className='min-w-25 flex-1'
+                  value={autoBlendDecisionPresetId.value}
+                  onChange={e => {
+                    autoBlendDecisionPresetId.value = e.currentTarget.value
+                  }}
+                >
+                  {!decisionPresets.value.some(preset => preset.id === autoBlendDecisionPresetId.value) && (
+                    <option value={autoBlendDecisionPresetId.value}>请选择判断预设</option>
+                  )}
+                  {decisionPresets.value.map(preset => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name || '未命名预设'}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => {
+                    settingsDecisionOpen.value = true
+                    activeTab.value = 'settings'
+                  }}
+                >
+                  配置决策模型
+                </Button>
+              </div>
+              <div class='text-ga6'>
+                达到触发条件后，将候选弹幕与近期上下文交给所选服务商判断；判断失败或超时会跳过本条弹幕。
+              </div>
+              {decisionGap && <div class='text-[red]'>{decisionGap}</div>}
+              {decisionPending.value && <div class='text-brand'>决策模型判断中…</div>}
+            </>
+          )}
         </div>
 
         {autoBlendEnabled.value && <AutoBlendStatus />}

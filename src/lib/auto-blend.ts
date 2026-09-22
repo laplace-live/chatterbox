@@ -2,7 +2,10 @@ import { computed, signal } from '@preact/signals'
 
 import { ensureRoomId, getCsrfToken, getDedeUid, setRandomDanmakuColor } from './api'
 import { subscribeDanmaku } from './danmaku-stream'
+import { autoBlendDecisionEnabled, decisionPending } from './decision-settings'
+import { decideAutoBlendCandidate } from './decision-tasks'
 import {
+  findEmoticon,
   formatLockedEmoticonReject,
   formatUnavailableEmoticonReject,
   isEmoticonUnique,
@@ -87,7 +90,9 @@ let unsubscribe: (() => void) | null = null
 let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
 let isSending = false
-// Recently triggered trends, sent or randomly dropped (counters Map keys); blocks re-fire of any within the last `autoBlendAvoidRepeatCount` when `autoBlendAvoidRepeat` is on.
+let sendController: AbortController | null = null
+const recentDecisionMessages: { text: string; receivedAt: number }[] = []
+// Processed trends, including decision skips, participate in optional repeat suppression.
 let recentTriggeredTexts: string[] = []
 
 /** Live snapshot consumed by `AutoBlendControls`: candidates, CPM, cooldown countdown. */
@@ -189,6 +194,11 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   // CPM reflects ROOM activity, so record even messages filtered out below.
   messageTimestamps.push(now)
 
+  if (autoBlendDecisionEnabled.value && rawText.trim() && !hasLargeEmote) {
+    recentDecisionMessages.push({ text: rawText.trim().slice(0, 200), receivedAt: now })
+    if (recentDecisionMessages.length > 20) recentDecisionMessages.shift()
+  }
+
   // Short-circuit the global freeze before any text work so nothing leaks through.
   if (now < cooldownUntil) return
 
@@ -237,7 +247,7 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   }
 }
 
-/** Record a triggered trend (sent or randomly dropped) for the `autoBlendAvoidRepeat` last-N check. */
+/** Record a processed trend for the `autoBlendAvoidRepeat` last-N check. */
 function recordRecentTrigger(text: string): void {
   recentTriggeredTexts.push(text)
   const avoidCap = autoBlendAvoidRepeatCount.value
@@ -275,6 +285,13 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   }
 
   isSending = true
+  const controller = new AbortController()
+  sendController = controller
+  const decisionRequired = autoBlendDecisionEnabled.value
+  const decisionContext = recentDecisionMessages
+    .filter(entry => Date.now() - entry.receivedAt <= autoBlendWindowSec.value * 1000)
+    .map(entry => entry.text)
+  const isCurrent = () => !controller.signal.aborted && autoBlendEnabled.value && sendController === controller
   // Engage the freeze and clear counters before the await; read cooldown fresh (not the snapshot signal)
   // so a bursty room gets an aggressive cooldown the moment it triggers.
   const cooldownNow = Date.now()
@@ -287,8 +304,29 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       return
     }
     const roomId = await ensureRoomId()
+    if (!isCurrent()) return
 
     const isEmote = isEmoticonUnique(originalText)
+
+    if (decisionRequired) {
+      recordRecentTrigger(originalText)
+      decisionPending.value = true
+      try {
+        const candidate = findEmoticon(originalText)?.emoji || originalText
+        const decision = await decideAutoBlendCandidate(candidate, decisionContext, controller.signal)
+        if (!isCurrent()) return
+        appendLog(`🧭 自动融入决策${decision.send ? '通过' : '跳过'}：${decision.reason}：${originalText}`)
+        if (!decision.send) return
+      } catch (err) {
+        if (isCurrent()) {
+          const message = err instanceof Error ? err.message : String(err)
+          appendLog(`⚠️ 自动融入决策失败，本轮跳过：${message}`)
+        }
+        return
+      } finally {
+        if (sendController === controller) decisionPending.value = false
+      }
+    }
 
     // Polish the ORIGINAL trend (not the post-replacement string) so the LLM sees natural Chinese;
     // once per trigger (not per repeat) to bound cost. Skipped for emotes (opaque ID → useless plain text).
@@ -300,7 +338,8 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
         return
       }
       try {
-        const polished = await polishWithLlm('autoBlend', originalText)
+        const polished = await polishWithLlm('autoBlend', originalText, { signal: controller.signal })
+        if (!isCurrent()) return
         if (!polished.trim()) {
           // Empty polish = refusal; bail rather than send an empty danmaku.
           appendLog('⚠️ 自动融入 AI 返回为空，本轮跳过')
@@ -309,8 +348,10 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
         appendLog(`✨ 自动融入 AI 润色：${originalText} → ${polished}`)
         yoloed = polished
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        appendLog(`🔴 自动融入 AI 润色失败：${msg}`)
+        if (isCurrent()) {
+          const msg = err instanceof Error ? err.message : String(err)
+          appendLog(`🔴 自动融入 AI 润色失败：${msg}`)
+        }
         return
       }
     }
@@ -323,7 +364,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
     // Record before sending so `autoBlendAvoidRepeat` holds even if the send fails.
-    recordRecentTrigger(originalText)
+    if (!decisionRequired) recordRecentTrigger(originalText)
 
     let toSend = replaced
     if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend, invisibleChar.value)
@@ -333,6 +374,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       await setRandomDanmakuColor(roomId, csrfToken)
     }
 
+    if (!isCurrent()) return
     const result = await enqueueDanmaku(toSend, roomId, csrfToken, SendPriority.AUTO)
     const label = result.isEmoticon ? '自动融入(表情)' : '自动融入'
     const display = wasReplaced || toSend !== originalText ? `${originalText} → ${toSend}` : toSend
@@ -341,7 +383,11 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     const msg = err instanceof Error ? err.message : String(err)
     appendLog(`🔴 自动融入出错：${msg}`)
   } finally {
-    isSending = false
+    if (sendController === controller) {
+      sendController = null
+      isSending = false
+      decisionPending.value = false
+    }
   }
 }
 
@@ -364,6 +410,10 @@ export function startAutoBlend(): void {
 }
 
 export function stopAutoBlend(): void {
+  sendController?.abort()
+  sendController = null
+  isSending = false
+  decisionPending.value = false
   if (snapshotTimer) {
     clearInterval(snapshotTimer)
     snapshotTimer = null
@@ -376,5 +426,6 @@ export function stopAutoBlend(): void {
   messageTimestamps.length = 0
   cooldownUntil = 0
   recentTriggeredTexts = []
+  recentDecisionMessages.length = 0
   autoBlendStatus.value = { candidates: [], cooldownRemainingSec: 0, chatsPerMinute: 0, cooldownEffectiveSec: 0 }
 }
