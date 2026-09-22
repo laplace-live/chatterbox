@@ -185,6 +185,13 @@ function emitStatus(now: number): void {
 // `computed` so patterns compile once per blacklist edit, not per danmaku (hot path).
 const messageBlacklistMatcher = computed(() => compileMessageBlacklist(Object.keys(autoBlendMessageBlacklist.value)))
 
+/** Whether the sender or text is blacklisted; such danmaku neither count toward trends nor reach the decision model. */
+function isBlacklisted(uid: string | null, text: string): boolean {
+  if (uid && uid in autoBlendUserBlacklist.value) return true
+  // Literal entries match the whole trimmed text; `/pattern/flags` catch evasion variants (口交 / 口***交 / 口 活 交).
+  return testMessageBlacklist(messageBlacklistMatcher.value, text)
+}
+
 function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, hasLargeEmote: boolean): void {
   if (!autoBlendEnabled.value) return
 
@@ -196,7 +203,7 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   messageTimestamps.push(now)
 
   const text = rawText.trim()
-  if (autoBlendDecisionEnabled.value && text && !hasLargeEmote) {
+  if (autoBlendDecisionEnabled.value && text && !hasLargeEmote && !isBlacklisted(uid, text)) {
     recentDecisionMessages.push({ text: text.slice(0, 200), receivedAt: now })
     if (recentDecisionMessages.length > 20) recentDecisionMessages.shift()
   }
@@ -208,15 +215,10 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   // @ replies target one user, never a trend.
   if (isReply) return
 
-  // Don't let an exact repeat of a recently triggered trend (sent or randomly dropped) re-trigger; skipped pre-counter so it stays off the leaderboard.
+  // Don't let an exact repeat of a recently triggered trend (sent, randomly dropped, or decision-skipped) re-trigger; skipped pre-counter so it stays off the leaderboard.
   if (autoBlendAvoidRepeat.value && recentTriggeredTexts.slice(-autoBlendAvoidRepeatCount.value).includes(text)) return
 
-  if (uid) {
-    if (uid in autoBlendUserBlacklist.value) return
-  }
-
-  // Literal entries match the whole trimmed text; `/pattern/flags` catch evasion variants (口交 / 口***交 / 口 活 交).
-  if (testMessageBlacklist(messageBlacklistMatcher.value, text)) return
+  if (isBlacklisted(uid, text)) return
 
   // Locked emotes (fan-club / 舰长 / 提督 / 总督) can't be auto-sent; keep them out of `counters` so they
   // don't accumulate an unactionable trend or waste a `triggerSend` cooldown. `triggerSend` re-checks the cache race.
@@ -291,8 +293,11 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
   const decisionRequired = autoBlendDecisionEnabled.value
   const now = Date.now()
   const contextCutoff = now - autoBlendWindowSec.value * 1000
+  // Emote IDs become display names so the context reads like the (also mapped) candidate.
   const decisionContext = decisionRequired
-    ? recentDecisionMessages.filter(entry => entry.receivedAt >= contextCutoff).map(entry => entry.text)
+    ? recentDecisionMessages
+        .filter(entry => entry.receivedAt >= contextCutoff)
+        .map(entry => findEmoticon(entry.text)?.emoji || entry.text)
     : []
   // Engage the freeze and clear counters before the await; read cooldown fresh (not the snapshot signal)
   // so a bursty room gets an aggressive cooldown the moment it triggers.
@@ -317,14 +322,17 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     }
 
     if (decisionRequired) {
-      recordRecentTrigger(originalText)
       decisionPending.value = true
       try {
         const candidate = emote?.emoji || originalText
         const decision = await decideAutoBlendCandidate(candidate, decisionContext, controller.signal)
         if (!isCurrent()) return
         appendLog(`🧭 自动融入决策${decision.send ? '通过' : '跳过'}：${decision.reason}：${originalText}`)
-        if (!decision.send) return
+        if (!decision.send) {
+          // Skips are deduplicated like sends; failures aren't, so a timed-out trend can retry.
+          recordRecentTrigger(originalText)
+          return
+        }
       } catch (err) {
         if (isCurrent()) {
           const message = err instanceof Error ? err.message : String(err)
@@ -339,7 +347,8 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     // Polish the ORIGINAL trend (not the post-replacement string) so the LLM sees natural Chinese;
     // once per trigger (not per repeat) to bound cost. Skipped for emotes (opaque ID → useless plain text).
     let yoloed = originalText
-    if (shouldPolish) {
+    // Re-read so turning YOLO off during the decision skips the paid polish.
+    if (shouldPolish && autoBlendYolo.value) {
       try {
         const polished = await polishWithLlm('autoBlend', originalText, { signal: controller.signal })
         if (!isCurrent()) return
@@ -367,7 +376,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     appendLog(`🚲 自动融入触发 (${senderInfo}): ${originalText}`)
 
     // Record before sending so `autoBlendAvoidRepeat` holds even if the send fails.
-    if (!decisionRequired) recordRecentTrigger(originalText)
+    recordRecentTrigger(originalText)
 
     let toSend = replaced
     if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend, invisibleChar.value)

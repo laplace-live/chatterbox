@@ -16,8 +16,10 @@ export async function decideAutoBlendCandidate(
     state: { candidate, recentMessages },
     signal,
   })
+  // Floor to 0.1% so a probability just under the threshold never prints as equal to it.
+  const percent = Math.floor(sendProbability * 1000) / 10
   return {
     send: sendProbability >= threshold,
-    reason: `「${preset.name}」发送概率 ${Math.round(sendProbability * 100)}%（阈值 ${Math.round(threshold * 100)}%）`,
+    reason: `「${preset.name}」发送概率 ${percent}%（阈值 ${Math.round(threshold * 100)}%）`,
   }
 }

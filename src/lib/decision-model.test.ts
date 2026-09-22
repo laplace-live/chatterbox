@@ -42,14 +42,15 @@ async function harness() {
     }
     // instance ${harnessId++}
   `).toString('base64')}`
-  const transport = (await import(transportUrl)) as { requests: MockRequest[] }
+  const transport: { requests: MockRequest[] } = await import(transportUrl)
   const testSource = source
     .replace("from '$'", `from '${transportUrl}'`)
+    .replace("from './stt/normalize'", `from '${new URL('./stt/normalize.ts', import.meta.url).href}'`)
     .replace("from './utils'", `from '${new URL('./utils.ts', import.meta.url).href}'`)
   const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(testSource)
-  const client = (await import(
+  const client: typeof import('./decision-model') = await import(
     `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
-  )) as typeof import('./decision-model')
+  )
   return {
     ...client,
     requests: transport.requests,
@@ -147,9 +148,9 @@ describe('evaluateDecision', () => {
     { protocol: 'unsupported' },
   ])('rejects invalid configuration before a request %#', async overrides => {
     const client = await harness()
-    await expect(
-      client.evaluateDecision({ provider: { ...provider, ...overrides } as DecisionProviderProfile, preset, state })
-    ).rejects.toThrow()
+    // Deliberately invalid input (e.g. an unknown protocol) that the type rightly forbids.
+    const invalid = { ...provider, ...overrides } as DecisionProviderProfile
+    await expect(client.evaluateDecision({ provider: invalid, preset, state })).rejects.toThrow()
     expect(client.requests).toHaveLength(0)
   })
 

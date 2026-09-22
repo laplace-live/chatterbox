@@ -94,7 +94,7 @@ export const autoBlendCooldownSec = gmSignal('autoBlendCooldownSec', 10) // b
 // When true, b is derived from chat velocity (CPM), clamped 2–60 s, and the fixed `autoBlendCooldownSec` is ignored.
 export const autoBlendCooldownAuto = gmSignal('autoBlendCooldownAuto', false)
 export const autoBlendUseReplacements = gmSignal('autoBlendUseReplacements', true)
-// When true, drop incoming danmaku matching recently triggered texts (auto-sent or randomly dropped) so a repeating chat can't re-trigger after cooldown. Tracked per startAutoBlend session (cleared on stop).
+// When true, drop incoming danmaku matching recently triggered texts (auto-sent, randomly dropped, or decision-skipped) so a repeating chat can't re-trigger after cooldown. Tracked per startAutoBlend session (cleared on stop).
 export const autoBlendAvoidRepeat = gmSignal('autoBlendAvoidRepeat', false)
 // How many recent triggers to dedupe against when `autoBlendAvoidRepeat` is on.
 export const autoBlendAvoidRepeatCount = gmSignal('autoBlendAvoidRepeatCount', 3)

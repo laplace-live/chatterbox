@@ -1,4 +1,5 @@
 import { GM_xmlhttpRequest } from '$'
+import { readStringField } from './stt/normalize'
 import { readPath } from './utils'
 
 export type DecisionProtocol = 'typesafe' | 'openrouter'
@@ -85,7 +86,7 @@ function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortS
     if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
     if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-    let request: { abort: () => void }
+    let request: { abort?: () => void } | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
     // A promise settles once, so repeat calls (e.g. `onabort` after our own abort) are no-ops.
     const finish = (error?: Error, value?: unknown) => {
@@ -96,12 +97,16 @@ function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortS
     }
     const abort = () => {
       finish(cancelled())
-      request.abort()
+      request?.abort?.()
     }
     const timeout = () => {
-      finish(new Error('决策模型请求超时（8 秒）'))
-      request.abort()
+      finish(new Error(`决策模型请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`))
+      request?.abort?.()
     }
+    // Armed before the call so a synchronous callback's `finish` clears them. The manual timer also
+    // bounds a pending userscript-manager @connect prompt, which GM's own `timeout` doesn't cover.
+    signal?.addEventListener('abort', abort, { once: true })
+    timer = setTimeout(timeout, REQUEST_TIMEOUT_MS)
     try {
       request = GM_xmlhttpRequest({
         method: body === undefined ? 'GET' : 'POST',
@@ -127,10 +132,7 @@ function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortS
       })
     } catch {
       finish(new Error('无法发起决策模型请求'))
-      return
     }
-    signal?.addEventListener('abort', abort, { once: true })
-    timer = setTimeout(timeout, REQUEST_TIMEOUT_MS)
   })
 }
 
@@ -150,12 +152,10 @@ export async function fetchDecisionModels(
       const modalities = readPath(entry, 'architecture', 'output_modalities')
       if (Array.isArray(modalities) && !modalities.includes('decisions')) continue
     }
-    const rawId = readPath(entry, typesafe ? 'name' : 'id')
-    const id = typeof rawId === 'string' ? rawId.trim() : ''
+    const id = readStringField(entry, typesafe ? 'name' : 'id')?.trim()
     if (!id || seen.has(id)) continue
     seen.add(id)
-    const rawName = readPath(entry, 'name')
-    const name = typeof rawName === 'string' ? rawName.trim() : ''
+    const name = readStringField(entry, 'name')?.trim()
     models.push(name && name !== id ? { id, name } : { id })
   }
   if (!models.length) throw new Error('未找到决策模型，可手动填写模型 ID')

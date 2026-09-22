@@ -43,6 +43,14 @@ const EXTERNAL_SERVICES: ExternalService[] = [
       '兼容 OpenAI API 的大语言模型服务，由用户自行配置 API 地址与 API Key。脚本会向用户填写的地址发送请求，请确保该地址可信。',
   },
   {
+    name: '决策模型 API',
+    host: 'api.typesafe.ai / openrouter.ai（默认，可自定义）',
+    trigger:
+      '在「自动融入」中勾选「决策模型判断是否发送」后弹幕达到触发条件时，或在设置「决策模型」中点击「刷新列表」时',
+    description:
+      '将候选弹幕、近期弹幕文本（最多 20 条，不含 UID 与昵称）以及所选判断预设发送至用户配置的决策服务商，由其判断是否发送。该功能默认关闭；请求不携带 Cookie，请确保所填地址可信。',
+  },
+  {
     name: 'Soniox 语音识别',
     host: 'api.soniox.com',
     url: 'https://soniox.com',

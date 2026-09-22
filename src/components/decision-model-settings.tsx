@@ -164,8 +164,9 @@ export function DecisionModelSettings() {
                 value={provider.protocol}
                 onChange={e => {
                   const protocol = e.currentTarget.value
+                  // Keys are vendor-specific; keeping it would send the old vendor's key to the new host.
                   if (isDecisionProtocol(protocol))
-                    updateConnection({ protocol, ...DECISION_PROVIDER_DEFAULTS[protocol] })
+                    updateConnection({ protocol, ...DECISION_PROVIDER_DEFAULTS[protocol], apiKey: '' })
                 }}
               >
                 <option value='typesafe'>TypeSafe</option>
@@ -224,7 +225,8 @@ export function DecisionModelSettings() {
                 onChange={model => updateDecisionProvider(provider.id, { model })}
                 placeholder='从模型列表选择'
                 unloadedText='可手动填写模型 ID，或刷新列表'
-                missingLabel={model => `${model}（手动填写）`}
+                // Only once a list is loaded; before that `unloadedText` explains the empty picker.
+                missingLabel={provider.models.length > 0 ? model => `${model}（已保存，不在当前列表中）` : undefined}
               />
               <Button
                 variant='outline'
@@ -269,8 +271,12 @@ export function DecisionModelSettings() {
               className='text-[red]'
               onClick={() => {
                 const remaining = decisionPresets.value.filter(entry => entry.id !== preset.id)
+                const next = remaining[0]
+                // The edited preset is the live auto-blend gate, so name the replacement before switching.
+                const switchNote = next ? `「自动融入」将改用「${next.name || '未命名预设'}」。` : ''
+                if (!confirm(`确定删除判断预设「${preset.name || '未命名预设'}」？${switchNote}`)) return
                 decisionPresets.value = remaining
-                autoBlendDecisionPresetId.value = remaining[0]?.id ?? ''
+                autoBlendDecisionPresetId.value = next?.id ?? ''
               }}
             >
               删除
@@ -306,7 +312,8 @@ export function DecisionModelSettings() {
             step='1'
             value={Math.round(autoBlendDecisionThreshold.value * 100)}
             onInput={e => {
-              const value = e.currentTarget.valueAsNumber
+              // Whole percents only, so the enforced threshold matches the displayed one.
+              const value = Math.round(e.currentTarget.valueAsNumber)
               if (Number.isFinite(value)) autoBlendDecisionThreshold.value = Math.min(100, Math.max(1, value)) / 100
             }}
           />

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import * as signals from '@preact/signals'
 
-import type { DanmakuEvent, DanmakuSubscription } from './danmaku-stream'
+import type { DanmakuEvent } from './danmaku-stream'
 
 import * as blacklist from './message-blacklist'
 import * as utils from './utils'
@@ -10,6 +10,10 @@ interface Decision {
   send: boolean
   reason: string
 }
+
+// The engine never reads `node`, and Bun has no DOM to build one.
+type HarnessEvent = Omit<DanmakuEvent, 'node'>
+type HarnessSubscription = { onMessage?: (event: HarnessEvent) => void }
 
 const source = await Bun.file(new URL('./auto-blend.ts', import.meta.url)).text()
 const transpiler = new Bun.Transpiler({ loader: 'ts' })
@@ -55,7 +59,7 @@ async function createHarness() {
   const emotes = new Map<string, string>()
   const locked = new Set<string>()
   const unavailable = new Set<string>()
-  let subscriber: DanmakuSubscription | undefined
+  let subscriber: HarnessSubscription | undefined
   let tick: (() => void) | undefined
   let now = 10_000
   const dependencies = {
@@ -67,7 +71,7 @@ async function createHarness() {
       setRandomDanmakuColor: async () => {},
     },
     './danmaku-stream': {
-      subscribeDanmaku: (subscription: DanmakuSubscription) => {
+      subscribeDanmaku: (subscription: HarnessSubscription) => {
         subscriber = subscription
         return () => {
           subscriber = undefined
@@ -102,8 +106,7 @@ async function createHarness() {
     },
   }
   const key = `__autoBlendTest${++moduleId}`
-  const globals = globalThis as unknown as Record<string, unknown>
-  globals[key] = dependencies
+  Reflect.set(globalThis, key, dependencies)
   // Each module gets isolated imports without changing Bun's shared module cache.
   const injected = source.replace(/import\s+\{([^}]+)\}\s+from\s+'([^']+)'/g, (_match, names, path) => {
     if (!(path in dependencies)) throw new Error(`Unmocked import: ${path}`)
@@ -115,14 +118,13 @@ async function createHarness() {
     const code = transpiler.transformSync(clock + injected)
     engine = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
   } finally {
-    delete globals[key]
+    Reflect.deleteProperty(globalThis, key)
   }
   cleanups.push(() => engine.stopAutoBlend())
   engine.startAutoBlend()
 
-  function message(text: string, uid: string | null = 'viewer-1', extra: Partial<DanmakuEvent> = {}) {
+  function message(text: string, uid: string | null = 'viewer-1', extra: Partial<HarnessEvent> = {}) {
     subscriber?.onMessage?.({
-      node: {} as HTMLElement,
       text,
       uid,
       uname: 'private-viewer-name',
@@ -236,6 +238,32 @@ describe('automatic blend decision gate', () => {
     expect(h.engine.decisionPending.value).toBe(false)
   })
 
+  test('a failed decision does not mute the trend once cooldown ends', async () => {
+    const h = await createHarness()
+    h.decide.mockRejectedValueOnce(new Error('请求超时'))
+    h.qualify()
+    await flush()
+    h.advance(2001)
+    h.qualify()
+    await flush()
+    expect(h.decide).toHaveBeenCalledTimes(2)
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
+  })
+
+  test('turning YOLO off during a pending decision skips polishing', async () => {
+    const h = await createHarness()
+    const pending = Promise.withResolvers<Decision>()
+    h.settings.autoBlendYolo.value = true
+    h.decide.mockImplementation(() => pending.promise)
+    h.qualify()
+    await flush()
+    h.settings.autoBlendYolo.value = false
+    pending.resolve({ send: true, reason: '可以发送' })
+    await flush()
+    expect(h.polish).not.toHaveBeenCalled()
+    expect(h.enqueue.mock.calls[0]?.[0]).toBe('好耶')
+  })
+
   test('polishes the approved original candidate before queueing', async () => {
     const h = await createHarness()
     const pending = Promise.withResolvers<Decision>()
@@ -254,13 +282,14 @@ describe('automatic blend decision gate', () => {
   test('existing filters and random drops run before any model request', async () => {
     const h = await createHarness()
     h.settings.autoBlendMessageBlacklist.value = { 屏蔽文本: '' }
-    h.settings.autoBlendUserBlacklist.value = { 'blocked-user': '' }
+    h.settings.autoBlendUserBlacklist.value = { 'blocked-0': '', 'blocked-1': '' }
     h.locked.add('locked-emote')
     h.unavailable.add('unavailable-emote')
     for (const text of ['屏蔽文本', 'locked-emote', 'unavailable-emote']) h.qualify(text)
     for (let i = 0; i < 5; i++) {
-      h.message('自己的消息', 'self')
-      h.message('用户黑名单', 'blocked-user')
+      // Two distinct uids each, so these would qualify if their filter were missing.
+      h.message('自己的消息', i === 0 ? 'viewer-9' : 'self')
+      h.message('用户黑名单', `blocked-${i % 2}`)
       h.message('回复消息', `viewer-${i}`, { isReply: true })
       h.message('大表情', `viewer-${i}`, { hasLargeEmote: true })
     }
@@ -285,6 +314,18 @@ describe('automatic blend decision gate', () => {
     expect(JSON.stringify(context)).not.toContain('private-viewer-name')
   })
 
+  test('keeps blacklisted senders and texts out of the decision context', async () => {
+    const h = await createHarness()
+    h.settings.autoBlendUserBlacklist.value = { 'blocked-user': '' }
+    h.settings.autoBlendMessageBlacklist.value = { 屏蔽文本: '' }
+    h.message('黑名单用户的消息', 'blocked-user')
+    h.message('屏蔽文本', 'viewer-3')
+    h.message('正常上下文', 'viewer-3')
+    h.qualify()
+    await flush()
+    expect(h.decide.mock.calls[0]?.[1]).toEqual(['正常上下文', '好耶', '好耶', '好耶'])
+  })
+
   test('evaluates an emote display name while preserving its sendable ID', async () => {
     const h = await createHarness()
     h.settings.autoBlendYolo.value = true
@@ -292,6 +333,7 @@ describe('automatic blend decision gate', () => {
     h.qualify('room_42_7')
     await flush()
     expect(h.decide.mock.calls[0]?.[0]).toBe('好耶')
+    expect(h.decide.mock.calls[0]?.[1]).toEqual(['好耶', '好耶', '好耶'])
     expect(h.enqueue.mock.calls[0]?.[0]).toBe('room_42_7')
     expect(h.polish).not.toHaveBeenCalled()
   })
