@@ -1,8 +1,8 @@
-import { computed, signal } from '@preact/signals'
+import { computed } from '@preact/signals'
 
-import type { DecisionPreset, DecisionProtocol, DecisionProviderProfile } from './decision-model'
+import type { DecisionPreset, DecisionProviderProfile } from './decision-model'
 
-import { DECISION_PROVIDER_DEFAULTS } from './decision-model'
+import { DECISION_PROVIDER_DEFAULTS, describeDecisionConnectionGap } from './decision-model'
 import { gmSignal } from './gm-signal'
 
 export const settingsDecisionOpen = gmSignal('settingsDecisionOpen', false)
@@ -37,15 +37,18 @@ export const decisionPresets = gmSignal<DecisionPreset[]>('decisionPresets', [
 export const autoBlendDecisionEnabled = gmSignal('autoBlendDecisionEnabled', false)
 export const autoBlendDecisionPresetId = gmSignal('autoBlendDecisionPresetId', 'troll')
 export const autoBlendDecisionThreshold = gmSignal('autoBlendDecisionThreshold', 0.8)
-export const decisionPending = signal(false)
+/** Preset picked by `autoBlendDecisionPresetId`; null when stale (no fallback, so the gap stays visible). */
+export const activeDecisionPreset = computed<DecisionPreset | null>(
+  () => decisionPresets.value.find(preset => preset.id === autoBlendDecisionPresetId.value) ?? null
+)
 
 /** Add and activate a decision provider profile. */
-export function addDecisionProvider(protocol: DecisionProtocol = 'typesafe'): DecisionProviderProfile {
+export function addDecisionProvider(): DecisionProviderProfile {
   const provider: DecisionProviderProfile = {
     id: crypto.randomUUID(),
     name: `决策服务商 ${decisionProviders.value.length + 1}`,
-    protocol,
-    ...DECISION_PROVIDER_DEFAULTS[protocol],
+    protocol: 'typesafe',
+    ...DECISION_PROVIDER_DEFAULTS.typesafe,
     apiKey: '',
     models: [],
   }
@@ -70,29 +73,27 @@ export function updateDecisionProvider(id: string, patch: Partial<Omit<DecisionP
   )
 }
 
-/** Explain missing decision configuration, or return null when ready. */
-export function describeDecisionGap(): string | null {
+/** Everything a decision needs, or a hint naming what's missing. */
+export function resolveDecisionConfig():
+  | { provider: DecisionProviderProfile; preset: DecisionPreset; threshold: number }
+  | string {
   const provider = activeDecisionProvider.value
   if (!provider) return '请先在「设置 → 决策模型」中添加服务商'
-  if (provider.protocol !== 'typesafe' && provider.protocol !== 'openrouter') return '请选择支持的决策 API 协议'
-  try {
-    const url = new URL(provider.apiBase.trim())
-    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
-      return '请填写有效的 HTTP(S) API 地址，不含账号、查询参数或片段'
-    }
-    if (['api.typesafe.ai', 'openrouter.ai'].includes(url.hostname) && !provider.apiKey.trim()) {
-      return '请先在「设置 → 决策模型」中填写 API Key'
-    }
-  } catch {
-    return '请先在「设置 → 决策模型」中填写有效的 API 地址'
-  }
+  const connectionGap = describeDecisionConnectionGap(provider)
+  if (connectionGap) return connectionGap
   if (!provider.model.trim()) return '请先在「设置 → 决策模型」中填写模型 ID'
-  const preset = decisionPresets.value.find(entry => entry.id === autoBlendDecisionPresetId.value)
+  const preset = activeDecisionPreset.value
   if (!preset) return '请先选择一个决策预设'
   if (!preset.name.trim() || !preset.instructions.trim()) {
     return '请在「设置 → 决策模型」中补全所选预设的名称与发送条件'
   }
   const threshold = autoBlendDecisionThreshold.value
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) return '发送概率阈值须大于 0% 且不超过 100%'
-  return null
+  return { provider, preset, threshold }
+}
+
+/** Explain missing decision configuration, or return null when ready. */
+export function describeDecisionGap(): string | null {
+  const config = resolveDecisionConfig()
+  return typeof config === 'string' ? config : null
 }

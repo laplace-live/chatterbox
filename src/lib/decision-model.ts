@@ -1,5 +1,5 @@
 import { GM_xmlhttpRequest } from '$'
-import { isRecord } from './utils'
+import { readPath } from './utils'
 
 export type DecisionProtocol = 'typesafe' | 'openrouter'
 
@@ -30,24 +30,36 @@ export const DECISION_PROVIDER_DEFAULTS: Record<DecisionProtocol, { apiBase: str
 }
 
 const REQUEST_TIMEOUT_MS = 8_000
+// Only the default hosts require a key; custom bases may be keyless local services.
+const KEY_REQUIRED_HOSTS = Object.values(DECISION_PROVIDER_DEFAULTS).map(({ apiBase }) => new URL(apiBase).hostname)
 
-function endpoint(provider: DecisionProviderProfile, action: 'evaluate' | 'models'): string {
-  if (provider.protocol !== 'typesafe' && provider.protocol !== 'openrouter') {
-    throw new Error('不支持的决策模型协议')
-  }
-  if (!provider.apiBase.trim()) throw new Error('请填写决策模型 API 地址')
+/** Narrow a persisted or imported protocol string to a supported one. */
+export function isDecisionProtocol(value: string): value is DecisionProtocol {
+  return Object.hasOwn(DECISION_PROVIDER_DEFAULTS, value)
+}
+
+/** Why `provider`'s protocol, API base, or key is unusable, or null when it can be called. */
+export function describeDecisionConnectionGap(provider: DecisionProviderProfile): string | null {
+  if (!isDecisionProtocol(provider.protocol)) return '不支持的决策模型协议'
+  const apiBase = provider.apiBase.trim()
+  if (!apiBase) return '请填写决策模型 API 地址'
   let base: URL
   try {
-    base = new URL(provider.apiBase.trim())
+    base = new URL(apiBase)
   } catch {
-    throw new Error('决策模型 API 地址格式无效')
+    return '决策模型 API 地址格式无效'
   }
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
-    throw new Error('决策模型 API 地址须为不含认证信息、查询参数或片段的 HTTP(S) 地址')
+    return '决策模型 API 地址须为不含认证信息、查询参数或片段的 HTTP(S) 地址'
   }
-  if (['api.typesafe.ai', 'openrouter.ai'].includes(base.hostname) && !provider.apiKey.trim()) {
-    throw new Error('请填写决策模型 API Key')
-  }
+  if (KEY_REQUIRED_HOSTS.includes(base.hostname) && !provider.apiKey.trim()) return '请填写决策模型 API Key'
+  return null
+}
+
+function endpoint(provider: DecisionProviderProfile, action: 'evaluate' | 'models'): string {
+  const gap = describeDecisionConnectionGap(provider)
+  if (gap) throw new Error(gap)
+  const base = new URL(provider.apiBase.trim())
   let path = base.pathname.replace(/\/+$/, '')
   if (provider.protocol === 'openrouter') {
     path = path.replace(/\/v1$/, '')
@@ -61,37 +73,35 @@ function endpoint(provider: DecisionProviderProfile, action: 'evaluate' | 'model
   return base.toString()
 }
 
-function requestJson(url: string, apiKey: string, body: unknown | undefined, signal?: AbortSignal): Promise<unknown> {
+const cancelled = () => new DOMException('决策请求已取消', 'AbortError')
+
+function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DOMException('决策请求已取消', 'AbortError'))
+      reject(cancelled())
       return
     }
     const headers: Record<string, string> = { Accept: 'application/json' }
     if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
     if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-    let request: { abort: () => void } | undefined
-    let settled = false
+    let request: { abort: () => void }
     let timer: ReturnType<typeof setTimeout> | undefined
+    // A promise settles once, so repeat calls (e.g. `onabort` after our own abort) are no-ops.
     const finish = (error?: Error, value?: unknown) => {
-      if (settled) return
-      settled = true
       clearTimeout(timer)
       signal?.removeEventListener('abort', abort)
       if (error) reject(error)
       else resolve(value)
     }
     const abort = () => {
-      finish(new DOMException('决策请求已取消', 'AbortError'))
-      request?.abort()
+      finish(cancelled())
+      request.abort()
     }
     const timeout = () => {
       finish(new Error('决策模型请求超时（8 秒）'))
-      request?.abort()
+      request.abort()
     }
-    signal?.addEventListener('abort', abort, { once: true })
-    timer = setTimeout(timeout, REQUEST_TIMEOUT_MS)
     try {
       request = GM_xmlhttpRequest({
         method: body === undefined ? 'GET' : 'POST',
@@ -112,13 +122,15 @@ function requestJson(url: string, apiKey: string, body: unknown | undefined, sig
           }
         },
         onerror: () => finish(new Error('无法连接到决策模型，请检查 API 地址与服务状态')),
-        onabort: () => finish(new DOMException('决策请求已取消', 'AbortError')),
+        onabort: () => finish(cancelled()),
         ontimeout: timeout,
       })
-      if (signal?.aborted) request?.abort()
     } catch {
       finish(new Error('无法发起决策模型请求'))
+      return
     }
+    signal?.addEventListener('abort', abort, { once: true })
+    timer = setTimeout(timeout, REQUEST_TIMEOUT_MS)
   })
 }
 
@@ -128,21 +140,22 @@ export async function fetchDecisionModels(
   signal?: AbortSignal
 ): Promise<DecisionModel[]> {
   const json = await requestJson(endpoint(provider, 'models'), provider.apiKey, undefined, signal)
-  const entries = isRecord(json) ? (provider.protocol === 'typesafe' ? json.models : json.data) : undefined
+  const typesafe = provider.protocol === 'typesafe'
+  const entries = readPath(json, typesafe ? 'models' : 'data')
   if (!Array.isArray(entries)) throw new Error('决策模型返回数据缺少模型列表')
   const models: DecisionModel[] = []
   const seen = new Set<string>()
   for (const entry of entries) {
-    if (!isRecord(entry)) continue
-    if (provider.protocol === 'openrouter' && isRecord(entry.architecture)) {
-      const modalities = entry.architecture.output_modalities
+    if (!typesafe) {
+      const modalities = readPath(entry, 'architecture', 'output_modalities')
       if (Array.isArray(modalities) && !modalities.includes('decisions')) continue
     }
-    const rawId = provider.protocol === 'typesafe' ? entry.name : entry.id
+    const rawId = readPath(entry, typesafe ? 'name' : 'id')
     const id = typeof rawId === 'string' ? rawId.trim() : ''
     if (!id || seen.has(id)) continue
     seen.add(id)
-    const name = typeof entry.name === 'string' ? entry.name.trim() : ''
+    const rawName = readPath(entry, 'name')
+    const name = typeof rawName === 'string' ? rawName.trim() : ''
     models.push(name && name !== id ? { id, name } : { id })
   }
   if (!models.length) throw new Error('未找到决策模型，可手动填写模型 ID')
@@ -184,17 +197,16 @@ export async function evaluateDecision(options: {
     },
     signal
   )
-  const answers = isRecord(json) && isRecord(json.answers) ? json.answers : undefined
-  const answer = answers?.send
+  const answer = readPath(json, 'answers', 'send')
+  const probability = readPath(answer, 'noul')
   if (
-    !isRecord(answer) ||
-    answer.type !== 'noul' ||
-    typeof answer.noul !== 'number' ||
-    !Number.isFinite(answer.noul) ||
-    answer.noul < 0 ||
-    answer.noul > 1
+    readPath(answer, 'type') !== 'noul' ||
+    typeof probability !== 'number' ||
+    !Number.isFinite(probability) ||
+    probability < 0 ||
+    probability > 1
   ) {
     throw new Error('决策模型返回的发送判断无效')
   }
-  return { sendProbability: answer.noul }
+  return { sendProbability: probability }
 }

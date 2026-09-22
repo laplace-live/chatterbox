@@ -16,16 +16,6 @@ const transpiler = new Bun.Transpiler({ loader: 'ts' })
 const cleanups: (() => void)[] = []
 let moduleId = 0
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (error: Error) => void
-  const promise = new Promise<T>((yes, no) => {
-    resolve = yes
-    reject = no
-  })
-  return { promise, resolve, reject }
-}
-
 async function flush(): Promise<void> {
   await Bun.sleep(0)
 }
@@ -52,7 +42,7 @@ async function createHarness() {
     randomChar: signal(false),
     randomColor: signal(false),
   }
-  const decisionSettings = { autoBlendDecisionEnabled: signal(true), decisionPending: signal(false) }
+  const decisionSettings = { autoBlendDecisionEnabled: signal(true) }
   const decide = mock(async (_text: string, _context: string[], _signal?: AbortSignal): Promise<Decision> => {
     return { send: true, reason: '符合当前判断规则' }
   })
@@ -88,7 +78,6 @@ async function createHarness() {
     './decision-tasks': { decideAutoBlendCandidate: decide },
     './emoticon': {
       findEmoticon: (text: string) => (emotes.has(text) ? { emoji: emotes.get(text) } : null),
-      isEmoticonUnique: (text: string) => emotes.has(text),
       isLockedEmoticon: (text: string) => locked.has(text),
       isUnavailableEmoticon: (text: string) => unavailable.has(text),
       formatLockedEmoticonReject: (text: string) => `locked: ${text}`,
@@ -189,7 +178,7 @@ describe('automatic blend decision gate', () => {
 
   test('makes one decision for a qualified burst and sends only after approval', async () => {
     const h = await createHarness()
-    const pending = deferred<Decision>()
+    const pending = Promise.withResolvers<Decision>()
     h.decide.mockImplementation(() => pending.promise)
     h.settings.autoBlendCooldownSec.value = 0
     h.qualify()
@@ -198,12 +187,12 @@ describe('automatic blend decision gate', () => {
     await flush()
     expect(h.decide).toHaveBeenCalledTimes(1)
     expect(h.enqueue).not.toHaveBeenCalled()
-    expect(h.decisionSettings.decisionPending.value).toBe(true)
+    expect(h.engine.decisionPending.value).toBe(true)
     pending.resolve({ send: true, reason: '可以发送' })
     await flush()
     expect(h.enqueue).toHaveBeenCalledTimes(1)
     expect(h.enqueue.mock.calls[0]?.[0]).toBe('好耶')
-    expect(h.decisionSettings.decisionPending.value).toBe(false)
+    expect(h.engine.decisionPending.value).toBe(false)
   })
 
   test('disabled decision gate keeps the existing send path', async () => {
@@ -244,12 +233,12 @@ describe('automatic blend decision gate', () => {
     expect(h.decide).toHaveBeenCalledTimes(1)
     expect(h.polish).not.toHaveBeenCalled()
     expect(h.enqueue).not.toHaveBeenCalled()
-    expect(h.decisionSettings.decisionPending.value).toBe(false)
+    expect(h.engine.decisionPending.value).toBe(false)
   })
 
   test('polishes the approved original candidate before queueing', async () => {
     const h = await createHarness()
-    const pending = deferred<Decision>()
+    const pending = Promise.withResolvers<Decision>()
     h.settings.autoBlendYolo.value = true
     h.decide.mockImplementation(() => pending.promise)
     h.qualify()
@@ -309,14 +298,14 @@ describe('automatic blend decision gate', () => {
 
   test('stopping aborts a pending decision and ignores late approval', async () => {
     const h = await createHarness()
-    const pending = deferred<Decision>()
+    const pending = Promise.withResolvers<Decision>()
     h.decide.mockImplementation(() => pending.promise)
     h.qualify()
     await flush()
     const signal = h.decide.mock.calls[0]?.[2]
     h.engine.stopAutoBlend()
     expect(signal?.aborted).toBe(true)
-    expect(h.decisionSettings.decisionPending.value).toBe(false)
+    expect(h.engine.decisionPending.value).toBe(false)
     pending.resolve({ send: true, reason: '过期结果' })
     await flush()
     expect(h.enqueue).not.toHaveBeenCalled()
@@ -324,7 +313,7 @@ describe('automatic blend decision gate', () => {
 
   test('stopping during polishing cannot send an already approved candidate', async () => {
     const h = await createHarness()
-    const pending = deferred<string>()
+    const pending = Promise.withResolvers<string>()
     h.settings.autoBlendYolo.value = true
     h.polish.mockImplementation(() => pending.promise)
     h.qualify()
@@ -340,8 +329,8 @@ describe('automatic blend decision gate', () => {
 
   test('an old request cannot clear or send during a restarted pending request', async () => {
     const h = await createHarness()
-    const oldDecision = deferred<Decision>()
-    const newDecision = deferred<Decision>()
+    const oldDecision = Promise.withResolvers<Decision>()
+    const newDecision = Promise.withResolvers<Decision>()
     h.settings.autoBlendCooldownSec.value = 0
     h.decide.mockImplementationOnce(() => oldDecision.promise).mockImplementationOnce(() => newDecision.promise)
     h.qualify('旧趋势')
@@ -354,7 +343,7 @@ describe('automatic blend decision gate', () => {
     oldDecision.resolve({ send: true, reason: '过期结果' })
     await flush()
     expect(h.enqueue).not.toHaveBeenCalled()
-    expect(h.decisionSettings.decisionPending.value).toBe(true)
+    expect(h.engine.decisionPending.value).toBe(true)
     h.qualify('第三个趋势')
     await flush()
     expect(h.decide).toHaveBeenCalledTimes(2)
@@ -362,6 +351,6 @@ describe('automatic blend decision gate', () => {
     await flush()
     expect(h.enqueue).toHaveBeenCalledTimes(1)
     expect(h.enqueue.mock.calls[0]?.[0]).toBe('新趋势')
-    expect(h.decisionSettings.decisionPending.value).toBe(false)
+    expect(h.engine.decisionPending.value).toBe(false)
   })
 })

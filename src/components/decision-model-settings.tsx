@@ -1,10 +1,11 @@
 import { useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
-import type { DecisionPreset, DecisionProtocol, DecisionProviderProfile } from '../lib/decision-model'
+import type { DecisionPreset, DecisionProviderProfile } from '../lib/decision-model'
 
-import { DECISION_PROVIDER_DEFAULTS, fetchDecisionModels } from '../lib/decision-model'
+import { DECISION_PROVIDER_DEFAULTS, fetchDecisionModels, isDecisionProtocol } from '../lib/decision-model'
 import {
+  activeDecisionPreset,
   activeDecisionProvider,
   addDecisionProvider,
   autoBlendDecisionPresetId,
@@ -16,6 +17,7 @@ import {
   settingsDecisionOpen,
   updateDecisionProvider,
 } from '../lib/decision-settings'
+import { DecisionPresetSelect } from './decision-preset-select'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Combobox } from './ui/combobox'
@@ -27,21 +29,24 @@ import { Textarea } from './ui/textarea'
 
 export function DecisionModelSettings() {
   const keyVisible = useSignal(false)
-  const fetching = useSignal(false)
-  const fetchStatus = useSignal('')
-  const fetchFailed = useSignal(false)
+  const fetchState = useSignal<{ kind: 'loading' | 'done' | 'failed'; text: string } | null>(null)
   const request = useRef<AbortController | null>(null)
   const provider = activeDecisionProvider.value
-  const preset = decisionPresets.value.find(entry => entry.id === autoBlendDecisionPresetId.value)
+  const preset = activeDecisionPreset.value
+  const fetching = fetchState.value?.kind === 'loading'
 
-  useEffect(() => () => request.current?.abort(), [])
+  useEffect(
+    () => () => {
+      request.current?.abort()
+      request.current = null
+    },
+    []
+  )
 
   const resetRequest = () => {
     request.current?.abort()
     request.current = null
-    fetching.value = false
-    fetchStatus.value = ''
-    fetchFailed.value = false
+    fetchState.value = null
   }
 
   const resetProvider = () => {
@@ -57,31 +62,28 @@ export function DecisionModelSettings() {
 
   const refreshModels = async () => {
     const current = activeDecisionProvider.value
-    if (!current || fetching.value) return
+    if (!current || request.current) return
     const controller = new AbortController()
     request.current = controller
-    fetching.value = true
-    fetchStatus.value = '正在获取模型列表…'
-    fetchFailed.value = false
+    fetchState.value = { kind: 'loading', text: '正在获取模型列表…' }
     try {
       const models = await fetchDecisionModels(current, controller.signal)
-      if (request.current !== controller || controller.signal.aborted) return
+      if (request.current !== controller) return
       updateDecisionProvider(current.id, { models })
-      fetchStatus.value = `已获取 ${models.length} 个模型`
+      fetchState.value = { kind: 'done', text: `已获取 ${models.length} 个模型` }
     } catch (error) {
-      if (request.current !== controller || controller.signal.aborted) return
-      fetchFailed.value = true
-      fetchStatus.value = `获取失败：${error instanceof Error ? error.message : String(error)}`
-    } finally {
-      if (request.current === controller) {
-        request.current = null
-        fetching.value = false
+      if (request.current !== controller) return
+      fetchState.value = {
+        kind: 'failed',
+        text: `获取失败：${error instanceof Error ? error.message : String(error)}`,
       }
+    } finally {
+      if (request.current === controller) request.current = null
     }
   }
 
   const patchPreset = (id: string, patch: Partial<Omit<DecisionPreset, 'id'>>) => {
-    decisionPresets.value = decisionPresets.value.map(preset => (preset.id === id ? { ...preset, ...patch } : preset))
+    decisionPresets.value = decisionPresets.value.map(entry => (entry.id === id ? { ...entry, ...patch } : entry))
   }
 
   return (
@@ -161,8 +163,9 @@ export function DecisionModelSettings() {
                 className='min-w-25 flex-1'
                 value={provider.protocol}
                 onChange={e => {
-                  const protocol = e.currentTarget.value as DecisionProtocol
-                  updateConnection({ protocol, ...DECISION_PROVIDER_DEFAULTS[protocol] })
+                  const protocol = e.currentTarget.value
+                  if (isDecisionProtocol(protocol))
+                    updateConnection({ protocol, ...DECISION_PROVIDER_DEFAULTS[protocol] })
                 }}
               >
                 <option value='typesafe'>TypeSafe</option>
@@ -226,14 +229,16 @@ export function DecisionModelSettings() {
               <Button
                 variant='outline'
                 size='sm'
-                disabled={fetching.value || !provider.apiBase.trim()}
+                disabled={fetching || !provider.apiBase.trim()}
                 onClick={() => void refreshModels()}
               >
-                {fetching.value ? '加载中…' : '刷新列表'}
+                {fetching ? '加载中…' : '刷新列表'}
               </Button>
             </div>
-            {fetchStatus.value && (
-              <div class={fetchFailed.value ? 'break-words text-[red]' : 'text-ga6'}>{fetchStatus.value}</div>
+            {fetchState.value && (
+              <div class={fetchState.value.kind === 'failed' ? 'break-words text-[red]' : 'text-ga6'}>
+                {fetchState.value.text}
+              </div>
             )}
           </div>
         ) : (
@@ -245,28 +250,14 @@ export function DecisionModelSettings() {
         <div class='my-2 font-bold'>判断预设</div>
         <div class='mb-2 text-ga6'>选择一个可编辑的预设，描述何时发送、何时跳过。此选择与「自动融入」同步。</div>
         <div class='mb-2 flex flex-wrap items-center gap-2'>
-          <NativeSelect
-            aria-label='编辑判断预设'
-            className='min-w-25 flex-1'
-            value={autoBlendDecisionPresetId.value}
-            onChange={e => {
-              autoBlendDecisionPresetId.value = e.currentTarget.value
-            }}
-          >
-            {!preset && <option value={autoBlendDecisionPresetId.value}>请选择判断预设</option>}
-            {decisionPresets.value.map(entry => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name || '未命名预设'}
-              </option>
-            ))}
-          </NativeSelect>
+          <DecisionPresetSelect label='编辑判断预设' />
           <Button
             variant='outline'
             size='sm'
             onClick={() => {
-              const preset = { id: crypto.randomUUID(), name: '', instructions: '' }
-              decisionPresets.value = [...decisionPresets.value, preset]
-              autoBlendDecisionPresetId.value = preset.id
+              const created = { id: crypto.randomUUID(), name: '', instructions: '' }
+              decisionPresets.value = [...decisionPresets.value, created]
+              autoBlendDecisionPresetId.value = created.id
             }}
           >
             添加预设

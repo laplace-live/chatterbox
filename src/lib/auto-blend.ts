@@ -2,13 +2,12 @@ import { computed, signal } from '@preact/signals'
 
 import { ensureRoomId, getCsrfToken, getDedeUid, setRandomDanmakuColor } from './api'
 import { subscribeDanmaku } from './danmaku-stream'
-import { autoBlendDecisionEnabled, decisionPending } from './decision-settings'
+import { autoBlendDecisionEnabled } from './decision-settings'
 import { decideAutoBlendCandidate } from './decision-tasks'
 import {
   findEmoticon,
   formatLockedEmoticonReject,
   formatUnavailableEmoticonReject,
-  isEmoticonUnique,
   isLockedEmoticon,
   isUnavailableEmoticon,
 } from './emoticon'
@@ -89,7 +88,6 @@ let cooldownUntil = 0
 let unsubscribe: (() => void) | null = null
 let snapshotTimer: ReturnType<typeof setInterval> | null = null
 let myUid: string | null = null
-let isSending = false
 let sendController: AbortController | null = null
 const recentDecisionMessages: { text: string; receivedAt: number }[] = []
 // Processed trends, including decision skips, participate in optional repeat suppression.
@@ -102,6 +100,9 @@ export const autoBlendStatus = signal<AutoBlendStatusValue>({
   chatsPerMinute: 0,
   cooldownEffectiveSec: 0,
 })
+
+/** True while the decision model is judging the in-flight trigger. */
+export const decisionPending = signal(false)
 
 function pruneExpired(now: number): void {
   const windowMs = autoBlendWindowSec.value * 1000
@@ -194,15 +195,15 @@ function recordDanmaku(rawText: string, uid: string | null, isReply: boolean, ha
   // CPM reflects ROOM activity, so record even messages filtered out below.
   messageTimestamps.push(now)
 
-  if (autoBlendDecisionEnabled.value && rawText.trim() && !hasLargeEmote) {
-    recentDecisionMessages.push({ text: rawText.trim().slice(0, 200), receivedAt: now })
+  const text = rawText.trim()
+  if (autoBlendDecisionEnabled.value && text && !hasLargeEmote) {
+    recentDecisionMessages.push({ text: text.slice(0, 200), receivedAt: now })
     if (recentDecisionMessages.length > 20) recentDecisionMessages.shift()
   }
 
-  // Short-circuit the global freeze before any text work so nothing leaks through.
+  // Short-circuit the global freeze before any filtering so nothing leaks through.
   if (now < cooldownUntil) return
 
-  const text = rawText.trim()
   if (!text) return
   // @ replies target one user, never a trend.
   if (isReply) return
@@ -256,7 +257,7 @@ function recordRecentTrigger(text: string): void {
 
 async function triggerSend(originalText: string, uniqueUsers: number, totalCount: number): Promise<void> {
   // Bail without engaging cooldown if a send is in-flight, so the trend keeps accumulating.
-  if (isSending) return
+  if (sendController) return
 
   const senderInfo = uniqueUsers > 0 ? `${uniqueUsers} 人 / ${totalCount} 条` : `${totalCount} 条`
 
@@ -284,18 +285,18 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     return
   }
 
-  isSending = true
   const controller = new AbortController()
   sendController = controller
+  const isCurrent = () => sendController === controller && autoBlendEnabled.value
   const decisionRequired = autoBlendDecisionEnabled.value
-  const decisionContext = recentDecisionMessages
-    .filter(entry => Date.now() - entry.receivedAt <= autoBlendWindowSec.value * 1000)
-    .map(entry => entry.text)
-  const isCurrent = () => !controller.signal.aborted && autoBlendEnabled.value && sendController === controller
+  const now = Date.now()
+  const contextCutoff = now - autoBlendWindowSec.value * 1000
+  const decisionContext = decisionRequired
+    ? recentDecisionMessages.filter(entry => entry.receivedAt >= contextCutoff).map(entry => entry.text)
+    : []
   // Engage the freeze and clear counters before the await; read cooldown fresh (not the snapshot signal)
   // so a bursty room gets an aggressive cooldown the moment it triggers.
-  const cooldownNow = Date.now()
-  cooldownUntil = cooldownNow + getEffectiveCooldownSec(cooldownNow) * 1000
+  cooldownUntil = now + getEffectiveCooldownSec(now) * 1000
   counters.clear()
   try {
     const csrfToken = getCsrfToken()
@@ -306,13 +307,20 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     const roomId = await ensureRoomId()
     if (!isCurrent()) return
 
-    const isEmote = isEmoticonUnique(originalText)
+    const emote = findEmoticon(originalText)
+    const isEmote = emote !== null
+    const shouldPolish = autoBlendYolo.value && !isEmote
+    if (shouldPolish && !isLlmReady('autoBlend')) {
+      // Cooldown is already engaged — prevents log-spam re-firing while misconfigured. Checked before the paid decision.
+      appendLog('🚲 自动融入 YOLO 已开启，但 LLM 配置不完整，本轮跳过')
+      return
+    }
 
     if (decisionRequired) {
       recordRecentTrigger(originalText)
       decisionPending.value = true
       try {
-        const candidate = findEmoticon(originalText)?.emoji || originalText
+        const candidate = emote?.emoji || originalText
         const decision = await decideAutoBlendCandidate(candidate, decisionContext, controller.signal)
         if (!isCurrent()) return
         appendLog(`🧭 自动融入决策${decision.send ? '通过' : '跳过'}：${decision.reason}：${originalText}`)
@@ -331,12 +339,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     // Polish the ORIGINAL trend (not the post-replacement string) so the LLM sees natural Chinese;
     // once per trigger (not per repeat) to bound cost. Skipped for emotes (opaque ID → useless plain text).
     let yoloed = originalText
-    if (autoBlendYolo.value && !isEmote) {
-      if (!isLlmReady('autoBlend')) {
-        // Cooldown is already engaged — prevents log-spam re-firing while misconfigured.
-        appendLog('🚲 自动融入 YOLO 已开启，但 LLM 配置不完整，本轮跳过')
-        return
-      }
+    if (shouldPolish) {
       try {
         const polished = await polishWithLlm('autoBlend', originalText, { signal: controller.signal })
         if (!isCurrent()) return
@@ -383,11 +386,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     const msg = err instanceof Error ? err.message : String(err)
     appendLog(`🔴 自动融入出错：${msg}`)
   } finally {
-    if (sendController === controller) {
-      sendController = null
-      isSending = false
-      decisionPending.value = false
-    }
+    if (sendController === controller) sendController = null
   }
 }
 
@@ -412,7 +411,6 @@ export function startAutoBlend(): void {
 export function stopAutoBlend(): void {
   sendController?.abort()
   sendController = null
-  isSending = false
   decisionPending.value = false
   if (snapshotTimer) {
     clearInterval(snapshotTimer)

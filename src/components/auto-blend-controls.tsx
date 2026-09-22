@@ -1,13 +1,6 @@
-import { autoBlendStatus, CANDIDATE_LIMIT } from '../lib/auto-blend'
+import { autoBlendStatus, CANDIDATE_LIMIT, decisionPending } from '../lib/auto-blend'
 import { cn } from '../lib/cn'
-import {
-  autoBlendDecisionEnabled,
-  autoBlendDecisionPresetId,
-  decisionPending,
-  decisionPresets,
-  describeDecisionGap,
-  settingsDecisionOpen,
-} from '../lib/decision-settings'
+import { autoBlendDecisionEnabled, describeDecisionGap, settingsDecisionOpen } from '../lib/decision-settings'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import {
   activeTab,
@@ -29,13 +22,13 @@ import {
   llmPromptsAutoBlend,
   persistAutoBlendState,
 } from '../lib/store'
+import { DecisionPresetSelect } from './decision-preset-select'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
-import { NativeSelect } from './ui/native-select'
 
 function NumberInput({
   value,
@@ -316,23 +309,7 @@ export function AutoBlendControls() {
           {autoBlendDecisionEnabled.value && (
             <>
               <div class='flex flex-wrap items-center gap-2'>
-                <NativeSelect
-                  aria-label='判断预设'
-                  className='min-w-25 flex-1'
-                  value={autoBlendDecisionPresetId.value}
-                  onChange={e => {
-                    autoBlendDecisionPresetId.value = e.currentTarget.value
-                  }}
-                >
-                  {!decisionPresets.value.some(preset => preset.id === autoBlendDecisionPresetId.value) && (
-                    <option value={autoBlendDecisionPresetId.value}>请选择判断预设</option>
-                  )}
-                  {decisionPresets.value.map(preset => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name || '未命名预设'}
-                    </option>
-                  ))}
-                </NativeSelect>
+                <DecisionPresetSelect label='判断预设' />
                 <Button
                   variant='outline'
                   size='sm'
