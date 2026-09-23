@@ -26,6 +26,7 @@ import {
   danmakuDirectConfirm,
   danmakuDirectMode,
   forceScrollDanmaku,
+  hideUidWatermark,
   infoFertilityEnabled,
   infoGuildEnabled,
   infoMcnEnabled,
@@ -984,6 +985,14 @@ export function SettingsTab() {
                 optimizeLayout.value = e.currentTarget.checked
               }}
               label='优化布局'
+            />
+            <Checkbox
+              id='hideUidWatermark'
+              checked={hideUidWatermark.value}
+              onInput={e => {
+                hideUidWatermark.value = e.currentTarget.checked
+              }}
+              label='隐藏UID标记水印'
             />
           </div>
 

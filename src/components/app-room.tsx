@@ -7,12 +7,14 @@ import { startAutoQuality, stopAutoQuality } from '../lib/auto-quality'
 import { startAutoSeek, stopAutoSeek } from '../lib/auto-seek'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
 import { loop } from '../lib/loop'
+import { PLAYER_WATERMARK_SELECTOR } from '../lib/player-dom'
 import {
   aiChatEnabled,
   autoBlendEnabled,
   danmakuDirectMode,
   dialogOpen,
   dialogWidth,
+  hideUidWatermark,
   optimizeLayout,
 } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
@@ -114,6 +116,14 @@ export function AppRoom() {
     }
     style.textContent = `.app-body { ${rules.join('; ')}; }`
   }, [optimizeLayout.value, dialogOpen.value, dialogWidth.value])
+
+  useEffect(() => {
+    if (!hideUidWatermark.value) return
+    const style = document.createElement('style')
+    style.textContent = `${PLAYER_WATERMARK_SELECTOR} { display: none !important; }`
+    document.head.appendChild(style)
+    return () => style.remove()
+  }, [hideUidWatermark.value])
 
   return (
     <>
