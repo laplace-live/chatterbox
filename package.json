@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@preact/signals": "^2.11.2",
-    "@tabler/icons-preact": "^3.47.0",
+    "@tabler/icons-preact": "^3.48.0",
     "cn": "^0.4.0",
     "preact": "^10.29.8"
   },
