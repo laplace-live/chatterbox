@@ -13,9 +13,8 @@
   "dependencies": {
     "@preact/signals": "^2.11.2",
     "@tabler/icons-preact": "^3.47.0",
-    "clsx": "^2.1.1",
-    "preact": "^10.29.8",
-    "tailwind-merge": "^3.7.0"
+    "cn": "^0.4.0",
+    "preact": "^10.29.8"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
