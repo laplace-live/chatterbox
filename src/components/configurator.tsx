@@ -1,6 +1,6 @@
+import { cn } from 'cn'
 import type { TargetedPointerEvent } from 'preact'
 
-import { cn } from '../lib/cn'
 import { activeTab, dialogOpen, dialogWidth, optimizeLayout } from '../lib/store'
 import { AboutTab } from './about-tab'
 import { AiChatSection } from './ai-chat-section'

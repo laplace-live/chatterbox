@@ -1,4 +1,5 @@
-import { cn } from '../lib/cn'
+import { cn } from 'cn'
+
 import { activeTab, aiChatEnabled, autoBlendEnabled, sendMsg, sttRunning } from '../lib/store'
 
 const TABS = [

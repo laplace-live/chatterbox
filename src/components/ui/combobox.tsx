@@ -1,9 +1,9 @@
 import { useSignal } from '@preact/signals'
 import { IconCheck, IconChevronDown } from '@tabler/icons-preact'
+import { cn } from 'cn'
 import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { cn } from '../../lib/cn'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 import { Separator } from './separator'
 

@@ -1,6 +1,5 @@
+import { cn } from 'cn'
 import type { HTMLAttributes } from 'preact'
-
-import { cn } from '../../lib/cn'
 
 // Optional layout-only wrapper; each AccordionItem owns its open state.
 

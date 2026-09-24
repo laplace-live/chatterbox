@@ -1,6 +1,5 @@
+import { cn } from 'cn'
 import type { SelectHTMLAttributes } from 'preact'
-
-import { cn } from '../../lib/cn'
 
 // Drop native `size` (makes a multi-line listbox) to avoid clashing with shadcn `size` props.
 type NativeSelectBase = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size' | 'class' | 'className'>

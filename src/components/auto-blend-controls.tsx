@@ -1,5 +1,6 @@
+import { cn } from 'cn'
+
 import { autoBlendStatus, CANDIDATE_LIMIT, decisionPending } from '../lib/auto-blend'
-import { cn } from '../lib/cn'
 import { autoBlendDecisionEnabled, describeDecisionGap, settingsDecisionOpen } from '../lib/decision-settings'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import {

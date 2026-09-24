@@ -1,7 +1,6 @@
+import { cn } from 'cn'
 import type { TextareaHTMLAttributes } from 'preact'
 import { forwardRef } from 'preact/compat'
-
-import { cn } from '../../lib/cn'
 
 type TextareaBase = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'class' | 'className'>
 

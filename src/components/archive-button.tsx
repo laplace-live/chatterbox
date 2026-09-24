@@ -1,4 +1,4 @@
-import { cn } from '../lib/cn'
+import { cn } from 'cn'
 
 /**
  * "LAPLACE ICU 存档" button linking to a bilibili video's archived copy on

@@ -1,6 +1,5 @@
+import { cn } from 'cn'
 import type { ButtonHTMLAttributes } from 'preact'
-
-import { cn } from '../../lib/cn'
 
 export type ButtonVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link'
 export type ButtonSize = 'sm' | 'default' | 'lg' | 'icon'

@@ -1,6 +1,6 @@
+import { cn } from 'cn'
 import type { ComponentChildren, InputHTMLAttributes } from 'preact'
 
-import { cn } from '../../lib/cn'
 import { Label } from './label'
 
 type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'class' | 'className'>

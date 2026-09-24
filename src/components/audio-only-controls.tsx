@@ -1,7 +1,7 @@
 import { IconVolume, IconVolume2, IconVolumeOff } from '@tabler/icons-preact'
+import { cn } from 'cn'
 
 import { volumeIconState } from '../lib/audio-only-volume'
-import { cn } from '../lib/cn'
 import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from '../lib/store'
 
 /**

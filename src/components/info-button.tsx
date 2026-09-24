@@ -1,8 +1,8 @@
 import { useSignal } from '@preact/signals'
 import { IconInfoCircle, IconNotes } from '@tabler/icons-preact'
+import { cn } from 'cn'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { cn } from '../lib/cn'
 import {
   bilibiliUserData,
   bilibiliUserError,

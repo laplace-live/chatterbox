@@ -1,6 +1,5 @@
+import { cn } from 'cn'
 import type { InputHTMLAttributes } from 'preact'
-
-import { cn } from '../../lib/cn'
 
 // Drop native `size` (character-count attr) to avoid clashing with shadcn-style `size` props.
 type InputBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'class' | 'className'>

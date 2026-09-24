@@ -1,10 +1,10 @@
 import { useSignal } from '@preact/signals'
 import { IconMoodSmile, IconStar, IconStarFilled } from '@tabler/icons-preact'
+import { cn } from 'cn'
 
 import type { BilibiliEmoticon, FavoriteEmote } from '../types'
 
 import { ensureRoomId, getCsrfToken } from '../lib/api'
-import { cn } from '../lib/cn'
 import { isFavorite, resolveFavorite, toggleFavorite } from '../lib/emote-favorites'
 import {
   formatLockedEmoticonReject,

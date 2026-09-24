@@ -1,8 +1,8 @@
+import { cn } from 'cn'
 import type { ComponentChildren, VNode } from 'preact'
 import { cloneElement, createContext, isValidElement } from 'preact'
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
-import { cn } from '../../lib/cn'
 import {
   computePopoverPosition,
   type PopoverAlign,

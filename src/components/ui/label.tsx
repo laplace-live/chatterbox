@@ -1,6 +1,5 @@
+import { cn } from 'cn'
 import type { LabelHTMLAttributes } from 'preact'
-
-import { cn } from '../../lib/cn'
 
 type LabelBase = Omit<LabelHTMLAttributes<HTMLLabelElement>, 'class' | 'className'>
 

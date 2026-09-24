@@ -1,8 +1,8 @@
 import { signal } from '@preact/signals'
+import { cn } from 'cn'
 import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { cn } from '../../lib/cn'
 import { Button } from './button'
 
 interface ConfirmOptions {
