@@ -1,5 +1,5 @@
 import { cn } from 'cn'
-import type { HTMLAttributes } from 'preact/compat'
+import type { HTMLAttributes } from 'preact'
 
 type SeparatorBase = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'className' | 'role'>
 

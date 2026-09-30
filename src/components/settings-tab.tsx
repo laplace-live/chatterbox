@@ -1651,7 +1651,7 @@ export function SettingsTab() {
               max='1000'
               className='w-20'
               value={maxLogLines.value}
-              onChange={e => {
+              onInput={e => {
                 let v = parseInt(e.currentTarget.value, 10)
                 if (Number.isNaN(v) || v < 1) v = 1
                 else if (v > 1000) v = 1000

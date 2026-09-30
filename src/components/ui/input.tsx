@@ -1,17 +1,24 @@
 import { cn } from 'cn'
 import type { InputHTMLAttributes } from 'preact'
 
+type TextInputType = 'text' | 'password' | 'number' | 'email' | 'url' | 'search' | 'tel'
+
 // Drop native `size` (character-count attr) to avoid clashing with shadcn-style `size` props.
-type InputBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'class' | 'className'>
+type InputBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'class' | 'className' | 'type' | 'role'>
 
 export interface InputProps extends InputBase {
+  type?: TextInputType
   className?: string
 }
 
+// One object per literal: Preact 11's per-`type` `<input>` union rejects a union-typed `type`.
+type TypedInput = { [K in TextInputType]: { type: K } }[TextInputType]
+
 export function Input({ type = 'text', disabled, className, ...props }: InputProps) {
+  const typed: TypedInput = { type }
   return (
     <input
-      type={type}
+      {...typed}
       disabled={disabled}
       class={cn(
         'box-border',

@@ -1,6 +1,5 @@
 import { cn } from 'cn'
 import type { TextareaHTMLAttributes } from 'preact'
-import { forwardRef } from 'preact/compat'
 
 type TextareaBase = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'class' | 'className'>
 
@@ -8,14 +7,9 @@ export interface TextareaProps extends TextareaBase {
   className?: string
 }
 
-// forwardRef required: Preact 10 strips `ref` from plain function components, so the ref never reaches the DOM without it.
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { disabled, className, ...props },
-  ref
-) {
+export function Textarea({ disabled, className, ...props }: TextareaProps) {
   return (
     <textarea
-      ref={ref}
       disabled={disabled}
       class={cn(
         'box-border w-full',
@@ -32,4 +26,4 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
       {...props}
     />
   )
-})
+}

@@ -3,7 +3,7 @@ import type { ComponentChildren, InputHTMLAttributes } from 'preact'
 
 import { Label } from './label'
 
-type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'class' | 'className'>
+type CheckboxBase = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'children' | 'class' | 'className' | 'role'>
 
 export interface CheckboxProps extends CheckboxBase {
   // Inline label; nested in <label> so clicks toggle even without an `id`.

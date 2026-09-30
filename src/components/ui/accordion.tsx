@@ -20,7 +20,7 @@ export function Accordion({ className, children, ...props }: AccordionProps) {
 // Native <details>; controlled via `open`+`onOpenChange`. Undefined `open` =
 // uncontrolled, but `onOpenChange` still fires.
 
-type AccordionItemBase = Omit<HTMLAttributes<HTMLDetailsElement>, 'class' | 'className' | 'open' | 'onToggle'>
+type AccordionItemBase = Omit<HTMLAttributes<HTMLDetailsElement>, 'class' | 'className' | 'open' | 'onToggle' | 'role'>
 
 export interface AccordionItemProps extends AccordionItemBase {
   open?: boolean
