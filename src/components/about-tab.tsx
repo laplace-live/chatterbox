@@ -94,7 +94,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     url: 'https://github.com/xqq/mpegts.js',
     trigger: '首次启用仅音频模式时',
     description:
-      '从 unpkg CDN 按需加载 mpegts.js 流媒体库，用于解析 bilibili 直播的纯音频流，仅在首次点击「仅音频」时下载。',
+      '从 unpkg CDN 按需加载 mpegts.js 流媒体库，用于解析 bilibili 直播的纯音频流，仅在首次切换为仅音频播放时下载（选择「仅音频」，或「自动音频」在页面转入后台后自动切换）。',
   },
   {
     name: '主播公会 / MCN 信息',

@@ -18,8 +18,8 @@ import {
   optimizeLayout,
 } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
-import { AudioOnlyButton } from './audio-only-button'
 import { AudioOnlyControls } from './audio-only-controls'
+import { AudioOnlyModeSelect } from './audio-only-mode-select'
 import { Configurator, clampWidth } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
 import { CornerCluster } from './corner-cluster'
@@ -67,7 +67,7 @@ export function AppRoom() {
     return () => stopUserBlacklistHijack()
   }, [])
 
-  // Signal-driven and idempotent; mounted unconditionally so the 仅音频 toggle always exists.
+  // Signal-driven and idempotent; mounted unconditionally so the 视频/仅音频/自动音频 picker always works.
   useEffect(() => {
     startAudioOnly()
     return () => stopAudioOnly()
@@ -130,7 +130,7 @@ export function AppRoom() {
       <CornerCluster>
         <InfoButton />
         <AudioOnlyControls />
-        <AudioOnlyButton />
+        <AudioOnlyModeSelect />
         <ConfiguratorButton />
       </CornerCluster>
       <Configurator />

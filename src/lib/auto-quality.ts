@@ -10,7 +10,7 @@
 import { unsafeWindow } from '$'
 import { appendLog } from './log'
 import { getPlayerVideo } from './player-dom'
-import { audioOnlyEnabled, autoQualityEnabled } from './store'
+import { audioOnlyActive, autoQualityEnabled } from './store'
 import { isRecord } from './utils'
 
 // bilibili's page global; narrowed by `isLivePlayer`.
@@ -69,7 +69,7 @@ type ApplyResult =
 function tryApply(): ApplyResult {
   // Don't fight the audio-only watchdog; declaring 'done' also avoids re-firing
   // later, by when the user may have manually chosen a quality.
-  if (audioOnlyEnabled.value) return 'done'
+  if (audioOnlyActive.value) return 'done'
 
   if (!getPlayerVideo()) return 'wait-mount'
 

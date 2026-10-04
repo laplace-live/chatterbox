@@ -2,7 +2,7 @@ import { IconVolume, IconVolume2, IconVolumeOff } from '@tabler/icons-preact'
 import { cn } from 'cn'
 
 import { volumeIconState } from '../lib/audio-only-volume'
-import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from '../lib/store'
+import { audioOnlyActive, audioOnlyMuted, audioOnlyVolume } from '../lib/store'
 
 /**
  * Level restored when unmuting at 0. Dragging the slider to 0 destroys the
@@ -17,7 +17,7 @@ const UNMUTE_FALLBACK_VOLUME = 0.5
  * I/O into `audioOnlyVolume`/`audioOnlyMuted` (never the audio element).
  */
 export function AudioOnlyControls() {
-  if (!audioOnlyEnabled.value) return null
+  if (!audioOnlyActive.value) return null
 
   const volume = audioOnlyVolume.value
   const muted = audioOnlyMuted.value

@@ -45,16 +45,29 @@ export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
 // Audio-only mode: `livePlayer.stopPlayback()` halts the native HLS pull, then a true audio-only FLV stream (`only_audio=1` from the app endpoint — web endpoint ignores it) plays via hidden `<audio>` + mpegts.js. ~180 vs ~1700 kbps. See `lib/audio-only.ts`.
-export const audioOnlyEnabled = gmSignal('audioOnlyEnabled', false)
+/** 'off' = 视频, 'on' = 仅音频, 'auto' = 自动音频 (audio-only just while the tab is hidden). */
+export type AudioOnlyMode = 'off' | 'on' | 'auto'
+// Migrate the legacy `audioOnlyEnabled` boolean. Sentinel-guarded (copy only if unset, then delete) so a re-imported pre-upgrade backup migrates again.
+;(() => {
+  const missing = Symbol()
+  const legacy = GM_getValue<unknown>('audioOnlyEnabled', missing)
+  if (legacy === missing) return
+  const mode: AudioOnlyMode = legacy === true ? 'on' : 'off'
+  if (GM_getValue<unknown>('audioOnlyMode', missing) === missing) GM_setValue('audioOnlyMode', mode)
+  GM_deleteValue('audioOnlyEnabled')
+})()
+export const audioOnlyMode = gmSignal<AudioOnlyMode>('audioOnlyMode', 'off')
+// Whether audio-only is engaged right now. Runtime, derived from `audioOnlyMode` (+ tab visibility for 'auto') by `lib/audio-only.ts`.
+export const audioOnlyActive = signal(false)
 // Audio-only playback controls. Runtime signals, NOT persisted: re-seeded from the native player's volume/mute each engage, so persisting would fight that seed. `audioOnlyVolume` is 0–1.
 export const audioOnlyVolume = signal(1)
 export const audioOnlyMuted = signal(false)
-// Auto-seek (自动追帧): nudges `video.playbackRate` to minimize latency. Event-driven (no polling); inert while `audioOnlyEnabled`. Threshold in seconds = target buffered-ahead. See `lib/auto-seek.ts`.
+// Auto-seek (自动追帧): nudges `playbackRate` to minimize latency; targets the hidden `<audio>` while `audioOnlyActive`. Event-driven (no polling). Threshold in seconds = target buffered-ahead. See `lib/auto-seek.ts`.
 export const autoSeekEnabled = gmSignal('autoSeekEnabled', false)
 export const autoSeekBufferThreshold = gmSignal('autoSeekBufferThreshold', 1.7)
 // Keep seeking while the tab is hidden (events throttle to ~1Hz there, still enough to drive the ladder).
 export const autoSeekWhenHidden = gmSignal('autoSeekWhenHidden', false)
-// Auto-quality (自动原画): one-shot switch to 原画 (qn=10000) on page load, so later manual picks stay respected. Inert when `audioOnlyEnabled` (avoids ping-pong with its stopPlayback watchdog). See `lib/auto-quality.ts`.
+// Auto-quality (自动原画): one-shot switch to 原画 (qn=10000) on page load, so later manual picks stay respected. Inert when `audioOnlyActive` (avoids ping-pong with its stopPlayback watchdog). See `lib/auto-quality.ts`.
 export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 
 // Info button popover sections (魔法期 / 公会 / MCN from Laplace workers), each independently gated. Toggles gate only the SECTIONS; the button stays visible for the local 用户备注 editor. See `InfoButton`.

@@ -22,7 +22,7 @@ import { MPEGTS_CDN_URL } from './const'
 import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
 import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR, resolveLivePlayer } from './player-dom'
-import { audioOnlyEnabled, audioOnlyMuted, audioOnlyVolume } from './store'
+import { audioOnlyActive, audioOnlyMode, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost, isRecord } from './utils'
 
 // Installed by the lazy-loaded UMD; narrowed by `isMpegts`.
@@ -44,6 +44,9 @@ const STREAM_REFRESH_MS = 50 * 60 * 1000
 // Backoff for reconnecting after the FLV stream dies (stream restart, edge
 // close, URL 403). Bounded: an off-air room would otherwise poll forever.
 const STREAM_RECOVERY_DELAYS_MS = [2000, 4000, 8000, 15000, 30000]
+
+/** How long the tab must stay hidden before 自动音频 engages, so a quick glance away keeps video. */
+export const AUTO_ENGAGE_DELAY_MS = 3000
 
 const STYLE = `
 /* Hide the actual video element while audio keeps playing. The static
@@ -352,7 +355,7 @@ function clearWatchdog(): void {
 function startWatchdog(): void {
   clearWatchdog()
   watchdogTimer = setInterval(() => {
-    if (!audioOnlyEnabled.value) return
+    if (!audioOnlyActive.value) return
     const v = getPlayerVideo()
     if (!v) return
     // `blob:` src = re-engaged MediaSource. Re-stop.
@@ -494,7 +497,7 @@ function destroyAudioPipeline(): void {
  * UNRECOVERABLE_EARLY_EOF), so without this a stream restart is terminal.
  */
 function scheduleStreamRecovery(roomId: number, gen: number, reason: string): void {
-  if (gen !== engagementGen || !audioOnlyEnabled.value) return
+  if (gen !== engagementGen || !audioOnlyActive.value) return
   clearStreamRecoveryTimer()
 
   const delay = STREAM_RECOVERY_DELAYS_MS[streamRecoveryAttempts]
@@ -507,7 +510,7 @@ function scheduleStreamRecovery(roomId: number, gen: number, reason: string): vo
 
   streamRecoveryTimer = setTimeout(() => {
     streamRecoveryTimer = null
-    if (gen !== engagementGen || !audioOnlyEnabled.value) return
+    if (gen !== engagementGen || !audioOnlyActive.value) return
     void refreshStream(roomId, gen)
   }, delay)
 }
@@ -584,7 +587,7 @@ function scheduleStreamRefresh(roomId: number, gen: number): void {
   streamRefreshTimer = setTimeout(() => {
     streamRefreshTimer = null
     if (gen !== engagementGen) return
-    if (!audioOnlyEnabled.value) return
+    if (!audioOnlyActive.value) return
     void refreshStream(roomId, gen)
   }, STREAM_REFRESH_MS)
 }
@@ -668,7 +671,7 @@ async function engageAudioOnly(gen: number): Promise<void> {
 
   startWatchdog()
   scheduleStreamRefresh(roomId, gen)
-  appendLog('🎧 已开启仅音频模式')
+  appendLog(audioOnlyMode.value === 'auto' ? '🎧 页面在后台，已自动切换为仅音频' : '🎧 已开启仅音频模式')
 }
 
 /**
@@ -734,7 +737,7 @@ function applyAudioOnlyMode(enabled: boolean): void {
   pendingApplyTimer = setTimeout(async () => {
     pendingApplyTimer = null
     // Re-read so a rapid toggle before this macrotask lands on latest intent.
-    const desired = audioOnlyEnabled.value
+    const desired = audioOnlyActive.value
     // Null until an engage actually starts, so the catch can distinguish
     // "this engage failed" from "disengage failed" / "never engaged".
     let engageGen: number | null = null
@@ -776,10 +779,12 @@ function applyAudioOnlyMode(enabled: boolean): void {
           }
         }
       }
-      // Revert to video mode: flipping the signal re-runs the effect →
-      // applyAudioOnlyMode(false), stripping the hide-video class and
-      // resetting the toggle rather than stranding a blank player frame.
-      audioOnlyEnabled.value = false
+      // Revert to video: flipping the signal re-runs the effect →
+      // applyAudioOnlyMode(false), stripping the hide-video class rather than
+      // stranding a blank player frame. 仅音频 also resets the picker;
+      // 自动音频 stays armed and retries on the next hide.
+      if (audioOnlyMode.value === 'on') audioOnlyMode.value = 'off'
+      audioOnlyActive.value = false
     }
   }, 0)
 }
@@ -796,21 +801,68 @@ function removeStyleEl(): void {
   document.getElementById(STYLE_ID)?.remove()
 }
 
+let autoEngageTimer: ReturnType<typeof setTimeout> | null = null
+
+// Anti-AFK scripts (e.g. BLTH's 屏蔽挂机检测) pin `document.hidden` to false as an own property, and
+// Tampermonkey runs every userscript in one shared world; the prototype getter still reports the truth.
+const nativeHiddenGetter = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden')?.get
+
+/** Real tab visibility, immune to own-property overrides on `document`. */
+function isTabHidden(): boolean {
+  return nativeHiddenGetter ? nativeHiddenGetter.call(document) === true : document.hidden
+}
+
+function clearAutoEngageTimer(): void {
+  if (autoEngageTimer !== null) {
+    clearTimeout(autoEngageTimer)
+    autoEngageTimer = null
+  }
+}
+
+/**
+ * Derive `audioOnlyActive` from `audioOnlyMode`. 'auto' engages once the tab
+ * has stayed hidden for `AUTO_ENGAGE_DELAY_MS` and drops back the moment it's
+ * visible; every mode change or `visibilitychange` cancels a pending engage.
+ */
+function syncAudioOnlyActive(): void {
+  clearAutoEngageTimer()
+  const mode = audioOnlyMode.value
+  if (mode !== 'auto') {
+    audioOnlyActive.value = mode === 'on'
+    return
+  }
+  if (!isTabHidden()) {
+    audioOnlyActive.value = false
+    return
+  }
+  autoEngageTimer = setTimeout(() => {
+    autoEngageTimer = null
+    // PiP keeps the video on screen even though the tab is hidden.
+    if (!document.pictureInPictureElement) audioOnlyActive.value = true
+  }, AUTO_ENGAGE_DELAY_MS)
+}
+
+let modeEffectDispose: (() => void) | null = null
 let stateEffectDispose: (() => void) | null = null
 let volumeEffectDispose: (() => void) | null = null
 
 /**
- * Public entrypoint, wired once from `app.tsx`; idempotent. Owns the
- * stylesheet, effects, and pipeline — the toggle button is a separate
- * component (`components/audio-only-button.tsx`).
+ * Public entrypoint, wired once from `app-room.tsx`; idempotent. Owns the
+ * stylesheet, effects, and pipeline — the mode picker is a separate
+ * component (`components/audio-only-mode-select.tsx`).
  */
 export function startAudioOnly(): void {
   if (stateEffectDispose) return
   ensureStyleEl()
-  // First effect re-applies player state on toggle; second mirrors
-  // volume/mute onto the <audio>. `signal.value` reads auto-track deps.
+  // Mode → `audioOnlyActive` → player state; last effect mirrors volume/mute
+  // onto the <audio>. Derivation goes first so the state effect's initial run
+  // already sees it. `signal.value` reads auto-track deps.
+  modeEffectDispose = effect(() => {
+    syncAudioOnlyActive()
+  })
+  document.addEventListener('visibilitychange', syncAudioOnlyActive)
   stateEffectDispose = effect(() => {
-    applyAudioOnlyMode(audioOnlyEnabled.value)
+    applyAudioOnlyMode(audioOnlyActive.value)
   })
   volumeEffectDispose = effect(() => {
     syncVolumeToAudioEl()
@@ -818,6 +870,12 @@ export function startAudioOnly(): void {
 }
 
 export function stopAudioOnly(): void {
+  if (modeEffectDispose) {
+    modeEffectDispose()
+    modeEffectDispose = null
+  }
+  document.removeEventListener('visibilitychange', syncAudioOnlyActive)
+  clearAutoEngageTimer()
   if (stateEffectDispose) {
     stateEffectDispose()
     stateEffectDispose = null

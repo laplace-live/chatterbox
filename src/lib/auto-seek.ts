@@ -16,7 +16,7 @@ import { AUDIO_EL_ID } from './audio-only'
 import { decidePlaybackRate } from './auto-seek-rate'
 import { getPlayerVideo } from './player-dom'
 import {
-  audioOnlyEnabled,
+  audioOnlyActive,
   autoSeekBufferThreshold,
   autoSeekCurrentBufferLen,
   autoSeekCurrentRate,
@@ -56,7 +56,7 @@ let stateEffectDispose: (() => void) | null = null
  * @returns `null` during transitions (element not yet mounted / being torn down) — caller skips the tick.
  */
 function getMediaTarget(): HTMLMediaElement | null {
-  if (audioOnlyEnabled.value) {
+  if (audioOnlyActive.value) {
     const el = document.getElementById(AUDIO_EL_ID)
     return el instanceof HTMLAudioElement ? el : null
   }
@@ -200,7 +200,7 @@ function destroyContainerObserver(): void {
 // tick: otherwise the seeker keeps ticking a `<video>` the native player already stopped
 // feeding (or vice versa), publishing misleading buffer numbers until the observer fires.
 effect(() => {
-  void audioOnlyEnabled.value // subscribe; read is the dependency trigger, value unused
+  void audioOnlyActive.value // subscribe; read is the dependency trigger, value unused
   if (!autoSeekEnabled.value) return
   const target = getMediaTarget()
   if (target) {
