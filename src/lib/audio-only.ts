@@ -44,8 +44,10 @@ export const AUDIO_EL_ID = 'lc-audio-only-stream'
 const STREAM_REFRESH_MS = 50 * 60 * 1000
 
 // Backoff for reconnecting after the FLV stream dies (stream restart, edge
-// close, URL 403). Bounded: an off-air room would otherwise poll forever.
+// close, URL 403); the last step repeats up to the cap (~8.5 min in total).
+// Bounded: an off-air room would otherwise poll forever.
 const STREAM_RECOVERY_DELAYS_MS = [2000, 4000, 8000, 15000, 30000]
+const STREAM_RECOVERY_MAX_ATTEMPTS = 20
 
 /** How long the tab must stay hidden before 自动音频 engages, so a quick glance away keeps video. */
 export const AUTO_ENGAGE_DELAY_MS = 3000
@@ -525,13 +527,17 @@ function scheduleStreamRecovery(roomId: number, gen: number, reason: string): vo
   }
   clearStreamRecoveryTimer()
 
-  const delay = STREAM_RECOVERY_DELAYS_MS[streamRecoveryAttempts]
-  if (delay === undefined) {
-    appendLog(`⚠️ 仅音频流已中断（${reason}），重连多次失败，请手动关闭并重新开启仅音频模式`)
+  if (streamRecoveryAttempts >= STREAM_RECOVERY_MAX_ATTEMPTS) {
+    appendLog(
+      `⚠️ 仅音频流已中断（${reason}），重连 ${STREAM_RECOVERY_MAX_ATTEMPTS} 次均失败，请手动关闭并重新开启仅音频模式`
+    )
     return
   }
+  const delay = STREAM_RECOVERY_DELAYS_MS[Math.min(streamRecoveryAttempts, STREAM_RECOVERY_DELAYS_MS.length - 1)]
   streamRecoveryAttempts++
-  appendLog(`⚠️ 仅音频流已中断（${reason}），${Math.round(delay / 1000)} 秒后尝试重连…`)
+  appendLog(
+    `⚠️ 仅音频流已中断（${reason}），${Math.round(delay / 1000)} 秒后进行第 ${streamRecoveryAttempts}/${STREAM_RECOVERY_MAX_ATTEMPTS} 次重连…`
+  )
 
   streamRecoveryTimer = setTimeout(() => {
     streamRecoveryTimer = null
@@ -628,20 +634,25 @@ async function refreshStream(roomId: number, gen: number): Promise<void> {
     const [{ url, unavailable }, mpegts] = await Promise.all([fetchAudioOnlyStreamUrl(roomId), loadMpegts()])
     if (gen !== engagementGen) return
     if (unavailable || !url) {
-      appendLog('⚠️ 仅音频流刷新失败：直播间未在直播')
+      // Mid-reconnect, a stream that's briefly down is one failed attempt, not the end of the ladder.
+      if (streamRecoveryAttempts > 0) scheduleStreamRecovery(roomId, gen, '直播流暂不可用')
+      else appendLog('⚠️ 仅音频流刷新失败：直播间未在直播')
       return
     }
     await attachMpegtsPlayer(url, mpegts, roomId, gen)
     if (gen !== engagementGen) return
     scheduleStreamRefresh(roomId, gen)
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    appendLog(`⚠️ 仅音频流刷新失败：${msg}`)
     if (gen !== engagementGen) return
-    // Mid-reconnect, stay on the fast backoff ladder; otherwise retry on the
-    // same cadence so transient errors don't kill the mode.
-    if (streamRecoveryAttempts > 0) scheduleStreamRecovery(roomId, gen, '重连失败')
-    else scheduleStreamRefresh(roomId, gen)
+    const msg = err instanceof Error ? err.message : String(err)
+    // Mid-reconnect, stay on the backoff ladder (it logs the reason); otherwise
+    // retry on the refresh cadence so transient errors don't kill the mode.
+    if (streamRecoveryAttempts > 0) {
+      scheduleStreamRecovery(roomId, gen, msg)
+    } else {
+      appendLog(`⚠️ 仅音频流刷新失败：${msg}`)
+      scheduleStreamRefresh(roomId, gen)
+    }
   }
 }
 
