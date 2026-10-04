@@ -678,7 +678,7 @@ async function engageAudioOnly(gen: number): Promise<void> {
  * Disengage: stop our pipeline and reload() the native player (which
  * restores the prior quality on its own). Safe when nothing is engaged
  * (`hadPipeline` keeps it silent), and must run even when `mpegtsPlayer`
- * is null to cancel a partial engage (see `applyAudioOnlyMode`).
+ * is null to cancel a partial engage (see `applyAudioOnlyActive`).
  */
 function disengageAudioOnly(): void {
   // Snapshot before teardown to decide whether to log + reload.
@@ -729,9 +729,9 @@ function clearPendingApply(): void {
   }
 }
 
-function applyAudioOnlyMode(enabled: boolean): void {
+function applyAudioOnlyActive(active: boolean): void {
   ensureStyleEl()
-  document.documentElement.classList.toggle(HTML_FLAG_CLASS, enabled)
+  document.documentElement.classList.toggle(HTML_FLAG_CLASS, active)
 
   clearPendingApply()
   pendingApplyTimer = setTimeout(async () => {
@@ -756,7 +756,7 @@ function applyAudioOnlyMode(enabled: boolean): void {
       }
     } catch (err) {
       // A newer engage/disengage superseded this one and now owns the pipeline
-      // and the toggle, so the teardown below would kill a live session. The
+      // and the signals, so the teardown below would kill a live session. The
       // rejection is stale — the current attempt reports its own outcome.
       if (engageGen !== null && engageGen !== engagementGen) {
         console.warn('[audio-only] ignoring stale engage failure:', err)
@@ -779,10 +779,8 @@ function applyAudioOnlyMode(enabled: boolean): void {
           }
         }
       }
-      // Revert to video: flipping the signal re-runs the effect →
-      // applyAudioOnlyMode(false), stripping the hide-video class rather than
-      // stranding a blank player frame. 仅音频 also resets the picker;
-      // 自动音频 stays armed and retries on the next hide.
+      // Revert to video; the effect re-run strips the hide-video class instead of stranding a blank frame.
+      // 仅音频 drops back to 视频; 自动音频 stays armed and retries on the next hide.
       if (audioOnlyMode.value === 'on') audioOnlyMode.value = 'off'
       audioOnlyActive.value = false
     }
@@ -820,31 +818,24 @@ function clearAutoEngageTimer(): void {
 }
 
 /**
- * Derive `audioOnlyActive` from `audioOnlyMode`. 'auto' engages once the tab
- * has stayed hidden for `AUTO_ENGAGE_DELAY_MS` and drops back the moment it's
- * visible; every mode change or `visibilitychange` cancels a pending engage.
+ * Derive `audioOnlyActive` from `audioOnlyMode`: 'auto' engages once the tab has stayed hidden
+ * for `AUTO_ENGAGE_DELAY_MS` and drops back the moment it's visible.
  */
 function syncAudioOnlyActive(): void {
   clearAutoEngageTimer()
   const mode = audioOnlyMode.value
-  if (mode !== 'auto') {
-    audioOnlyActive.value = mode === 'on'
+  if (mode === 'auto' && isTabHidden()) {
+    autoEngageTimer = setTimeout(() => {
+      autoEngageTimer = null
+      // PiP keeps the video on screen even though the tab is hidden.
+      if (!document.pictureInPictureElement) audioOnlyActive.value = true
+    }, AUTO_ENGAGE_DELAY_MS)
     return
   }
-  if (!isTabHidden()) {
-    audioOnlyActive.value = false
-    return
-  }
-  autoEngageTimer = setTimeout(() => {
-    autoEngageTimer = null
-    // PiP keeps the video on screen even though the tab is hidden.
-    if (!document.pictureInPictureElement) audioOnlyActive.value = true
-  }, AUTO_ENGAGE_DELAY_MS)
+  audioOnlyActive.value = mode === 'on'
 }
 
-let modeEffectDispose: (() => void) | null = null
-let stateEffectDispose: (() => void) | null = null
-let volumeEffectDispose: (() => void) | null = null
+let effectDisposers: Array<() => void> = []
 
 /**
  * Public entrypoint, wired once from `app-room.tsx`; idempotent. Owns the
@@ -852,38 +843,22 @@ let volumeEffectDispose: (() => void) | null = null
  * component (`components/audio-only-mode-select.tsx`).
  */
 export function startAudioOnly(): void {
-  if (stateEffectDispose) return
+  if (effectDisposers.length > 0) return
   ensureStyleEl()
-  // Mode → `audioOnlyActive` → player state; last effect mirrors volume/mute
-  // onto the <audio>. Derivation goes first so the state effect's initial run
-  // already sees it. `signal.value` reads auto-track deps.
-  modeEffectDispose = effect(() => {
-    syncAudioOnlyActive()
-  })
   document.addEventListener('visibilitychange', syncAudioOnlyActive)
-  stateEffectDispose = effect(() => {
-    applyAudioOnlyMode(audioOnlyActive.value)
-  })
-  volumeEffectDispose = effect(() => {
-    syncVolumeToAudioEl()
-  })
+  // Derivation first so the state effect's initial run already sees it.
+  effectDisposers = [
+    effect(syncAudioOnlyActive),
+    effect(() => applyAudioOnlyActive(audioOnlyActive.value)),
+    effect(syncVolumeToAudioEl),
+  ]
 }
 
 export function stopAudioOnly(): void {
-  if (modeEffectDispose) {
-    modeEffectDispose()
-    modeEffectDispose = null
-  }
+  for (const dispose of effectDisposers) dispose()
+  effectDisposers = []
   document.removeEventListener('visibilitychange', syncAudioOnlyActive)
   clearAutoEngageTimer()
-  if (stateEffectDispose) {
-    stateEffectDispose()
-    stateEffectDispose = null
-  }
-  if (volumeEffectDispose) {
-    volumeEffectDispose()
-    volumeEffectDispose = null
-  }
   clearPendingApply()
   destroyAudioPipeline()
   // Clear so a later `startAudioOnly()` (HMR remount) doesn't owe a reload.

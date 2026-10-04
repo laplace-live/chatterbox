@@ -13,7 +13,7 @@ import {
   OPENAI_STT_DEFAULT_MODEL,
   SONIOX_DEFAULT_MODEL,
 } from './const'
-import { gmSignal } from './gm-signal'
+import { gmSignal, migrateGmKey } from './gm-signal'
 import { appendLog } from './log'
 import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT } from './prompts'
 import { resolveInvisibleChar } from './utils'
@@ -47,15 +47,7 @@ export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false
 // Audio-only mode: `livePlayer.stopPlayback()` halts the native HLS pull, then a true audio-only FLV stream (`only_audio=1` from the app endpoint — web endpoint ignores it) plays via hidden `<audio>` + mpegts.js. ~180 vs ~1700 kbps. See `lib/audio-only.ts`.
 /** 'off' = 视频, 'on' = 仅音频, 'auto' = 自动音频 (audio-only just while the tab is hidden). */
 export type AudioOnlyMode = 'off' | 'on' | 'auto'
-// Migrate the legacy `audioOnlyEnabled` boolean. Sentinel-guarded (copy only if unset, then delete) so a re-imported pre-upgrade backup migrates again.
-;(() => {
-  const missing = Symbol()
-  const legacy = GM_getValue<unknown>('audioOnlyEnabled', missing)
-  if (legacy === missing) return
-  const mode: AudioOnlyMode = legacy === true ? 'on' : 'off'
-  if (GM_getValue<unknown>('audioOnlyMode', missing) === missing) GM_setValue('audioOnlyMode', mode)
-  GM_deleteValue('audioOnlyEnabled')
-})()
+migrateGmKey('audioOnlyEnabled', 'audioOnlyMode', (v): AudioOnlyMode => (v === true ? 'on' : 'off'))
 export const audioOnlyMode = gmSignal<AudioOnlyMode>('audioOnlyMode', 'off')
 // Whether audio-only is engaged right now. Runtime, derived from `audioOnlyMode` (+ tab visibility for 'auto') by `lib/audio-only.ts`.
 export const audioOnlyActive = signal(false)
@@ -291,23 +283,11 @@ export const openaiSttModel = gmSignal('openaiSttModel', OPENAI_STT_DEFAULT_MODE
 export const openaiSttLanguage = gmSignal('openaiSttLanguage', 'zh')
 
 // --- Shared output / capture (every provider) ---
-// Migrate the formerly Soniox-prefixed keys to neutral `stt*` keys. Idempotent, sentinel-guarded per key (copy only if new key unset, then delete old) so a re-imported pre-upgrade backup gets migrated again.
-;(() => {
-  const renames: Array<[string, string]> = [
-    ['sonioxAutoSend', 'sttAutoSend'],
-    ['sonioxMaxLength', 'sttMaxLength'],
-    ['sonioxWrapBrackets', 'sttWrapBrackets'],
-    ['sonioxAudioDeviceId', 'sttAudioDeviceId'],
-  ]
-  for (const [oldKey, newKey] of renames) {
-    const missing = Symbol()
-    const oldVal = GM_getValue<unknown>(oldKey, missing)
-    if (oldVal === missing) continue
-    const newVal = GM_getValue<unknown>(newKey, missing)
-    if (newVal === missing) GM_setValue(newKey, oldVal)
-    GM_deleteValue(oldKey)
-  }
-})()
+// Migrate the formerly Soniox-prefixed keys to neutral `stt*` keys.
+migrateGmKey('sonioxAutoSend', 'sttAutoSend')
+migrateGmKey('sonioxMaxLength', 'sttMaxLength')
+migrateGmKey('sonioxWrapBrackets', 'sttWrapBrackets')
+migrateGmKey('sonioxAudioDeviceId', 'sttAudioDeviceId')
 
 export const sttAutoSend = gmSignal('sttAutoSend', true)
 export const sttMaxLength = gmSignal('sttMaxLength', 40)

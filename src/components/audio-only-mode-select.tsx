@@ -59,23 +59,14 @@ export function AudioOnlyModeSelect() {
     const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
     const at = e.target instanceof HTMLElement ? rows.indexOf(e.target) : -1
     const last = rows.length - 1
-    let next: number
-    switch (e.key) {
-      case 'ArrowDown':
-        next = at >= last ? 0 : at + 1
-        break
-      case 'ArrowUp':
-        next = at <= 0 ? last : at - 1
-        break
-      case 'Home':
-        next = 0
-        break
-      case 'End':
-        next = last
-        break
-      default:
-        return
+    const targets: Partial<Record<string, number>> = {
+      ArrowDown: at >= last ? 0 : at + 1,
+      ArrowUp: at <= 0 ? last : at - 1,
+      Home: 0,
+      End: last,
     }
+    const next = targets[e.key]
+    if (next === undefined) return
     e.preventDefault()
     rows[next]?.focus()
   }
