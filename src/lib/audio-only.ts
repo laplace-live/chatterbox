@@ -9,6 +9,8 @@
  * - Watchdog re-stops on `blob:` src revert: BLTH's SwitchLiveStreamQuality
  *   re-engages the player, else you'd stream video + audio at once.
  * - Volume/mute captured BEFORE stopPlayback (which nulls getPlayerInfo).
+ * - Swaps are make-before-break: the incoming stream starts beside the
+ *   outgoing one and only takes over once it's actually playing.
  */
 
 import { effect } from '@preact/signals'
@@ -47,6 +49,9 @@ const STREAM_RECOVERY_DELAYS_MS = [2000, 4000, 8000, 15000, 30000]
 
 /** How long the tab must stay hidden before 自动音频 engages, so a quick glance away keeps video. */
 export const AUTO_ENGAGE_DELAY_MS = 3000
+
+// Max wait for the incoming stream to start playing before a swap gives up on overlapping.
+const SWAP_TIMEOUT_MS = 10_000
 
 const STYLE = `
 /* Hide the actual video element while audio keeps playing. The static
@@ -312,8 +317,6 @@ async function fetchAudioOnlyStreamUrl(roomId: number): Promise<AudioStreamInfo>
 
 let audioEl: HTMLAudioElement | null = null
 let mpegtsPlayer: Mpegts.Player | null = null
-/** Room id the open stream targets; captured at enable so refresh stays put if the user navigates away. */
-let activeRoomId: number | null = null
 let streamRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let streamRecoveryTimer: ReturnType<typeof setTimeout> | null = null
 /** Consecutive reconnect attempts since the last time the stream was actually flowing. */
@@ -321,8 +324,12 @@ let streamRecoveryAttempts = 0
 let watchdogTimer: ReturnType<typeof setInterval> | null = null
 /** Bumped on every (re)engagement; async work from an older gen short-circuits after a bump. */
 let engagementGen = 0
-/** True between stopPlayback and reload. Separate from `mpegtsPlayer`: there's a window where the native player is stopped but no pipeline exists yet, and disengage must still reload. */
+/** True between stopPlayback and reload, i.e. ours is the live source. Not implied by `mpegtsPlayer`, which also exists while prerolling or handing off. */
 let nativePlayerStopped = false
+/** Our stream is warming up silently beside the still-playing native player (before the engage swap). */
+let prerolling = false
+/** In-flight hand-back to the native player; settles once ours is dropped. */
+let handoff: Promise<void> | null = null
 
 function clearStreamRefreshTimer(): void {
   if (streamRefreshTimer !== null) {
@@ -410,45 +417,58 @@ function syncVolumeToAudioEl(): void {
   const volume = audioOnlyVolume.value
   const muted = audioOnlyMuted.value
   if (!audioEl) return
-  if (Math.abs(audioEl.volume - volume) > 0.005) audioEl.volume = volume
+  // Silenced via volume, not `muted`, during preroll: unmuting a muted element later can trip autoplay policy.
+  const level = prerolling ? 0 : volume
+  if (Math.abs(audioEl.volume - level) > 0.005) audioEl.volume = level
   if (audioEl.muted !== muted) audioEl.muted = muted
 }
 
-/**
- * Carry audio-only volume/mute back onto the native player after
- * disengage (counterpart of `captureNativeVolume`); reload() otherwise
- * restores bilibili's own pre-stop volume. Applied only once the reloaded
- * player is streaming again (`blob:` src) so we land after its init-time
- * volume write and win. Bounded ~5s; aborts via `gen` if the user
- * re-engages mid-reload.
- */
-async function restoreVolumeToNativePlayer(volume: number, muted: boolean, gen: number): Promise<void> {
-  const target = Math.max(0, Math.min(1, volume))
-  const POLL_MS = 200
-  const MAX_POLLS = 25 // ~5s ceiling
+/** Whether B站's own `<video>` is streaming and actually playing (not stalled or paused). */
+function isNativePlaying(): boolean {
+  const v = getPlayerVideo()
+  return !!v && isNativePlayerStreaming(v) && !v.paused && v.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+}
 
-  const apply = (): boolean => {
-    const v = getPlayerVideo()
-    if (!v) return false
-    v.volume = target
-    v.muted = muted
-    return true
-  }
-
-  for (let i = 0; i < MAX_POLLS; i++) {
-    if (gen !== engagementGen) return // re-engaged — leave it alone
-    const v = getPlayerVideo()
-    // `blob:` src = reloaded player streaming; apply after its init volume.
-    if (v && isNativePlayerStreaming(v)) {
-      apply()
-      return
+/** Resolve once the reloaded native player is playing, or after `SWAP_TIMEOUT_MS`. */
+function waitForNativePlayback(): Promise<void> {
+  return new Promise(resolve => {
+    // `playing` doesn't bubble, but a capture listener still sees it, even on the fresh `<video>` reload() mounts.
+    const onPlaying = (): void => {
+      if (!isNativePlaying()) return
+      document.removeEventListener('playing', onPlaying, true)
+      clearTimeout(timer)
+      resolve()
     }
-    await new Promise<void>(resolve => setTimeout(resolve, POLL_MS))
-  }
+    const timer = setTimeout(() => {
+      document.removeEventListener('playing', onPlaying, true)
+      resolve()
+    }, SWAP_TIMEOUT_MS)
+    document.addEventListener('playing', onPlaying, true)
+  })
+}
 
-  // Fallback: no `blob:` src within the window — apply anyway, an early
-  // write beats no write.
-  if (gen === engagementGen) apply()
+/**
+ * Keep our stream audible until the reloaded native player plays, then drop it and carry its
+ * level over (counterpart of `captureNativeVolume`; reload() restores B站's own pre-stop volume).
+ * Runs to completion even if re-engaged meanwhile: that engage waits on `handoff` before starting.
+ */
+async function handOffToNativePlayer(volume: number, muted: boolean): Promise<void> {
+  await waitForNativePlayback()
+  destroyAudioPipeline()
+  handoff = null
+  const v = getPlayerVideo()
+  if (!v) return
+  v.volume = Math.max(0, Math.min(1, volume))
+  v.muted = muted
+}
+
+/** `p`'s result, or `fallback` if `ms` passes first; rejections pass through. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<T>(resolve => {
+    timer = setTimeout(() => resolve(fallback), ms)
+  })
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer))
 }
 
 /**
@@ -488,7 +508,7 @@ function destroyAudioPipeline(): void {
     audioEl.remove()
     audioEl = null
   }
-  activeRoomId = null
+  prerolling = false
 }
 
 /**
@@ -498,6 +518,11 @@ function destroyAudioPipeline(): void {
  */
 function scheduleStreamRecovery(roomId: number, gen: number, reason: string): void {
   if (gen !== engagementGen || !audioOnlyActive.value) return
+  // Still prerolling: pausing rejects the pending play(), so the engage fails fast and video keeps playing.
+  if (prerolling) {
+    audioEl?.pause()
+    return
+  }
   clearStreamRecoveryTimer()
 
   const delay = STREAM_RECOVERY_DELAYS_MS[streamRecoveryAttempts]
@@ -517,9 +542,10 @@ function scheduleStreamRecovery(roomId: number, gen: number, reason: string): vo
 
 /**
  * Build the hidden `<audio>` + mpegts player for a fresh stream URL (enable
- * and refresh paths). Caller must short-circuit on generation change.
+ * and refresh paths). Resolves true once audio is actually playing, false if
+ * play() was refused. Caller must short-circuit on generation change.
  */
-async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts, roomId: number, gen: number): Promise<void> {
+async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts, roomId: number, gen: number): Promise<boolean> {
   // A fresh attach supersedes any pending reconnect.
   clearStreamRecoveryTimer()
 
@@ -577,8 +603,13 @@ async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts, roomId: nu
   // the native player was already playing); log for diagnosis.
   try {
     await audioEl.play()
+    return true
   } catch (err) {
-    console.warn('[audio-only] autoplay blocked or play() failed:', err)
+    // AbortError = we paused or tore it down mid-preroll on purpose.
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      console.warn('[audio-only] autoplay blocked or play() failed:', err)
+    }
+    return false
   }
 }
 
@@ -615,14 +646,18 @@ async function refreshStream(roomId: number, gen: number): Promise<void> {
 }
 
 /**
- * Engage audio-only: load mpegts, fetch the FLV URL, stop the native HLS
- * pull, start the pipeline. Throws so the caller degrades gracefully (CSS
- * hide stays, native audio keeps playing).
+ * Engage audio-only: load mpegts, fetch the FLV URL, preroll our pipeline
+ * silently, then stop the native HLS pull once ours plays. Throws so the
+ * caller degrades gracefully (native playback was never interrupted).
  *
  * `gen` is bumped and owned by the caller so its `catch` can tell a failure of
  * the current attempt from one of a superseded attempt.
  */
 async function engageAudioOnly(gen: number): Promise<void> {
+  // Mid-handoff: let the native player take over first, then preroll beside it as usual.
+  if (handoff) await handoff
+  if (gen !== engagementGen) return
+
   const roomId = await ensureRoomId()
   if (gen !== engagementGen) return
 
@@ -643,13 +678,22 @@ async function engageAudioOnly(gen: number): Promise<void> {
   // nulls it.
   captureNativeVolume()
 
-  // Halt the native pull before attaching ours — order matters, else both
-  // streams flow at once.
+  // Fresh engage, not a reconnect — start the backoff ladder from the top.
+  streamRecoveryAttempts = 0
+  prerolling = true
+  const playing = await withTimeout(attachMpegtsPlayer(info.url, mpegts, roomId, gen), SWAP_TIMEOUT_MS, false)
+  if (gen !== engagementGen) {
+    // Gen bumped during preroll = disengage ran and tore ours down (the
+    // native player never stopped). Do NOT destroyAudioPipeline() here — a
+    // subsequent engage may own the current handles.
+    return
+  }
+  if (!playing) throw new Error('仅音频流未能开始播放')
+
+  // Swap in one task: stop the native pull, then unsilence ours.
   if (player?.stopPlayback) {
     try {
       player.stopPlayback()
-      // Before the await so a concurrent disengage knows to reload even
-      // though mpegtsPlayer isn't set yet.
       nativePlayerStopped = true
     } catch (err) {
       console.warn('[audio-only] stopPlayback failed:', err)
@@ -657,17 +701,8 @@ async function engageAudioOnly(gen: number): Promise<void> {
   }
   // Null player (deleted room / extreme cold-start): skip stopPlayback;
   // the watchdog stays the safety net and sets the flag if it stops later.
-
-  activeRoomId = roomId
-  // Fresh engage, not a reconnect — start the backoff ladder from the top.
-  streamRecoveryAttempts = 0
-  await attachMpegtsPlayer(info.url, mpegts, roomId, gen)
-  if (gen !== engagementGen) {
-    // Gen bumped during attach = disengage ran; it already tore down and
-    // reloaded. Do NOT destroyAudioPipeline() here — a subsequent engage
-    // may own the current handles, and disengage already nulled ours.
-    return
-  }
+  prerolling = false
+  syncVolumeToAudioEl()
 
   startWatchdog()
   scheduleStreamRefresh(roomId, gen)
@@ -675,8 +710,8 @@ async function engageAudioOnly(gen: number): Promise<void> {
 }
 
 /**
- * Disengage: stop our pipeline and reload() the native player (which
- * restores the prior quality on its own). Safe when nothing is engaged
+ * Disengage: reload() the native player (which restores the prior quality
+ * on its own) and hand off once it plays. Safe when nothing is engaged
  * (`hadPipeline` keeps it silent), and must run even when `mpegtsPlayer`
  * is null to cancel a partial engage (see `applyAudioOnlyActive`).
  */
@@ -686,36 +721,34 @@ function disengageAudioOnly(): void {
 
   // Bump even on the no-op path so a racing engage can't pass an old gen check.
   engagementGen++
-  destroyAudioPipeline()
+  // The in-flight handoff already lands on video, gaplessly.
+  if (handoff) return
 
-  if (!hadPipeline) return
-
-  // `nativePlayerStopped` (not `mpegtsPlayer`) is authoritative for
-  // "native player is stopped, must reload" — there's a window where the
-  // pipeline exists but stopPlayback hasn't run.
-  if (nativePlayerStopped) {
+  // `nativePlayerStopped` (not `mpegtsPlayer`) is authoritative for "must
+  // reload": a prerolling pipeline exists while the native player still plays.
+  const player = getLivePlayer()
+  if (!nativePlayerStopped || !player?.reload) {
+    destroyAudioPipeline()
     nativePlayerStopped = false
-    // Snapshot level + gen before the async reload so a later signal can't
-    // shift what we carry, and the restore aborts on re-engage.
-    const carryVolume = audioOnlyVolume.value
-    const carryMuted = audioOnlyMuted.value
-    const gen = engagementGen
-    const player = getLivePlayer()
-    if (player?.reload) {
-      try {
-        player.reload()
-        appendLog('🎬 已关闭仅音频模式，正在恢复直播')
-        // Fire-and-forget: carries the level onto the resumed video.
-        void restoreVolumeToNativePlayer(carryVolume, carryMuted, gen)
-        return
-      } catch (err) {
-        console.warn('[audio-only] reload failed:', err)
-        appendLog('⚠️ 恢复直播失败，请刷新页面')
-        return
-      }
-    }
+    if (hadPipeline) appendLog('🎬 已关闭仅音频模式')
+    return
   }
-  appendLog('🎬 已关闭仅音频模式')
+  nativePlayerStopped = false
+  // Ours stays audible until the native player plays; nothing may fight the reload meanwhile.
+  clearWatchdog()
+  clearStreamRefreshTimer()
+  clearStreamRecoveryTimer()
+  try {
+    player.reload()
+  } catch (err) {
+    console.warn('[audio-only] reload failed:', err)
+    destroyAudioPipeline()
+    appendLog('⚠️ 恢复直播失败，请刷新页面')
+    return
+  }
+  appendLog('🎬 已关闭仅音频模式，正在恢复直播')
+  // Snapshot the level now so a later signal can't shift what we carry.
+  handoff = handOffToNativePlayer(audioOnlyVolume.value, audioOnlyMuted.value)
 }
 
 // Bounce through a macrotask: calling appendLog synchronously from the
@@ -743,8 +776,8 @@ function applyAudioOnlyActive(active: boolean): void {
     let engageGen: number | null = null
     try {
       if (desired) {
-        // Already engaged on the right room (page reloaded with it persisted on).
-        if (mpegtsPlayer && activeRoomId !== null) return
+        // Already live; a pipeline mid-handoff or mid-preroll doesn't count and re-engages.
+        if (mpegtsPlayer && nativePlayerStopped) return
         // Bumped here, not inside engageAudioOnly, so the catch below can check it.
         engageGen = ++engagementGen
         await engageAudioOnly(engageGen)
