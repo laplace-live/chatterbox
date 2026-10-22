@@ -24,7 +24,7 @@ export function Checkbox({ label, id, disabled, className, ...props }: CheckboxP
         'cursor-pointer disabled:cursor-not-allowed',
         // Override app.tsx's dialog-wide `input { border }` that boxes the checkbox.
         'border-none',
-        'focus-visible:outline focus-visible:outline-brand focus-visible:outline-solid focus-visible:outline-offset-1',
+        'focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-brand focus-visible:outline-solid',
         className
       )}
       {...props}

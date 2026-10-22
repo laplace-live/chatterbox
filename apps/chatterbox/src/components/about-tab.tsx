@@ -161,7 +161,7 @@ export function AboutTab() {
                   service.name
                 )}
               </div>
-              <div class='mb-1 font-mono text-ga6 text-sm'>{service.host}</div>
+              <div class='mb-1 font-mono text-sm text-ga6'>{service.host}</div>
               <div class='mb-1'>
                 <span class='text-brand'>触发条件:</span> {service.trigger}
               </div>

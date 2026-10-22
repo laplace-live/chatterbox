@@ -801,7 +801,7 @@ export function SttTab() {
         </div>
         <div class='my-2'>
           <div class='mb-1 font-bold'>实时识别结果：</div>
-          <div class='max-h-25 min-h-10 overflow-y-auto break-all rounded bg-bg2 p-2'>
+          <div class='max-h-25 min-h-10 overflow-y-auto rounded bg-bg2 p-2 break-all'>
             <span>{finalText.value}</span>
             <span class='text-ga6'>{nonFinalText.value}</span>
           </div>

@@ -14,7 +14,7 @@ export function Label({ disabled, htmlFor, for: forProp, className, children, ..
     <label
       htmlFor={htmlFor ?? forProp}
       class={cn(
-        'shrink-0 select-none leading-none',
+        'shrink-0 leading-none select-none',
         // `!` so disabled wins over any cursor set by consumers via `className`.
         disabled && 'cursor-not-allowed! text-ga4',
         className

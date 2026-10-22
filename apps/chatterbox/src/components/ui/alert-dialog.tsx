@@ -67,7 +67,7 @@ export function AlertDialog() {
   return (
     <dialog
       ref={ref}
-      class={cn('border border-ga4 border-solid', 'max-w-[320px] rounded-lg p-3')}
+      class={cn('border border-solid border-ga4', 'max-w-[320px] rounded-lg p-3')}
       onCancel={e => {
         e.preventDefault()
         close(false)

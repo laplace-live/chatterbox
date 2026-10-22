@@ -187,10 +187,10 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
             'box-border w-full',
             'flex items-center justify-between gap-1',
             'min-h-5 py-px pr-1 pl-1.5',
-            'rounded border border-ga4 border-solid',
-            'bg-bg1 text-left text-inherit leading-none',
+            'rounded border border-solid border-ga4',
+            'bg-bg1 text-left leading-none text-inherit',
             'cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',
-            'outline-none transition',
+            'transition outline-none',
             'focus:border-brand',
             open.value && 'border-brand'
           )}
@@ -220,7 +220,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
             class={cn(
               'box-border w-full',
               'px-1 py-px',
-              'rounded border border-ga4 border-solid',
+              'rounded border border-solid border-ga4',
               'bg-bg1 text-inherit',
               'min-h-5 leading-none outline-none',
               'focus:border-brand'
@@ -257,7 +257,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                     'flex items-start gap-2',
                     'px-2 py-1',
                     'border-none bg-transparent',
-                    'text-left text-inherit leading-tight',
+                    'text-left leading-tight text-inherit',
                     'cursor-pointer',
                     // Hover and keyboard share one `active` state so they never disagree.
                     active && 'bg-ga1s'
@@ -292,7 +292,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
                   'box-border w-full',
                   'flex items-start gap-2',
                   'px-2 py-1',
-                  'text-left text-ga6 leading-tight'
+                  'text-left leading-tight text-ga6'
                 )}
               >
                 <span class='flex-1 break-all'>{missingLabel(value)}</span>

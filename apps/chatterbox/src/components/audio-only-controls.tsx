@@ -42,7 +42,7 @@ export function AudioOnlyControls() {
   }
 
   return (
-    <div class={cn('group inline-flex h-8 select-none items-center rounded bg-ga6 text-white')}>
+    <div class={cn('group inline-flex h-8 items-center rounded bg-ga6 text-white select-none')}>
       <button
         type='button'
         id='laplace-audio-only-mute'

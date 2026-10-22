@@ -14,7 +14,7 @@ export function Textarea({ disabled, className, ...props }: TextareaProps) {
       class={cn(
         'box-border w-full',
         'px-1 py-0.5',
-        'rounded border border-ga4 border-solid',
+        'rounded border border-solid border-ga4',
         'bg-bg1 text-inherit',
         'leading-[1.4] outline-none',
         'min-h-10 resize-y',

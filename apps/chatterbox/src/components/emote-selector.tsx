@@ -127,7 +127,7 @@ export function EmoteSelector() {
           <>
             {/* `border-solid` explicit: preflight is off, so a width-only
                 `border-b` renders nothing. */}
-            <div role='tablist' class='flex shrink-0 gap-1 overflow-x-auto border-ga2 border-b border-solid px-2'>
+            <div role='tablist' class='flex shrink-0 gap-1 overflow-x-auto border-b border-solid border-ga2 px-2'>
               <button
                 key={FAVORITES_TAB}
                 type='button'
@@ -141,7 +141,7 @@ export function EmoteSelector() {
                 class={cn(
                   'relative flex shrink-0 items-center justify-center',
                   'm-0 bg-transparent p-0.5',
-                  'cursor-pointer border-0 border-transparent border-b-2 border-solid transition',
+                  'cursor-pointer border-0 border-b-2 border-solid border-transparent transition',
                   '[&:not(:disabled):hover]:brightness-95',
                   showingFavorites ? 'border-brand bg-ga1s opacity-100' : 'opacity-55'
                 )}
@@ -173,7 +173,7 @@ export function EmoteSelector() {
                       'm-0 bg-transparent p-0.5',
                       // `border-b-2` transparent on inactive tabs so the row
                       // height doesn't shift as selection moves.
-                      'cursor-pointer border-0 border-transparent border-b-2 border-solid transition',
+                      'cursor-pointer border-0 border-b-2 border-solid border-transparent transition',
                       '[&:not(:disabled):hover]:brightness-95',
                       isActive ? 'border-brand bg-ga1s opacity-100' : 'opacity-55'
                     )}
@@ -181,7 +181,7 @@ export function EmoteSelector() {
                     {cover?.url ? (
                       <img src={cover.url} alt='' class='size-12 object-contain' loading='lazy' />
                     ) : (
-                      <span class='px-1 text-[11px] text-ga6 leading-none'>{pkg.pkg_name}</span>
+                      <span class='px-1 text-[11px] leading-none text-ga6'>{pkg.pkg_name}</span>
                     )}
                   </button>
                 )
@@ -194,14 +194,14 @@ export function EmoteSelector() {
             >
               {showingFavorites ? (
                 favorites.length === 0 ? (
-                  <div class='p-3 text-center text-[11px] text-ga6 leading-relaxed'>
+                  <div class='p-3 text-center text-[11px] leading-relaxed text-ga6'>
                     还没有收藏的表情
                     <br />
                     把鼠标移到表情上，点左上角的 ☆ 即可收藏
                   </div>
                 ) : (
                   <>
-                    <div class='mb-1 font-bold text-[11px] text-ga6'>
+                    <div class='mb-1 text-[11px] font-bold text-ga6'>
                       收藏
                       <span class='ml-2 font-normal'>({favorites.length})</span>
                     </div>
@@ -228,7 +228,7 @@ export function EmoteSelector() {
                 )
               ) : (
                 <>
-                  <div class='mb-1 font-bold text-[11px] text-ga6'>
+                  <div class='mb-1 text-[11px] font-bold text-ga6'>
                     {activePkg?.pkg_name}
                     <span class='ml-2 font-normal'>({activePkg?.emoticons.length})</span>
                   </div>
@@ -334,7 +334,7 @@ function EmoteCell({ emo, copied, isFav, unavailable = false, onSend, onCopy, on
             // always-on top-left star on the narrow cell.
             class={cn(
               'absolute inset-x-0 bottom-0',
-              'text-center text-[9px] text-white leading-tight',
+              'text-center text-[9px] leading-tight text-white',
               'pointer-events-none'
             )}
             style={{ background: 'rgba(0, 0, 0, 0.6)' }}
@@ -346,7 +346,7 @@ function EmoteCell({ emo, copied, isFav, unavailable = false, onSend, onCopy, on
             <span
               class={cn(
                 'absolute top-px right-px p-0.5',
-                'rounded-sm text-[9px] text-white leading-none',
+                'rounded-sm text-[9px] leading-none text-white',
                 'pointer-events-none whitespace-nowrap'
               )}
               // API supplies this colour per emote, so it can't be a static class.
@@ -366,7 +366,7 @@ function EmoteCell({ emo, copied, isFav, unavailable = false, onSend, onCopy, on
         class={cn(
           'm-0 border-none bg-transparent p-0',
           'w-full truncate',
-          'text-[10px] text-inherit leading-tight',
+          'text-[10px] leading-tight text-inherit',
           'cursor-pointer transition',
           'hover:text-brand',
           copied && 'font-bold text-brand'

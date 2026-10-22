@@ -73,7 +73,7 @@ function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
   const icon = isSkip ? '⏭' : entry.sent ? '✅' : '❌'
   const color = isSkip ? '#888' : entry.sent ? '#36a185' : '#f44'
   return (
-    <div class='border-b border-b-ga2 border-b-solid py-0.5'>
+    <div class='border-b-solid border-b border-b-ga2 py-0.5'>
       <div class='flex flex-wrap items-baseline gap-1'>
         <span style={{ color }}>{icon}</span>
         {entry.message ? (
@@ -206,7 +206,7 @@ export function AiChatSection() {
               <div class='max-h-45 overflow-y-auto'>
                 {/* Engine appends to the end; reverse for newest-first display. */}
                 {[...candidates].reverse().map(cand => (
-                  <div key={cand.id} class='border-b border-b-ga2 border-b-solid py-1'>
+                  <div key={cand.id} class='border-b-solid border-b border-b-ga2 py-1'>
                     {editingId.value === cand.id ? (
                       <div class='flex flex-wrap items-center gap-1'>
                         <Input

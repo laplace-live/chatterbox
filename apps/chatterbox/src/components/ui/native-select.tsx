@@ -16,7 +16,7 @@ export function NativeSelect({ disabled, className, children, ...props }: Native
         'box-border',
         // Right-side padding leaves room for the native dropdown arrow.
         'py-px pr-1 pl-0.5',
-        'rounded border border-ga4 border-solid',
+        'rounded border border-solid border-ga4',
         'bg-bg1 text-inherit',
         'min-h-5 leading-none outline-none',
         'cursor-pointer disabled:cursor-not-allowed disabled:opacity-60',

@@ -158,7 +158,7 @@ function MemeItem({
           onClick={() => void handleSend()}
           title='点击发送'
           variant='ghost'
-          className='whitespace-pre-wrap p-0 text-left hover:text-brand'
+          className='p-0 text-left whitespace-pre-wrap hover:text-brand'
         >
           {meme.content}
         </Button>

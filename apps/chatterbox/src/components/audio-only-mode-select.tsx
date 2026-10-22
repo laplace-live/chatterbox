@@ -114,7 +114,7 @@ export function AudioOnlyModeSelect() {
                   'flex items-start gap-2',
                   'px-2 py-1.5',
                   'rounded border-none bg-transparent',
-                  'text-left text-inherit leading-tight',
+                  'text-left leading-tight text-inherit',
                   'cursor-pointer outline-none',
                   'hover:bg-ga1s focus-visible:bg-ga1s'
                 )}
@@ -122,7 +122,7 @@ export function AudioOnlyModeSelect() {
                 <div class='flex min-w-0 flex-1 flex-col gap-0.5'>
                   <span class={cn(selected && 'font-bold')}>{opt.label}</span>
                   {/* keep-all: CJK wraps at the comma instead of mid-phrase. */}
-                  <span class='break-keep text-[11px] text-ga6'>{opt.hint}</span>
+                  <span class='text-[11px] break-keep text-ga6'>{opt.hint}</span>
                 </div>
                 <IconCheck size={12} aria-hidden='true' class={cn('mt-0.5 shrink-0', !selected && 'invisible')} />
               </button>

@@ -131,7 +131,7 @@ function AutoSeekMetrics(props: AutoSeekMetricsProps) {
   const bufferColor = bufferLen < 0.2 ? '#f44' : delta > 1 ? '#e8a200' : '#36a185'
   const rateColor = Math.abs(rate - 1) < 0.005 ? '#666' : rate > 1 ? '#e8a200' : '#f44'
   return (
-    <div class='rounded border border-ga2 border-solid bg-ga1 p-2'>
+    <div class='rounded border border-solid border-ga2 bg-ga1 p-2'>
       <div class='flex flex-wrap gap-x-4 gap-y-1'>
         <div>
           当前延迟 <span style={{ color: bufferColor, fontWeight: 600 }}>{bufferLen.toFixed(2)} 秒</span>
@@ -1385,7 +1385,7 @@ export function SettingsTab() {
                 messageBlacklistEntries.map(text => (
                   <div key={text} class={LIST_ROW_CLASS}>
                     <span class={LIST_ROW_TEXT}>{text}</span>
-                    {isRegexEntry(text) && <span class='shrink-0 font-mono text-brand text-sm'>正则</span>}
+                    {isRegexEntry(text) && <span class='shrink-0 font-mono text-sm text-brand'>正则</span>}
                     <Button
                       variant='ghost'
                       size='sm'

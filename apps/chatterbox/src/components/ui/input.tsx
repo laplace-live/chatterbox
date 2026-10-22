@@ -23,7 +23,7 @@ export function Input({ type = 'text', disabled, className, ...props }: InputPro
       class={cn(
         'box-border',
         'px-1 py-px',
-        'rounded border border-ga4 border-solid',
+        'rounded border border-solid border-ga4',
         'bg-bg1 text-inherit',
         'min-h-5 leading-none outline-none',
         'cursor-text disabled:cursor-not-allowed disabled:opacity-60',

@@ -56,7 +56,7 @@ export function AccordionTrigger({ className, children, ...props }: AccordionTri
     <summary
       class={cn(
         'sticky top-0 z-10 flex items-center justify-between gap-2',
-        'cursor-pointer select-none font-bold',
+        'cursor-pointer font-bold select-none',
         'rounded-sm bg-ga1 px-1 py-0.5',
         // Hide disclosure triangle: list-none plus WebKit pseudo-element for Safari.
         'list-none',

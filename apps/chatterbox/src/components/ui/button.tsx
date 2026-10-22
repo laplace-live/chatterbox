@@ -49,7 +49,7 @@ export function Button({
         'gap-1 rounded',
         'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
         'leading-[1.2]',
-        'box-border select-none whitespace-nowrap',
+        'box-border whitespace-nowrap select-none',
         'transition',
         '[&:not(:disabled):hover]:brightness-[.96]',
         '[&:not(:disabled):active]:brightness-[.9]',

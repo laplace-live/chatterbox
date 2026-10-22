@@ -190,7 +190,7 @@ export function PopoverContent({
         'rounded ring ring-ga6/30',
         'bg-bg1',
         'shadow-md',
-        'overflow-y-auto overflow-x-hidden',
+        'overflow-x-hidden overflow-y-auto',
         className
       )}
       style={

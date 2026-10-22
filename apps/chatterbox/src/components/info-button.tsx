@@ -235,7 +235,7 @@ function UserNoteSection({ uid }: { uid: number }) {
 }
 
 function SectionHeading({ children }: { children: preact.ComponentChildren }) {
-  return <div class='font-bold text-ga6 uppercase tracking-wider'>{children}</div>
+  return <div class='font-bold tracking-wider text-ga6 uppercase'>{children}</div>
 }
 
 function StatusLine({ children, color }: { children: preact.ComponentChildren; color?: string }) {

@@ -15,7 +15,7 @@ export function Tabs() {
   const current = activeTab.value
 
   return (
-    <div class='mb-1.25 flex gap-1 border-b border-b-ga2 border-b-solid px-1'>
+    <div class='border-b-solid mb-1.25 flex gap-1 border-b border-b-ga2 px-1'>
       {TABS.map(tab => {
         const isActive = current === tab.id
         return (
@@ -28,7 +28,7 @@ export function Tabs() {
             class={cn(
               '-mb-px cursor-pointer bg-transparent px-2 py-1',
               // Zero out the UA button border; active underline aligns with the container's bottom border via -mb-px.
-              'border-x-0 border-t-0 border-b border-b-solid',
+              'border-b-solid border-x-0 border-t-0 border-b',
               isActive ? 'border-b-brand font-bold' : 'border-b-transparent font-normal'
             )}
           >
