@@ -62,6 +62,8 @@ export function startKakashiServer(options: KakashiServerOptions) {
       idleTimeout: 60,
       sendPings: true,
       maxPayloadLength: MAX_FRAME_BYTES,
+      // Past the backpressure limit Bun drops frames but keeps the socket open; closing makes the tab rejoin fresh.
+      closeOnBackpressureLimit: true,
       open(ws) {
         ws.data.helloTimer = setTimeout(() => ws.close(CloseCode.BAD_HELLO, 'hello timeout'), HELLO_TIMEOUT_MS)
       },
