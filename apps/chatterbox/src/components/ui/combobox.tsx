@@ -107,7 +107,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
     if (open.value) {
       inputRef.current?.focus()
       const idx = options.findIndex(o => o.value === value)
-      highlight.value = idx >= 0 ? idx : 0
+      highlight.value = Math.max(idx, 0)
     } else {
       query.value = ''
       highlight.value = 0

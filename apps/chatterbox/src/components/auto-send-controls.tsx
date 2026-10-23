@@ -159,8 +159,8 @@ export function AutoSendControls() {
                 className='w-16'
                 value={msgSendInterval.value}
                 onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10)
-                  msgSendInterval.value = v >= 0 ? v : 0
+                  const v = parseInt(e.currentTarget.value, 10) || 0
+                  msgSendInterval.value = Math.max(0, v)
                 }}
               />
               秒
@@ -174,8 +174,8 @@ export function AutoSendControls() {
                 className='w-16'
                 value={maxLength.value}
                 onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10)
-                  maxLength.value = v >= 1 ? v : 1
+                  const v = parseInt(e.currentTarget.value, 10) || 1
+                  maxLength.value = Math.max(1, v)
                 }}
               />
               字自动分段
