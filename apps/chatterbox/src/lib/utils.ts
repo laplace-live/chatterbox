@@ -337,6 +337,26 @@ export function resolveSendDelayMs(intervalSeconds: number, random: boolean): nu
   return Math.max(0, Math.round(baseMs + clampedSample * sigmaMs))
 }
 
+/** Resolves `true` after `ms`, or `false` as soon as `signal` aborts. */
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise(resolve => {
+    if (signal.aborted) {
+      resolve(false)
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      resolve(false)
+    }
+    const timer = setTimeout(() => {
+      // Detach so a long-lived signal doesn't collect one listener per sleep.
+      signal.removeEventListener('abort', onAbort)
+      resolve(true)
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 /**
  * Maps Bilibili danmaku error codes to human-readable messages.
  */

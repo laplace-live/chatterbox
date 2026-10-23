@@ -105,6 +105,9 @@ async function loadClient(uid: string, gm: Record<string, unknown>): Promise<Har
     [join(LIB, 'replacement.ts')]: `
       export const applyReplacements = text => text.replaceAll('禁', '*')
     `,
+    [join(LIB, 'page-visibility.ts')]: `
+      export const isTabHidden = () => false
+    `,
   }
   const gmStub: BunPlugin = {
     name: 'gm-stub',
@@ -130,7 +133,7 @@ async function loadClient(uid: string, gm: Record<string, unknown>): Promise<Har
     target: 'bun',
     // Bun has no DOM; give the bundle its own `document`/`location` instead of touching globals other tests share.
     banner: [
-      'const __harnessDocument = { visibilityState: "visible", addEventListener() {}, removeEventListener() {} };',
+      'const __harnessDocument = { addEventListener() {}, removeEventListener() {} };',
       'const __harnessLocation = { assign() {} };',
     ].join('\n'),
     define: { document: '__harnessDocument', location: '__harnessLocation' },

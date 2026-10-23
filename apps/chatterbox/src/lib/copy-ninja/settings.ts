@@ -1,4 +1,4 @@
-import type { ActionSource, CopyStatus, Member, MemberRole, Role } from '@laplace.live/kakashi-protocol'
+import type { ActionSource, Member, MemberRole, ResultMessage, Role } from '@laplace.live/kakashi-protocol'
 import { DEFAULT_SERVER_URL } from '@laplace.live/kakashi-protocol'
 import { computed, signal } from '@preact/signals'
 
@@ -50,13 +50,21 @@ export const copyNinjaMasterRoomId = signal<number | null>(null)
 export const copyNinjaKnownUids = signal<ReadonlySet<string>>(new Set())
 
 /** Master-side: latest copy result per mirror uid. */
-export const copyNinjaResults = signal<Record<string, { status: CopyStatus; detail?: string }>>({})
+export const copyNinjaResults = signal<Record<string, Pick<ResultMessage, 'status' | 'detail'>>>({})
 
 /** Role this account claims; mirrors by default. */
 export const copyNinjaClaimedRole = computed<Role>(() => {
   const uid = copyNinjaSelfUid.value
   return (uid && copyNinjaRoles.value[uid]) || 'mirror'
 })
+
+/** Claim `role` for this account; mirror is stored as no entry. */
+export function setClaimedRole(role: Role): void {
+  const uid = copyNinjaSelfUid.value
+  if (!uid) return
+  const { [uid]: _, ...rest } = copyNinjaRoles.value
+  copyNinjaRoles.value = role === 'master' ? { ...rest, [uid]: role } : rest
+}
 
 /** Role the server granted this account, once it appears in the roster. */
 export const copyNinjaEffectiveRole = computed<MemberRole | null>(() => {
