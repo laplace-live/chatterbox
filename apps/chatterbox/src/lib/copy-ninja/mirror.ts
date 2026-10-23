@@ -65,6 +65,11 @@ export function handleMirrorAction(msg: ActionDeliveryMessage, report: ReportRes
     report(eventId, 'skipped', '分身已暂停')
     return
   }
+  // Checked once: a tab's room resolves once per page and never changes.
+  if (cachedRoomId.value !== action.roomId) {
+    report(eventId, 'skipped', '不在同一直播间')
+    return
+  }
   const plan = planCopy({
     sourceEnabled: isCopySourceEnabled(action.source),
     dropPercent: copyNinjaDropPercent.value,
@@ -147,8 +152,6 @@ async function drain(): Promise<void> {
 async function copyAction({ msg: { eventId, action }, plannedAt, report, rewrite }: PendingCopy, signal: AbortSignal) {
   if (copyNinjaPaused.value) return report(eventId, 'skipped', '分身已暂停')
   if (Date.now() - plannedAt > STALE_MS) return report(eventId, 'skipped', '已过期')
-  const roomId = cachedRoomId.value
-  if (roomId !== action.roomId) return report(eventId, 'skipped', '不在同一直播间')
   const csrfToken = getCsrfToken()
   if (!csrfToken) return report(eventId, 'failed', '未登录')
 
@@ -169,14 +172,9 @@ async function copyAction({ msg: { eventId, action }, plannedAt, report, rewrite
     appendLog(`✨ ${label} 感知忍術：${action.text} → ${text}`)
   }
   const segments = isEmoticonUnique(text) ? [text] : processMessages(text, maxLength.value)
-  // Re-checks the room: the tab may have moved during the rewrite or the queue wait.
-  const stillWanted = () =>
-    !signal.aborted &&
-    !copyNinjaPaused.value &&
-    Date.now() - plannedAt <= STALE_MS &&
-    cachedRoomId.value === action.roomId
+  const stillWanted = () => !signal.aborted && !copyNinjaPaused.value && Date.now() - plannedAt <= STALE_MS
   for (const segment of segments) {
-    const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.COPY, 'copy', stillWanted)
+    const result = await enqueueDanmaku(segment, action.roomId, csrfToken, SendPriority.COPY, 'copy', stillWanted)
     if (result.cancelled) return report(eventId, 'skipped', '已取消')
     appendLog(result, label, segment)
     if (!result.success) {
