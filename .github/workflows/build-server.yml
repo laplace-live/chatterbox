@@ -6,7 +6,7 @@ on:
     # Pushed by release.yml (changesets) with the release bot's token, so this
     # trigger fires; path filters are not evaluated for tag pushes. If a run is
     # ever missed, dispatch this workflow on the tag to publish the release.
-    tags: ['@laplace.live/kakashi-server@*']
+    tags: ["@laplace.live/kakashi-server@*"]
     paths:
       - apps/kakashi-server/**
       - packages/kakashi-protocol/**
@@ -180,7 +180,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: '*-binaries'
+          pattern: "*-binaries"
           path: dist
           merge-multiple: true
 

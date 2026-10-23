@@ -80,15 +80,14 @@
       "tailwindDirectives": true
     }
   },
-  // Biome 2.6 formats Markdown and YAML by default; leave them to the editor, as before.
   "markdown": {
+    // TODO: remove on Biome 2.6.3+; 2.6.2 deletes the blank line between a paragraph and a list (biomejs/biome#12524)
     "formatter": {
       "enabled": false
-    }
-  },
-  "yaml": {
-    "formatter": {
-      "enabled": false
+    },
+    // Opt-in: without it Biome formats YAML frontmatter as Markdown and mangles it.
+    "parser": {
+      "frontmatter": true
     }
   },
   "tailwind": {
