@@ -340,8 +340,8 @@ async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Pro
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     const unmark = markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
-    // Cancelled or rejected sends never post, so no echo will come back to match.
-    if (!result.success) unmark()
+    // Cancelled or rejected sends never post; an unknown outcome keeps the mark in case it did.
+    if (result.cancelled || result.rejected) unmark()
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
