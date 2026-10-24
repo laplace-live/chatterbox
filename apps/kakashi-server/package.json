@@ -1,7 +1,7 @@
 {
   "name": "@laplace.live/kakashi-server",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LAPLACE Kakashi Server, the Copy Ninja relay for LAPLACE Chatterbox",
   "license": "AGPL-3.0",
   "type": "module",
