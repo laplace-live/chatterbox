@@ -1,5 +1,11 @@
 # @laplace.live/kakashi-server
 
+## 0.1.2
+
+### Patch Changes
+
+- 7e949ec: refactor: re-send room follows on every hub update instead of tracking which were sent, and skip roster broadcasts that didn't change
+
 ## 0.1.1
 
 ### Patch Changes

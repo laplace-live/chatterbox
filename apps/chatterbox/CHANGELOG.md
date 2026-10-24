@@ -1,5 +1,12 @@
 # laplace-chatterbox
 
+## 4.5.1
+
+### Patch Changes
+
+- 7e949ec: refactor: simplify Copy Ninja; mirrors read real tab visibility even when an anti-AFK script fakes it, and 独轮车 no longer piles up abort listeners over a long run
+- 40e48bd: fix: stopping 独轮车, 自动融入 or AI 融入 now cancels messages still waiting to send, a manual send preempts an automatic one waiting out the rate-limit gap, a non-zero code from Bilibili counts as a failed send, and network or CSRF errors are no longer reported as shield-word hits
+
 ## 4.5.0
 
 ### Minor Changes
