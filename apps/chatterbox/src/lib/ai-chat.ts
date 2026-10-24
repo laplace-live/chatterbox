@@ -340,8 +340,8 @@ async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Pro
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     const unmark = markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
-    // Never posted, so no echo will come back to match.
-    if (result.cancelled) unmark()
+    // Cancelled or rejected sends never post, so no echo will come back to match.
+    if (!result.success) unmark()
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
@@ -598,6 +598,8 @@ export function stopAiChatEngine(): void {
   startCount--
   if (startCount > 0) return
   session++
+  // Like start: a stopped engine must not leave candidates that can still be sent.
+  pendingCandidates.value = []
   if (unsubscribeDanmaku) {
     unsubscribeDanmaku()
     unsubscribeDanmaku = null
