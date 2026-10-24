@@ -8,6 +8,7 @@ import {
   extractOpusAuthorUid,
   extractOpusPubDate,
   formatCodePoints,
+  formatDanmakuError,
   insertRandomChar,
   isHttpUrl,
   parseCustomChar,
@@ -198,6 +199,20 @@ describe('processMessages', () => {
 
   test('leaves lines untouched without a char', () => {
     expect(processMessages('ab\n\ncd', 10)).toEqual(['ab', 'cd'])
+  })
+})
+
+/** Send-failure reason for the log: Bilibili's bare `f`/`k` shield codes get a label, anything else passes through. */
+describe('formatDanmakuError', () => {
+  test('labels the bare shield-word codes', () => {
+    expect(formatDanmakuError('f')).toBe('f - 包含全局屏蔽词')
+    expect(formatDanmakuError('k')).toBe('k - 包含房间屏蔽词')
+  })
+
+  test('passes other errors through even when they contain f or k', () => {
+    for (const error of ['Failed to fetch', 'csrf 校验失败', 'Unexpected token < in JSON']) {
+      expect(formatDanmakuError(error)).toBe(error)
+    }
   })
 })
 
