@@ -51,10 +51,19 @@ async function createHarness() {
     return { send: true, reason: '符合当前判断规则' }
   })
   const polish = mock(async (_slot: string, text: string, _options?: { signal?: AbortSignal }) => `${text}！`)
-  const enqueue = mock(async (_text: string, _room: string, _csrf: string, _priority: number, _source: string) => ({
-    isEmoticon: false,
-    code: 0,
-  }))
+  const enqueue = mock(
+    async (
+      _text: string,
+      _room: string,
+      _csrf: string,
+      _priority: number,
+      _source: string,
+      _guard?: () => boolean
+    ) => ({
+      isEmoticon: false,
+      code: 0,
+    })
+  )
   const log = mock((..._args: unknown[]) => {})
   const emotes = new Map<string, string>()
   const locked = new Set<string>()
@@ -378,6 +387,18 @@ describe('automatic blend decision gate', () => {
     pending.resolve('停止之后的润色结果')
     await flush()
     expect(h.enqueue).not.toHaveBeenCalled()
+  })
+
+  test('stopping cancels a send still waiting in the queue', async () => {
+    const h = await createHarness()
+    const queued = Promise.withResolvers<{ isEmoticon: boolean; code: number }>()
+    h.enqueue.mockImplementation(() => queued.promise)
+    h.qualify()
+    await flush()
+    const guard = h.enqueue.mock.calls[0]?.[5]
+    expect(guard?.()).toBe(true)
+    h.engine.stopAutoBlend()
+    expect(guard?.()).toBe(false)
   })
 
   test('an old request cannot clear or send during a restarted pending request', async () => {

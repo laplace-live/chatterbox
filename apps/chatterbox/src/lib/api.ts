@@ -107,8 +107,10 @@ export interface SendDanmakuResult {
   message: string
   isEmoticon: boolean
   error?: string
-  /** Set when preempted by a higher-priority send; treat as benign skip, not failure. */
+  /** Set when preempted or cancelled before posting; treat as benign skip, not failure. */
   cancelled?: boolean
+  /** Bilibili answered with a rejection, so the message was not posted; unset when the outcome is unknown (network error). */
+  rejected?: boolean
 }
 
 /** Sends a single danmaku message to the Bilibili live room. */
@@ -156,14 +158,15 @@ export async function sendDanmaku(message: string, roomId: number, csrfToken: st
       body: form,
     })
 
-    const json: { message?: string } = await resp.json()
+    const json: { code?: number; message?: string; msg?: string } = await resp.json()
 
-    if (json.message) {
+    if ((json.code !== undefined && json.code !== 0) || json.message) {
       return {
         success: false,
         message,
         isEmoticon: emoticon,
-        error: json.message,
+        error: json.message || json.msg || `code ${json.code}`,
+        rejected: true,
       }
     }
 

@@ -389,7 +389,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     }
 
     if (!isCurrent()) return
-    const result = await enqueueDanmaku(toSend, roomId, csrfToken, SendPriority.AUTO, 'blend')
+    const result = await enqueueDanmaku(toSend, roomId, csrfToken, SendPriority.AUTO, 'blend', isCurrent)
     const label = result.isEmoticon ? '自动融入(表情)' : '自动融入'
     const display = wasReplaced || toSend !== originalText ? `${originalText} → ${toSend}` : toSend
     appendLog(result, label, display)

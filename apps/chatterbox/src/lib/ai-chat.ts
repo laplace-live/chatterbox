@@ -80,13 +80,13 @@ export const aiChatViewerCount = signal(0)
 /** Most-recent N viewer messages (ring; trimmed to `aiChatViewerWindow`). */
 const viewerBuffer: ViewerChatEntry[] = []
 
-/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary. */
-const conversationHistory: { transcript: string; chat: string }[] = []
+/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary; `unsent` marks a reply that never posted. */
+const conversationHistory: { transcript: string; chat: string; unsent?: boolean }[] = []
 
 let viewerReceivedSinceLastGen = 0
 
-/** Recent outgoing texts (text → enqueue ms); drops our own echo from `.chat-items`. */
-const recentOutgoingTexts = new Map<string, number>()
+/** Recent outgoing texts (text → latest send's mark, stamped at enqueue); drops our own echo from `.chat-items`. */
+const recentOutgoingTexts = new Map<string, { at: number }>()
 
 const OUTGOING_TTL_MS = 30_000
 const OUTGOING_CAP = 64
@@ -103,6 +103,8 @@ let scheduledTimer: ReturnType<typeof setTimeout> | null = null
 let scheduledReason: 'transcript' | 'viewer' | null = null
 let inflight = false
 let startCount = 0
+/** Bumped on teardown; a send from an older session is dropped, even from the send queue. */
+let session = 0
 
 /** Buffer looks ready (endpoint detected / sentence-final / long). */
 const DEBOUNCE_READY_MS = 500
@@ -119,20 +121,25 @@ const LLM_CALL_TIMEOUT_MS = 45_000
 
 function pruneRecentOutgoing(): void {
   const now = Date.now()
-  for (const [text, ts] of recentOutgoingTexts) {
-    if (now - ts > OUTGOING_TTL_MS) recentOutgoingTexts.delete(text)
+  for (const [text, mark] of recentOutgoingTexts) {
+    if (now - mark.at > OUTGOING_TTL_MS) recentOutgoingTexts.delete(text)
   }
 }
 
-function markOutgoing(text: string): void {
+/** Marks `text` as our own send; the returned undo removes only this mark, never a newer send's for the same text. */
+function markOutgoing(text: string): () => void {
   const trimmed = text.trim()
-  if (!trimmed) return
+  if (!trimmed) return () => {}
   pruneRecentOutgoing()
-  recentOutgoingTexts.set(trimmed, Date.now())
+  const mark = { at: Date.now() }
+  recentOutgoingTexts.set(trimmed, mark)
   // Map iteration is insertion order, so the first key is the oldest.
   if (recentOutgoingTexts.size > OUTGOING_CAP) {
     const oldest = recentOutgoingTexts.keys().next().value
     if (oldest !== undefined) recentOutgoingTexts.delete(oldest)
+  }
+  return () => {
+    if (recentOutgoingTexts.get(trimmed) === mark) recentOutgoingTexts.delete(trimmed)
   }
 }
 
@@ -163,9 +170,10 @@ function buildContextSummary(
     }
   }
   for (let i = history.length - 1; i >= 0; i--) {
-    const { transcript, chat } = history[i]
+    const { transcript, chat, unsent } = history[i]
+    const reply = `${unsent ? '[你未能发送]' : '[你已发送]'}: ${chat}`
     // Viewer-only rounds have no transcript; an empty [主播] line just confuses the model.
-    const block = transcript.trim() ? `[主播]: ${transcript}\n[你已发送]: ${chat}` : `[你已发送]: ${chat}`
+    const block = transcript.trim() ? `[主播]: ${transcript}\n${reply}` : reply
     if (totalLength + block.length > maxChars) break
     combined.unshift(block)
     totalLength += block.length
@@ -313,17 +321,27 @@ async function callAiChatLlm(sourceText: string, hasTranscript: boolean): Promis
   }
 }
 
-async function sendAiChatDanmaku(message: string): Promise<boolean> {
+/** Turns false once the engine session it was taken in is torn down. */
+function sessionGuard(): () => boolean {
+  const startedIn = session
+  return () => session === startedIn
+}
+
+async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Promise<boolean> {
   try {
     const roomId = await ensureRoomId()
+    // A torn-down session must not mark or queue: a restart may already have marked the same text.
+    if (!isCurrent()) return false
     const csrfToken = getCsrfToken()
     if (!csrfToken) {
       appendLog('❌ [AI 融入] 未找到登录信息，请先登录 Bilibili')
       return false
     }
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
-    markOutgoing(message)
-    const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai')
+    const unmark = markOutgoing(message)
+    const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
+    // Cancelled or rejected sends never post; an unknown outcome keeps the mark in case it did.
+    if (result.cancelled || result.rejected) unmark()
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
@@ -339,7 +357,7 @@ function appendHistory(entry: AiChatHistoryEntry): void {
   aiChatHistory.value = next
 }
 
-function recordConvHistory(transcript: string, chat: string): void {
+function recordConvHistory(transcript: string, chat: string, unsent = false): void {
   // Collapse consecutive viewer-only skips: without STT they'd flood the context
   // with identical [跳过] blocks and bias the LLM into a keep-skipping spiral.
   const last = conversationHistory[conversationHistory.length - 1]
@@ -348,7 +366,7 @@ function recordConvHistory(transcript: string, chat: string): void {
     last.chat = chat
     return
   }
-  conversationHistory.push({ transcript, chat })
+  conversationHistory.push({ transcript, chat, unsent })
   while (conversationHistory.length > HISTORY_ENTRIES_CAP) conversationHistory.shift()
 }
 
@@ -366,6 +384,7 @@ function addPendingCandidate(transcript: string, decision: AiChatDecision): void
 
 async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promise<void> {
   if (inflight) return
+  const isCurrent = sessionGuard()
   // Snapshot + clear atomically; content landing during the await starts the next round.
   const transcript = sttTranscriptBuffer.value
   sttTranscriptBuffer.value = ''
@@ -387,12 +406,14 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
       // callAiChatLlm already logged the failure
       return
     }
+    if (!isCurrent()) return
     aiChatLastGenAt.value = Date.now()
 
     if (decision.send && decision.message.trim()) {
       if (aiChatAutoSend.value) {
-        const ok = await sendAiChatDanmaku(decision.message)
-        recordConvHistory(transcript, decision.message)
+        const ok = await sendAiChatDanmaku(decision.message, isCurrent)
+        if (!isCurrent()) return
+        recordConvHistory(transcript, decision.message, !ok)
         appendHistory({
           id: nextEntryId++,
           transcript,
@@ -421,10 +442,9 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
       })
     }
   } finally {
-    inflight = false
-    // Don't resurrect the pill out of 'disabled' if torn down mid-flight.
-    // peek() avoids the narrowing the 'generating' assignment above would impose.
-    if (aiChatStatus.peek() !== 'disabled') {
+    // A run from a torn-down session leaves the mutex and status pill to the session that replaced it.
+    if (isCurrent()) {
+      inflight = false
       aiChatStatus.value = scheduledTimer ? 'waiting' : 'idle'
     }
   }
@@ -468,8 +488,10 @@ export function acceptCandidate(id: number, editedMessage?: string): void {
     return
   }
   pendingCandidates.value = pendingCandidates.value.filter(c => c.id !== id)
+  const isCurrent = sessionGuard()
   void (async () => {
-    const ok = await sendAiChatDanmaku(message)
+    const ok = await sendAiChatDanmaku(message, isCurrent)
+    if (!isCurrent()) return
     appendHistory({
       id: nextEntryId++,
       transcript: cand.transcript,
@@ -575,6 +597,9 @@ export function stopAiChatEngine(): void {
   if (startCount === 0) return
   startCount--
   if (startCount > 0) return
+  session++
+  // Like start: a stopped engine must not leave candidates that can still be sent.
+  pendingCandidates.value = []
   if (unsubscribeDanmaku) {
     unsubscribeDanmaku()
     unsubscribeDanmaku = null
