@@ -63,6 +63,16 @@ describe('enqueueDanmaku guard', () => {
   })
 })
 
+test('a manual send preempts an automatic one waiting out the rate-limit gap', async () => {
+  const { queue, sendDanmaku } = await loadQueue()
+  await queue.enqueueDanmaku('first', 1, 'csrf', queue.SendPriority.AUTO, 'loop')
+  const waiting = queue.enqueueDanmaku('waiting', 1, 'csrf', queue.SendPriority.AUTO, 'loop')
+  const manual = queue.enqueueDanmaku('manual', 1, 'csrf', queue.SendPriority.MANUAL, 'manual')
+  expect(await waiting).toMatchObject({ cancelled: true, error: 'preempted' })
+  expect(await manual).toMatchObject({ success: true })
+  expect(sendDanmaku.mock.calls.map(call => call[0])).toEqual(['first', 'manual'])
+})
+
 test('onDanmakuSent reports accepted sends with their source', async () => {
   const { queue, sendDanmaku } = await loadQueue()
   sendDanmaku.mockImplementationOnce(async message => ({ success: false, message, isEmoticon: false, error: 'f' }))

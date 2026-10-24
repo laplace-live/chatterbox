@@ -82,16 +82,17 @@ async function processQueue(): Promise<void> {
   processing = true
   try {
     while (queue.length > 0) {
-      while (queue.length > 0 && queue[0].cancelled) queue.shift()
-      const item = queue.shift()
-      if (!item) break
-
       if (lastSendCompletedAt > 0) {
         const sinceLast = Date.now() - lastSendCompletedAt
         if (sinceLast < HARD_MIN_GAP_MS) {
           await new Promise(r => setTimeout(r, HARD_MIN_GAP_MS - sinceLast))
         }
       }
+      // Picked after the wait so a manual send arriving during it still preempts or jumps ahead.
+      while (queue.length > 0 && queue[0].cancelled) queue.shift()
+      const item = queue.shift()
+      if (!item) break
+
       if (item.guard) {
         let allowed: boolean
         try {
