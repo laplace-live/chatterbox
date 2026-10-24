@@ -491,6 +491,7 @@ export function acceptCandidate(id: number, editedMessage?: string): void {
   const isCurrent = sessionGuard()
   void (async () => {
     const ok = await sendAiChatDanmaku(message, isCurrent)
+    if (!isCurrent()) return
     appendHistory({
       id: nextEntryId++,
       transcript: cand.transcript,

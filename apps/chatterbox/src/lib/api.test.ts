@@ -51,3 +51,8 @@ test('a non-zero code fails even without a message', async () => {
   const { api } = await loadApi({ code: 10030, message: '' })
   expect(await api.sendDanmaku('hi', 1, 'csrf')).toMatchObject({ success: false, error: 'code 10030' })
 })
+
+test('a non-zero code reports msg when message is empty', async () => {
+  const { api } = await loadApi({ code: 10030, message: '', msg: '您发送弹幕的频率过快' })
+  expect(await api.sendDanmaku('hi', 1, 'csrf')).toMatchObject({ success: false, error: '您发送弹幕的频率过快' })
+})
