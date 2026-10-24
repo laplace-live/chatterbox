@@ -332,6 +332,8 @@ async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Pro
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
+    // Never posted, so no echo will come back to match.
+    if (result.cancelled) recentOutgoingTexts.delete(message.trim())
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
@@ -402,7 +404,9 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
     if (decision.send && decision.message.trim()) {
       if (aiChatAutoSend.value) {
         const ok = await sendAiChatDanmaku(decision.message, isCurrent)
-        recordConvHistory(transcript, decision.message)
+        if (!isCurrent()) return
+        // Marked so the prompt's [你已发送] label doesn't present an unsent reply as posted.
+        recordConvHistory(transcript, ok ? decision.message : `[未发送:${decision.message}]`)
         appendHistory({
           id: nextEntryId++,
           transcript,
@@ -431,10 +435,9 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
       })
     }
   } finally {
-    inflight = false
-    // Don't resurrect the pill out of 'disabled' if torn down mid-flight.
-    // peek() avoids the narrowing the 'generating' assignment above would impose.
-    if (aiChatStatus.peek() !== 'disabled') {
+    // A run from a torn-down session leaves the mutex and status pill to the session that replaced it.
+    if (isCurrent()) {
+      inflight = false
       aiChatStatus.value = scheduledTimer ? 'waiting' : 'idle'
     }
   }
