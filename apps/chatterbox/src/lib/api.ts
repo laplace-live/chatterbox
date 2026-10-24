@@ -156,14 +156,14 @@ export async function sendDanmaku(message: string, roomId: number, csrfToken: st
       body: form,
     })
 
-    const json: { message?: string } = await resp.json()
+    const json: { code?: number; message?: string } = await resp.json()
 
-    if (json.message) {
+    if (json.code !== 0 || json.message) {
       return {
         success: false,
         message,
         isEmoticon: emoticon,
-        error: json.message,
+        error: json.message || `code ${json.code}`,
       }
     }
 
