@@ -85,8 +85,8 @@ const conversationHistory: { transcript: string; chat: string }[] = []
 
 let viewerReceivedSinceLastGen = 0
 
-/** Recent outgoing texts (text → enqueue ms); drops our own echo from `.chat-items`. */
-const recentOutgoingTexts = new Map<string, number>()
+/** Recent outgoing texts (text → latest send's mark, stamped at enqueue); drops our own echo from `.chat-items`. */
+const recentOutgoingTexts = new Map<string, { at: number }>()
 
 const OUTGOING_TTL_MS = 30_000
 const OUTGOING_CAP = 64
@@ -121,20 +121,25 @@ const LLM_CALL_TIMEOUT_MS = 45_000
 
 function pruneRecentOutgoing(): void {
   const now = Date.now()
-  for (const [text, ts] of recentOutgoingTexts) {
-    if (now - ts > OUTGOING_TTL_MS) recentOutgoingTexts.delete(text)
+  for (const [text, mark] of recentOutgoingTexts) {
+    if (now - mark.at > OUTGOING_TTL_MS) recentOutgoingTexts.delete(text)
   }
 }
 
-function markOutgoing(text: string): void {
+/** Marks `text` as our own send; the returned undo removes only this mark, never a newer send's for the same text. */
+function markOutgoing(text: string): () => void {
   const trimmed = text.trim()
-  if (!trimmed) return
+  if (!trimmed) return () => {}
   pruneRecentOutgoing()
-  recentOutgoingTexts.set(trimmed, Date.now())
+  const mark = { at: Date.now() }
+  recentOutgoingTexts.set(trimmed, mark)
   // Map iteration is insertion order, so the first key is the oldest.
   if (recentOutgoingTexts.size > OUTGOING_CAP) {
     const oldest = recentOutgoingTexts.keys().next().value
     if (oldest !== undefined) recentOutgoingTexts.delete(oldest)
+  }
+  return () => {
+    if (recentOutgoingTexts.get(trimmed) === mark) recentOutgoingTexts.delete(trimmed)
   }
 }
 
@@ -330,10 +335,10 @@ async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Pro
       return false
     }
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
-    markOutgoing(message)
+    const unmark = markOutgoing(message)
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
     // Never posted, so no echo will come back to match.
-    if (result.cancelled) recentOutgoingTexts.delete(message.trim())
+    if (result.cancelled) unmark()
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
