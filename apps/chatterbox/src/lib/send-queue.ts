@@ -55,6 +55,10 @@ export function onDanmakuSent(listener: (sent: SentDanmaku) => void): () => void
   return () => sentListeners.delete(listener)
 }
 
+function cancelledResult(item: QueueItem, error: 'cancelled' | 'preempted'): SendDanmakuResult {
+  return { success: false, cancelled: true, message: item.message, isEmoticon: false, error }
+}
+
 function notifySent(item: QueueItem): void {
   const sent: SentDanmaku = { message: item.message, roomId: item.roomId, source: item.source }
   for (const listener of sentListeners) {
@@ -97,13 +101,7 @@ async function processQueue(): Promise<void> {
           continue
         }
         if (!allowed) {
-          item.resolve({
-            success: false,
-            cancelled: true,
-            message: item.message,
-            isEmoticon: false,
-            error: 'cancelled',
-          })
+          item.resolve(cancelledResult(item, 'cancelled'))
           continue
         }
       }
@@ -143,13 +141,7 @@ export function enqueueDanmaku(
       for (const q of queue) {
         if (q !== item && !q.cancelled && q.priority === SendPriority.AUTO) {
           q.cancelled = true
-          q.resolve({
-            success: false,
-            cancelled: true,
-            message: q.message,
-            isEmoticon: false,
-            error: 'preempted',
-          })
+          q.resolve(cancelledResult(q, 'preempted'))
         }
       }
     }

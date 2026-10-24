@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Action, Role, ServerMessage } from '@laplace.live/kakashi-protocol'
 
-import type { Peer } from './hub'
-
 import { Hub } from './hub'
 
 const ROOM = 100
@@ -17,19 +15,7 @@ function createHub(options: { masterGraceMs?: number } = {}) {
     const messages: ServerMessage[] = []
     inbox.set(id, messages)
     now += 1
-    const peer: Peer = {
-      id,
-      uid,
-      uname: `user${uid}`,
-      role,
-      roomId,
-      visible,
-      follow,
-      activeAt: now,
-      connectedAt: now,
-      send: message => messages.push(message),
-    }
-    hub.join(peer)
+    hub.join({ id, uid, uname: `user${uid}`, role, roomId, visible, follow, send: message => messages.push(message) })
   }
 
   function received(id: string, type: ServerMessage['type']): ServerMessage[] {
@@ -152,13 +138,18 @@ describe('action routing', () => {
 })
 
 describe('room following', () => {
-  test('sends one follow to a mirror outside the master room and does not repeat it', () => {
-    const { join, received } = createHub()
+  test('keeps sending the follow to a mirror outside the master room until it arrives', () => {
+    const { hub, join, received, clear } = createHub()
     join('m', '1', 'master', ROOM)
     join('x', '2', 'mirror', OTHER_ROOM)
     expect(received('x', 'follow')).toEqual([{ type: 'follow', roomId: ROOM }])
     join('y', '3', 'mirror', ROOM)
-    expect(received('x', 'follow')).toHaveLength(1)
+    expect(received('x', 'follow')).toHaveLength(2)
+    expect(received('y', 'follow')).toHaveLength(0)
+    clear()
+    hub.update('x', { role: 'mirror', roomId: ROOM, visible: true, follow: true })
+    join('z', '4', 'mirror', ROOM)
+    expect(received('x', 'follow')).toHaveLength(0)
   })
 
   test('follows the master tab that became visible most recently', () => {
@@ -170,7 +161,7 @@ describe('room following', () => {
     clear()
     hub.update('m1', { role: 'master', roomId: ROOM, visible: false, follow: true })
     hub.update('m2', { role: 'master', roomId: OTHER_ROOM, visible: true, follow: true })
-    expect(received('x', 'follow')).toEqual([{ type: 'follow', roomId: OTHER_ROOM }])
+    expect(received('x', 'follow').at(-1)).toEqual({ type: 'follow', roomId: OTHER_ROOM })
   })
 
   test('waits for a tab to resolve its room before following', () => {

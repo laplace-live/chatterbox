@@ -21,6 +21,7 @@ interface Harness {
   stopCopyNinja(): void
   settings: typeof import('./settings')
   store: { cachedRoomId: { value: number | null } }
+  auth: { csrf: string }
   sendQueue: { sent: (SentItem & { priority: number })[]; emitSent(item: SentItem): void }
   emoteCache: { loaded: boolean }
   llm: {
@@ -47,13 +48,15 @@ async function loadClient(uid: string, gm: Record<string, unknown>): Promise<Har
       export * as settings from './settings'
       export * as store from '../store'
       export * as sendQueue from '../send-queue'
+      export { auth } from '../api'
       export { emoteCache } from '../emoticon'
       export { llm } from '../llm-tasks'
       export { lines as logs } from '../log'
     `,
     [join(LIB, 'api.ts')]: `
+      export const auth = { csrf: 'csrf' }
       export const getDedeUid = () => ${JSON.stringify(uid)}
-      export const getCsrfToken = () => 'csrf'
+      export const getCsrfToken = () => auth.csrf
       export const fetchSelfUname = async () => ${JSON.stringify(`user${uid}`)}
     `,
     [join(LIB, 'store.ts')]: `
@@ -105,6 +108,9 @@ async function loadClient(uid: string, gm: Record<string, unknown>): Promise<Har
     [join(LIB, 'replacement.ts')]: `
       export const applyReplacements = text => text.replaceAll('禁', '*')
     `,
+    [join(LIB, 'page-visibility.ts')]: `
+      export const isTabHidden = () => false
+    `,
   }
   const gmStub: BunPlugin = {
     name: 'gm-stub',
@@ -130,7 +136,7 @@ async function loadClient(uid: string, gm: Record<string, unknown>): Promise<Har
     target: 'bun',
     // Bun has no DOM; give the bundle its own `document`/`location` instead of touching globals other tests share.
     banner: [
-      'const __harnessDocument = { visibilityState: "visible", addEventListener() {}, removeEventListener() {} };',
+      'const __harnessDocument = { addEventListener() {}, removeEventListener() {} };',
       'const __harnessLocation = { assign() {} };',
     ].join('\n'),
     define: { document: '__harnessDocument', location: '__harnessLocation' },
@@ -351,31 +357,14 @@ test('感知忍術 rewrites overlap but copies keep the master order', async () 
   expect(mirror.sendQueue.sent.map(item => item.message)).toEqual(['改写：第一段', '改写：第二段', '改写：第三段'])
 })
 
-test('a copy whose tab changed rooms aborts its rewrite', async () => {
+test('a copy that exits early aborts its own rewrite', async () => {
   const { master, mirror, resultFor } = await setup()
   mirror.settings.copyNinjaKanchi.value = true
-  mirror.settings.copyNinjaDelayMinSec.value = 0.3
-  mirror.settings.copyNinjaDelayMaxSec.value = 0.3
   mirror.llm.rewrite = hangUntilAborted
+  mirror.auth.csrf = ''
   master.sendQueue.emitSent({ message: '晚上好', roomId: ROOM, source: 'manual' })
-  await until(() => mirror.llm.calls.length === 1, 'the rewrite to start')
-  mirror.store.cachedRoomId.value = OTHER_ROOM
-  await until(() => resultFor('2')?.detail === '不在同一直播间', 'the room skip')
+  await until(() => resultFor('2')?.detail === '未登录', 'the logged-out failure')
   expect(mirror.llm.calls[0]?.signal?.aborted).toBe(true)
-})
-
-test('a rewrite that lands after its tab changed rooms is not posted', async () => {
-  const { master, mirror, resultFor } = await setup()
-  mirror.settings.copyNinjaKanchi.value = true
-  const reply = Promise.withResolvers<string>()
-  mirror.llm.rewrite = () => reply.promise
-  master.sendQueue.emitSent({ message: '晚上好', roomId: ROOM, source: 'manual' })
-  await until(() => mirror.llm.calls.length === 1, 'the rewrite to start')
-  mirror.store.cachedRoomId.value = OTHER_ROOM
-  reply.resolve('晚上好呀')
-  await until(() => resultFor('2')?.status === 'skipped', 'the cancelled copy')
-  expect(resultFor('2')?.detail).toBe('已取消')
-  expect(mirror.sendQueue.sent).toHaveLength(0)
 })
 
 test('a pause from another tab, or stopping, aborts rewrites still in flight', async () => {

@@ -23,6 +23,7 @@ import { ensureRoomId } from './api'
 import { MPEGTS_CDN_URL } from './const'
 import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
+import { isTabHidden } from './page-visibility'
 import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR, resolveLivePlayer } from './player-dom'
 import { audioOnlyActive, audioOnlyMode, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost, isRecord } from './utils'
@@ -844,15 +845,6 @@ function removeStyleEl(): void {
 }
 
 let autoEngageTimer: ReturnType<typeof setTimeout> | null = null
-
-// Anti-AFK scripts (e.g. BLTH's 屏蔽挂机检测) pin `document.hidden` to false as an own property, and
-// Tampermonkey runs every userscript in one shared world; the prototype getter still reports the truth.
-const nativeHiddenGetter = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden')?.get
-
-/** Real tab visibility, immune to own-property overrides on `document`. */
-function isTabHidden(): boolean {
-  return nativeHiddenGetter ? nativeHiddenGetter.call(document) === true : document.hidden
-}
 
 function clearAutoEngageTimer(): void {
   if (autoEngageTimer !== null) {

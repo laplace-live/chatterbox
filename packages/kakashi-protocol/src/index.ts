@@ -7,7 +7,7 @@ export const DEFAULT_PORT = 9697
 /** Server URL the userscript starts with. Loopback IP rather than `localhost`, which may resolve to `::1` first. */
 export const DEFAULT_SERVER_URL = `ws://127.0.0.1:${DEFAULT_PORT}`
 
-/** App-level WebSocket close codes; the client stops reconnecting on these until its settings change. */
+/** App-level WebSocket close codes; the client stops reconnecting on UNAUTHORIZED and PROTOCOL_MISMATCH until its settings change. */
 export const CloseCode = {
   UNAUTHORIZED: 4001,
   PROTOCOL_MISMATCH: 4002,
@@ -19,11 +19,15 @@ export const ACTION_SOURCES = ['manual', 'loop', 'repeat', 'emote', 'meme', 'ble
 
 export type ActionSource = (typeof ACTION_SOURCES)[number]
 
+const ROLES = ['master', 'mirror'] as const
+
 /** Role a connection claims; the server lets one master uid act at a time. */
-export type Role = 'master' | 'mirror'
+export type Role = (typeof ROLES)[number]
+
+const MEMBER_ROLES = [...ROLES, 'standby'] as const
 
 /** Effective roster role; `standby` = claimed master while another master uid is online. */
-export type MemberRole = Role | 'standby'
+export type MemberRole = (typeof MEMBER_ROLES)[number]
 
 /** A danmaku the master's send succeeded with. */
 export interface DanmakuAction {
@@ -37,16 +41,12 @@ export interface DanmakuAction {
 
 export type Action = DanmakuAction
 
-export type CopyStatus = 'sent' | 'failed' | 'dropped' | 'skipped'
+const COPY_STATUSES = ['sent', 'failed', 'dropped', 'skipped'] as const
 
-export interface HelloMessage {
-  type: 'hello'
-  protocol: number
-  /** Empty when the server runs without a token. */
-  token: string
-  clientVersion: string
-  uid: string
-  uname: string
+export type CopyStatus = (typeof COPY_STATUSES)[number]
+
+/** Tab state carried by the hello and every presence update. */
+export interface Presence {
   role: Role
   roomId: number | null
   visible: boolean
@@ -54,12 +54,18 @@ export interface HelloMessage {
   follow: boolean
 }
 
-export interface PresenceMessage {
+export interface HelloMessage extends Presence {
+  type: 'hello'
+  protocol: number
+  /** Empty when the server runs without a token. */
+  token: string
+  clientVersion: string
+  uid: string
+  uname: string
+}
+
+export interface PresenceMessage extends Presence {
   type: 'presence'
-  role: Role
-  roomId: number | null
-  visible: boolean
-  follow: boolean
 }
 
 export interface ActionMessage {
@@ -104,16 +110,12 @@ export interface ActionDeliveryMessage {
   action: Action
 }
 
-export interface ResultDeliveryMessage {
-  type: 'result'
-  eventId: string
+export interface ResultDeliveryMessage extends ResultMessage {
   uid: string
   uname: string
-  status: CopyStatus
-  detail?: string
 }
 
-/** Sent to one following tab per mirror uid whose tabs are all outside the master's room. */
+/** Sent to one following tab per mirror uid whose tabs are all outside the master's room; repeats on every hub update. */
 export interface FollowMessage {
   type: 'follow'
   roomId: number
@@ -163,21 +165,13 @@ function isNullableRoomId(value: unknown): value is number | null {
   return value === null || isRoomId(value)
 }
 
-function isRole(value: unknown): value is Role {
-  return value === 'master' || value === 'mirror'
-}
-
-function isMemberRole(value: unknown): value is MemberRole {
-  return isRole(value) || value === 'standby'
-}
-
-function isCopyStatus(value: unknown): value is CopyStatus {
-  return value === 'sent' || value === 'failed' || value === 'dropped' || value === 'skipped'
+function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
+  return values.some(v => v === value)
 }
 
 /** Whether `value` is one of {@link ACTION_SOURCES}. */
 export function isActionSource(value: unknown): value is ActionSource {
-  return typeof value === 'string' && ACTION_SOURCES.some(source => source === value)
+  return isOneOf(ACTION_SOURCES, value)
 }
 
 function parseAction(value: unknown): Action | null {
@@ -191,10 +185,24 @@ function parseAction(value: unknown): Action | null {
 function parseMember(value: unknown): Member | null {
   if (!isRecord(value)) return null
   const { uid, uname, role, roomIds, tabs } = value
-  if (!isUid(uid) || !isShortString(uname) || !isMemberRole(role)) return null
+  if (!isUid(uid) || !isShortString(uname) || !isOneOf(MEMBER_ROLES, role)) return null
   if (!Array.isArray(roomIds) || !roomIds.every(isRoomId)) return null
   if (typeof tabs !== 'number' || !Number.isSafeInteger(tabs) || tabs < 0) return null
   return { uid, uname, role, roomIds, tabs }
+}
+
+function parsePresence(raw: Record<string, unknown>): Presence | null {
+  const { role, roomId, visible, follow } = raw
+  if (!isOneOf(ROLES, role) || !isNullableRoomId(roomId)) return null
+  if (typeof visible !== 'boolean' || typeof follow !== 'boolean') return null
+  return { role, roomId, visible, follow }
+}
+
+function parseResult(raw: Record<string, unknown>): ResultMessage | null {
+  const { eventId, status, detail } = raw
+  if (!isId(eventId) || !isOneOf(COPY_STATUSES, status)) return null
+  if (detail !== undefined && !isShortString(detail, MAX_DETAIL_LENGTH)) return null
+  return { type: 'result', eventId, status, detail }
 }
 
 /** The `protocol` a hello frame claims, read before full validation so a newer client gets a version error, not a parse error. */
@@ -208,29 +216,22 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (!isRecord(raw)) return null
   switch (raw.type) {
     case 'hello': {
-      const { protocol, token, clientVersion, uid, uname, role, roomId, visible, follow } = raw
+      const { protocol, token, clientVersion, uid, uname } = raw
       if (typeof protocol !== 'number' || !isShortString(token, MAX_TOKEN) || !isShortString(clientVersion)) return null
-      if (!isUid(uid) || !isShortString(uname) || !isRole(role) || !isNullableRoomId(roomId)) return null
-      if (typeof visible !== 'boolean' || typeof follow !== 'boolean') return null
-      return { type: 'hello', protocol, token, clientVersion, uid, uname, role, roomId, visible, follow }
+      if (!isUid(uid) || !isShortString(uname)) return null
+      const presence = parsePresence(raw)
+      return presence ? { type: 'hello', protocol, token, clientVersion, uid, uname, ...presence } : null
     }
     case 'presence': {
-      const { role, roomId, visible, follow } = raw
-      if (!isRole(role) || !isNullableRoomId(roomId) || typeof visible !== 'boolean' || typeof follow !== 'boolean') {
-        return null
-      }
-      return { type: 'presence', role, roomId, visible, follow }
+      const presence = parsePresence(raw)
+      return presence ? { type: 'presence', ...presence } : null
     }
     case 'action': {
       const action = parseAction(raw.action)
       return action ? { type: 'action', action } : null
     }
-    case 'result': {
-      const { eventId, status, detail } = raw
-      if (!isId(eventId) || !isCopyStatus(status)) return null
-      if (detail !== undefined && !isShortString(detail, MAX_DETAIL_LENGTH)) return null
-      return detail === undefined ? { type: 'result', eventId, status } : { type: 'result', eventId, status, detail }
-    }
+    case 'result':
+      return parseResult(raw)
     default:
       return null
   }
@@ -263,12 +264,9 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       return { type: 'action', eventId, from: { uid: from.uid, uname: from.uname }, action }
     }
     case 'result': {
-      const { eventId, uid, uname, status, detail } = raw
-      if (!isId(eventId) || !isUid(uid) || !isShortString(uname) || !isCopyStatus(status)) return null
-      if (detail !== undefined && !isShortString(detail, MAX_DETAIL_LENGTH)) return null
-      return detail === undefined
-        ? { type: 'result', eventId, uid, uname, status }
-        : { type: 'result', eventId, uid, uname, status, detail }
+      const result = parseResult(raw)
+      const { uid, uname } = raw
+      return result && isUid(uid) && isShortString(uname) ? { ...result, uid, uname } : null
     }
     case 'follow': {
       const { roomId } = raw

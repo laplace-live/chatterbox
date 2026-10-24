@@ -28,7 +28,7 @@ import {
   randomInterval,
   sendMsg,
 } from './store'
-import { processMessages, resolveSendDelayMs } from './utils'
+import { abortableSleep, processMessages, resolveSendDelayMs } from './utils'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi'
 
 let currentAbort: AbortController | null = null
@@ -36,24 +36,6 @@ let currentAbort: AbortController | null = null
 export function cancelLoop(): void {
   currentAbort?.abort()
   currentAbort = null
-}
-
-function abortableSleep(ms: number, signal: AbortSignal): Promise<boolean> {
-  return new Promise(resolve => {
-    if (signal.aborted) {
-      resolve(false)
-      return
-    }
-    const timer = setTimeout(() => resolve(true), ms)
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        resolve(false)
-      },
-      { once: true }
-    )
-  })
 }
 
 /** Main loop: auto-send (独轮车), room init, danmaku config, message sending. */

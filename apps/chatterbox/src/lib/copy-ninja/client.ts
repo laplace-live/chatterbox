@@ -1,13 +1,14 @@
-import type { ClientMessage, CopyStatus, ServerMessage } from '@laplace.live/kakashi-protocol'
+import type { ClientMessage, CopyStatus, Presence, ServerMessage } from '@laplace.live/kakashi-protocol'
 import { CloseCode, MAX_DETAIL_LENGTH, PROTOCOL_VERSION, parseServerMessage } from '@laplace.live/kakashi-protocol'
 import { effect, signal } from '@preact/signals'
 
 import { fetchSelfUname, getDedeUid } from '../api'
 import { appendLog } from '../log'
+import { isTabHidden } from '../page-visibility'
 import { onDanmakuSent } from '../send-queue'
 import { cachedRoomId } from '../store'
 import { VERSION } from '../version'
-import { cancelPendingCopies, handleFollow, handleMirrorAction, refreshFollow, resetMirror } from './mirror'
+import { cancelPendingCopies, handleFollow, handleMirrorAction, resetMirror } from './mirror'
 import {
   copyNinjaClaimedRole,
   copyNinjaEffectiveRole,
@@ -29,18 +30,22 @@ import {
 const RETRY_MIN_MS = 1000
 const RETRY_MAX_MS = 30_000
 
-const pageVisible = signal(document.visibilityState === 'visible')
+const pageVisible = signal(!isTabHidden())
 
 let session = 0
 let socket: WebSocket | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let retryDelayMs = RETRY_MIN_MS
-let uname = ''
 let disposers: (() => void)[] = []
 
-/** Whether this tab should be sent follows; a paused mirror reports off so resuming makes the server re-send. */
-function followsMaster(): boolean {
-  return copyNinjaFollowRoom.value && !copyNinjaPaused.value
+function presence(): Presence {
+  return {
+    role: copyNinjaClaimedRole.value,
+    roomId: cachedRoomId.value,
+    visible: pageVisible.value,
+    // A paused mirror reports off, so resuming makes the server send the follow again.
+    follow: copyNinjaFollowRoom.value && !copyNinjaPaused.value,
+  }
 }
 
 function send(message: ClientMessage): void {
@@ -48,11 +53,7 @@ function send(message: ClientMessage): void {
 }
 
 function reportResult(eventId: string, status: CopyStatus, detail?: string): void {
-  send(
-    detail === undefined
-      ? { type: 'result', eventId, status }
-      : { type: 'result', eventId, status, detail: detail.slice(0, MAX_DETAIL_LENGTH) }
-  )
+  send({ type: 'result', eventId, status, detail: detail?.slice(0, MAX_DETAIL_LENGTH) })
 }
 
 function handleMessage(msg: ServerMessage): void {
@@ -76,7 +77,7 @@ function handleMessage(msg: ServerMessage): void {
     case 'result':
       copyNinjaResults.value = {
         ...copyNinjaResults.value,
-        [msg.uid]: msg.detail === undefined ? { status: msg.status } : { status: msg.status, detail: msg.detail },
+        [msg.uid]: { status: msg.status, detail: msg.detail },
       }
       if (msg.status === 'failed') appendLog(`🥷 分身 ${msg.uname} 跟随失败：${msg.detail ?? '未知原因'}`)
       break
@@ -96,7 +97,7 @@ function fatalCloseReason(code: number): string | null {
   return null
 }
 
-function connect(id: number, uid: string): void {
+function connect(id: number, uid: string, uname: string): void {
   if (id !== session) return
   let ws: WebSocket
   try {
@@ -117,10 +118,7 @@ function connect(id: number, uid: string): void {
       clientVersion: VERSION,
       uid,
       uname,
-      role: copyNinjaClaimedRole.value,
-      roomId: cachedRoomId.value,
-      visible: pageVisible.value,
-      follow: followsMaster(),
+      ...presence(),
     })
   })
   ws.addEventListener('message', e => {
@@ -140,7 +138,6 @@ function connect(id: number, uid: string): void {
     copyNinjaRoster.value = []
     copyNinjaMasterRoomId.value = null
     cancelPendingCopies()
-    if (id !== session) return
     const fatal = fatalCloseReason(e.code)
     if (fatal) {
       copyNinjaStatus.value = 'error'
@@ -152,12 +149,12 @@ function connect(id: number, uid: string): void {
     copyNinjaStatus.value = 'connecting'
     copyNinjaStatusDetail.value =
       '连不上 kakashi-server：请确认它已在本机运行；Chrome 若拒绝过「本地网络访问」权限，需在站点设置中允许后刷新'
-    retryTimer = setTimeout(() => connect(id, uid), retryDelayMs)
+    retryTimer = setTimeout(() => connect(id, uid, uname), retryDelayMs)
     retryDelayMs = Math.min(retryDelayMs * 2, RETRY_MAX_MS)
   })
 }
 
-/** Connect this tab to kakashi-server; restart by calling stop then start (e.g. after URL/token edits). */
+/** Connect this tab to kakashi-server; calling it again restarts the connection (e.g. after URL/token edits). */
 export function startCopyNinja(): void {
   stopCopyNinja()
   const id = ++session
@@ -171,25 +168,12 @@ export function startCopyNinja(): void {
   copyNinjaStatus.value = 'connecting'
 
   const onVisibility = () => {
-    pageVisible.value = document.visibilityState === 'visible'
+    pageVisible.value = !isTabHidden()
   }
   document.addEventListener('visibilitychange', onVisibility)
   disposers.push(() => document.removeEventListener('visibilitychange', onVisibility))
 
-  disposers.push(
-    effect(() => {
-      const presence: ClientMessage = {
-        type: 'presence',
-        role: copyNinjaClaimedRole.value,
-        roomId: cachedRoomId.value,
-        visible: pageVisible.value,
-        follow: followsMaster(),
-      }
-      send(presence)
-    })
-  )
-
-  disposers.push(effect(() => refreshFollow()))
+  disposers.push(effect(() => send({ type: 'presence', ...presence() })))
 
   // A pause synced from another tab of this account must stop this tab's queue and rewrites too.
   disposers.push(
@@ -208,10 +192,7 @@ export function startCopyNinja(): void {
     })
   )
 
-  void fetchSelfUname().then(name => {
-    uname = name ?? uid
-    connect(id, uid)
-  })
+  void fetchSelfUname().then(name => connect(id, uid, name ?? uid))
 }
 
 export function stopCopyNinja(): void {

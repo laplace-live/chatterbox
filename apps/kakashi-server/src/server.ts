@@ -3,19 +3,16 @@ import type { ServerMessage } from '@laplace.live/kakashi-protocol'
 import { CloseCode, PROTOCOL_VERSION, parseClientMessage, readHelloProtocol } from '@laplace.live/kakashi-protocol'
 import type { ServerWebSocket } from 'bun'
 
-import { Hub } from './hub'
+import { Hub, type HubOptions } from './hub'
 import { isOriginAllowed } from './origin'
 
-export interface KakashiServerOptions {
+export interface KakashiServerOptions extends Omit<HubOptions, 'now'> {
   port: number
   hostname: string
   /** Empty = no token required. */
   token: string
   extraOrigins: readonly string[]
   version: string
-  masterGraceMs?: number
-  log?: (line: string) => void
-  debug?: (line: string) => void
 }
 
 interface SocketData {
@@ -65,6 +62,8 @@ export function startKakashiServer(options: KakashiServerOptions) {
       idleTimeout: 60,
       sendPings: true,
       maxPayloadLength: MAX_FRAME_BYTES,
+      // Past the backpressure limit Bun drops frames but keeps the socket open; closing makes the tab rejoin fresh.
+      closeOnBackpressureLimit: true,
       open(ws) {
         ws.data.helloTimer = setTimeout(() => ws.close(CloseCode.BAD_HELLO, 'hello timeout'), HELLO_TIMEOUT_MS)
       },
@@ -127,7 +126,6 @@ export function startKakashiServer(options: KakashiServerOptions) {
     ws.data.helloTimer = null
     ws.data.authed = true
     send(ws, { type: 'welcome', serverVersion: options.version, protocol: PROTOCOL_VERSION })
-    const now = Date.now()
     hub.join({
       id: ws.data.id,
       uid: hello.uid,
@@ -136,8 +134,6 @@ export function startKakashiServer(options: KakashiServerOptions) {
       roomId: hello.roomId,
       visible: hello.visible,
       follow: hello.follow,
-      activeAt: now,
-      connectedAt: now,
       send: message => send(ws, message),
     })
   }

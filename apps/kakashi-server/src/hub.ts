@@ -1,34 +1,23 @@
 import type {
   Action,
+  ActionDeliveryMessage,
   CopyStatus,
   Member,
   MemberRole,
-  Role,
+  Presence,
   RosterMessage,
   ServerMessage,
 } from '@laplace.live/kakashi-protocol'
 
 /** One authenticated tab. */
-export interface Peer {
+export interface Peer extends Presence {
   id: string
   uid: string
   uname: string
-  role: Role
-  roomId: number | null
-  visible: boolean
-  /** Whether this tab moves to the master's room when told. */
-  follow: boolean
-  /** Last hello or hidden→visible transition; breaks ties when picking which tab of an account acts. */
+  /** Last hello, hidden→visible transition or room change; breaks ties when picking which tab of an account acts. */
   activeAt: number
   connectedAt: number
   send: (message: ServerMessage) => void
-}
-
-export interface PresenceUpdate {
-  role: Role
-  roomId: number | null
-  visible: boolean
-  follow: boolean
 }
 
 export interface HubOptions {
@@ -63,8 +52,8 @@ function pickTab(peers: Peer[]): Peer | undefined {
 export class Hub {
   private readonly peers = new Map<string, Peer>()
   private readonly pending = new Map<string, { originId: string; expiresAt: number }>()
-  /** Per mirror uid, the last follow sent, so unrelated roster changes don't re-send it. */
-  private readonly lastFollow = new Map<string, { peerId: string; roomId: number }>()
+  /** Last roster broadcast as JSON, so a presence change that leaves it as is (e.g. a visibility flip) sends nothing. */
+  private lastRoster = ''
   private masterUid: string | null = null
   private graceTimer: ReturnType<typeof setTimeout> | null = null
   private readonly masterGraceMs: number
@@ -79,21 +68,19 @@ export class Hub {
     this.debug = options.debug ?? noop
   }
 
-  join(peer: Peer): void {
+  join(tab: Omit<Peer, 'activeAt' | 'connectedAt'>): void {
+    const now = this.now()
+    const peer: Peer = { ...tab, activeAt: now, connectedAt: now }
     this.peers.set(peer.id, peer)
     this.log(`+ ${label(peer)} as ${peer.role}${peer.roomId === null ? '' : ` · room ${peer.roomId}`} · ${peer.id}`)
     this.refresh()
   }
 
-  update(id: string, presence: PresenceUpdate): void {
+  update(id: string, presence: Presence): void {
     const peer = this.peers.get(id)
     if (!peer) return
-    if (presence.visible && !peer.visible) peer.activeAt = this.now()
-    if (presence.roomId !== peer.roomId) {
-      // A tab that just moved is the active one, and any follow sent before the move no longer applies.
-      peer.activeAt = this.now()
-      this.lastFollow.delete(peer.uid)
-    }
+    // A tab that just became visible or moved is the active one.
+    if ((presence.visible && !peer.visible) || presence.roomId !== peer.roomId) peer.activeAt = this.now()
     peer.role = presence.role
     peer.roomId = presence.roomId
     peer.visible = presence.visible
@@ -105,7 +92,6 @@ export class Hub {
     const peer = this.peers.get(id)
     if (!peer) return
     this.peers.delete(id)
-    if (!this.peersOf(peer.uid).length) this.lastFollow.delete(peer.uid)
     this.log(`- ${label(peer)} · ${peer.id}`)
     this.refresh()
   }
@@ -121,13 +107,18 @@ export class Hub {
     this.sweep()
     const eventId = crypto.randomUUID()
     this.pending.set(eventId, { originId: id, expiresAt: this.now() + PENDING_TTL_MS })
-    const from = { uid: sender.uid, uname: sender.uname }
+    const delivery: ActionDeliveryMessage = {
+      type: 'action',
+      eventId,
+      from: { uid: sender.uid, uname: sender.uname },
+      action,
+    }
     let delivered = 0
     for (const [uid, peers] of this.groups()) {
       if (this.memberRole(uid, peers) !== 'mirror') continue
       const target = pickTab(peers.filter(p => p.roomId === action.roomId))
       if (target) {
-        target.send({ type: 'action', eventId, from, action })
+        target.send(delivery)
         delivered++
       } else {
         const uname = pickTab(peers)?.uname ?? uid
@@ -151,12 +142,7 @@ export class Hub {
     else this.debug(line)
     const origin = this.peers.get(entry.originId)
     if (!origin) return
-    const { uid, uname } = sender
-    origin.send(
-      detail === undefined
-        ? { type: 'result', eventId, uid, uname, status }
-        : { type: 'result', eventId, uid, uname, status, detail }
-    )
+    origin.send({ type: 'result', eventId, uid: sender.uid, uname: sender.uname, status, detail })
   }
 
   roster(): RosterMessage {
@@ -177,7 +163,11 @@ export class Hub {
   private refresh(): void {
     this.elect()
     const roster = this.roster()
-    for (const peer of this.peers.values()) peer.send(roster)
+    const json = JSON.stringify(roster)
+    if (json !== this.lastRoster) {
+      this.lastRoster = json
+      for (const peer of this.peers.values()) peer.send(roster)
+    }
     this.sendFollows(roster.masterRoomId)
   }
 
@@ -206,28 +196,14 @@ export class Hub {
     this.log(`👑 master: ${label(next)}`)
   }
 
+  /** Re-sent on every refresh (tabs ignore a repeat), so a tab that dropped its pending move always gets it back. */
   private sendFollows(masterRoomId: number | null): void {
-    if (masterRoomId === null) {
-      // Mirrors drop pending moves while the master's room is unknown (e.g. it reloads), so re-send once it's back.
-      this.lastFollow.clear()
-      return
-    }
+    if (masterRoomId === null) return
     for (const [uid, peers] of this.groups()) {
-      if (this.memberRole(uid, peers) !== 'mirror') continue
-      if (peers.some(p => p.roomId === masterRoomId)) {
-        this.lastFollow.delete(uid)
-        continue
-      }
-      // Only following tabs with a resolved room qualify; with none, forget the last follow so turning following
-      // on (or a room resolving) sends it afresh.
+      if (this.memberRole(uid, peers) !== 'mirror' || peers.some(p => p.roomId === masterRoomId)) continue
+      // Only following tabs with a resolved room qualify.
       const target = pickTab(peers.filter(p => p.follow && p.roomId !== null))
-      if (!target) {
-        this.lastFollow.delete(uid)
-        continue
-      }
-      const last = this.lastFollow.get(uid)
-      if (last?.peerId === target.id && last.roomId === masterRoomId) continue
-      this.lastFollow.set(uid, { peerId: target.id, roomId: masterRoomId })
+      if (!target) continue
       target.send({ type: 'follow', roomId: masterRoomId })
       this.debug(`→ follow ${label(target)} to room ${masterRoomId}`)
     }

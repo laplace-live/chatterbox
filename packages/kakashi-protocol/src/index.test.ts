@@ -50,7 +50,7 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage({ type: 'action', action: { ...action, text: '   ' } })).toBeNull()
   })
 
-  test('keeps an optional result detail only when present', () => {
+  test('accepts an optional string result detail', () => {
     expect(parseClientMessage({ type: 'result', eventId: 'e1', status: 'sent' })).toEqual({
       type: 'result',
       eventId: 'e1',

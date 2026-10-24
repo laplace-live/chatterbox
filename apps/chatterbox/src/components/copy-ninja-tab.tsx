@@ -1,4 +1,4 @@
-import type { CopyStatus, MemberRole, Role } from '@laplace.live/kakashi-protocol'
+import type { CopyStatus, MemberRole } from '@laplace.live/kakashi-protocol'
 import { ACTION_SOURCES, DEFAULT_SERVER_URL } from '@laplace.live/kakashi-protocol'
 import { cn } from 'cn'
 
@@ -15,7 +15,6 @@ import {
   copyNinjaKanchi,
   copyNinjaPaused,
   copyNinjaResults,
-  copyNinjaRoles,
   copyNinjaRoster,
   copyNinjaSelfUid,
   copyNinjaServerUrl,
@@ -26,6 +25,7 @@ import {
   copyNinjaToken,
   isCopySourceEnabled,
   SOURCE_LABELS,
+  setClaimedRole,
 } from '../lib/copy-ninja/settings'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import { aiChatEnabled, autoBlendEnabled, llmActivePromptKanchi, llmPromptsKanchi, sendMsg } from '../lib/store'
@@ -79,13 +79,6 @@ function NumberField({
       }}
     />
   )
-}
-
-function setRole(role: Role): void {
-  const uid = copyNinjaSelfUid.value
-  if (!uid) return
-  const { [uid]: _, ...rest } = copyNinjaRoles.value
-  copyNinjaRoles.value = role === 'master' ? { ...rest, [uid]: role } : rest
 }
 
 function MirrorSettings() {
@@ -307,7 +300,7 @@ export function CopyNinjaTab() {
             value={claimed}
             disabled={!uid}
             onChange={e => {
-              setRole(e.currentTarget.value === 'master' ? 'master' : 'mirror')
+              setClaimedRole(e.currentTarget.value === 'master' ? 'master' : 'mirror')
             }}
           >
             <option value='mirror'>分身（跟随主控）</option>
