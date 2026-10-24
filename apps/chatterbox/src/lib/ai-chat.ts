@@ -103,6 +103,8 @@ let scheduledTimer: ReturnType<typeof setTimeout> | null = null
 let scheduledReason: 'transcript' | 'viewer' | null = null
 let inflight = false
 let startCount = 0
+/** Bumped on teardown; a send from an older session is dropped, even from the send queue. */
+let session = 0
 
 /** Buffer looks ready (endpoint detected / sentence-final / long). */
 const DEBOUNCE_READY_MS = 500
@@ -313,7 +315,13 @@ async function callAiChatLlm(sourceText: string, hasTranscript: boolean): Promis
   }
 }
 
-async function sendAiChatDanmaku(message: string): Promise<boolean> {
+/** Turns false once the engine session it was taken in is torn down. */
+function sessionGuard(): () => boolean {
+  const startedIn = session
+  return () => session === startedIn
+}
+
+async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Promise<boolean> {
   try {
     const roomId = await ensureRoomId()
     const csrfToken = getCsrfToken()
@@ -323,7 +331,7 @@ async function sendAiChatDanmaku(message: string): Promise<boolean> {
     }
     // Record BEFORE the send so the echo can find the entry when it broadcasts back.
     markOutgoing(message)
-    const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai')
+    const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
@@ -366,6 +374,7 @@ function addPendingCandidate(transcript: string, decision: AiChatDecision): void
 
 async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promise<void> {
   if (inflight) return
+  const isCurrent = sessionGuard()
   // Snapshot + clear atomically; content landing during the await starts the next round.
   const transcript = sttTranscriptBuffer.value
   sttTranscriptBuffer.value = ''
@@ -387,11 +396,12 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
       // callAiChatLlm already logged the failure
       return
     }
+    if (!isCurrent()) return
     aiChatLastGenAt.value = Date.now()
 
     if (decision.send && decision.message.trim()) {
       if (aiChatAutoSend.value) {
-        const ok = await sendAiChatDanmaku(decision.message)
+        const ok = await sendAiChatDanmaku(decision.message, isCurrent)
         recordConvHistory(transcript, decision.message)
         appendHistory({
           id: nextEntryId++,
@@ -468,8 +478,9 @@ export function acceptCandidate(id: number, editedMessage?: string): void {
     return
   }
   pendingCandidates.value = pendingCandidates.value.filter(c => c.id !== id)
+  const isCurrent = sessionGuard()
   void (async () => {
-    const ok = await sendAiChatDanmaku(message)
+    const ok = await sendAiChatDanmaku(message, isCurrent)
     appendHistory({
       id: nextEntryId++,
       transcript: cand.transcript,
@@ -575,6 +586,7 @@ export function stopAiChatEngine(): void {
   if (startCount === 0) return
   startCount--
   if (startCount > 0) return
+  session++
   if (unsubscribeDanmaku) {
     unsubscribeDanmaku()
     unsubscribeDanmaku = null

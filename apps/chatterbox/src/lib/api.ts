@@ -107,7 +107,7 @@ export interface SendDanmakuResult {
   message: string
   isEmoticon: boolean
   error?: string
-  /** Set when preempted by a higher-priority send; treat as benign skip, not failure. */
+  /** Set when preempted or cancelled before posting; treat as benign skip, not failure. */
   cancelled?: boolean
 }
 

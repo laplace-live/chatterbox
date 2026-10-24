@@ -256,7 +256,14 @@ export async function loop(): Promise<void> {
             await setRandomDanmakuColor(roomId, csrfToken ?? '')
           }
 
-          const result = await enqueueDanmaku(processedMessage, roomId, csrfToken ?? '', SendPriority.AUTO, 'loop')
+          const result = await enqueueDanmaku(
+            processedMessage,
+            roomId,
+            csrfToken ?? '',
+            SendPriority.AUTO,
+            'loop',
+            () => !signal.aborted
+          )
           const displayMsg = wasReplaced ? `${originalMessage} → ${processedMessage}` : processedMessage
           const baseLabel = result.isEmoticon ? '自动表情' : '自动'
           const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel

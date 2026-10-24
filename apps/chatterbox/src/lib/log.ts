@@ -19,7 +19,7 @@ export function appendLog(arg: string | SendDanmakuResult, label?: string, displ
     typeof arg === 'string'
       ? arg
       : arg.cancelled
-        ? `⏭ ${label}: ${display}（被手动发送中断）`
+        ? `⏭ ${label}: ${display}（${arg.error === 'preempted' ? '被手动发送中断' : '已取消'}）`
         : arg.success
           ? `✅ ${label}: ${display}`
           : `❌ ${label}: ${display}，原因：${formatDanmakuError(arg.error)}`
