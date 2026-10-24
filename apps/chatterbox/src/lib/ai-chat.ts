@@ -80,8 +80,8 @@ export const aiChatViewerCount = signal(0)
 /** Most-recent N viewer messages (ring; trimmed to `aiChatViewerWindow`). */
 const viewerBuffer: ViewerChatEntry[] = []
 
-/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary. */
-const conversationHistory: { transcript: string; chat: string }[] = []
+/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary; `unsent` marks a reply that never posted. */
+const conversationHistory: { transcript: string; chat: string; unsent?: boolean }[] = []
 
 let viewerReceivedSinceLastGen = 0
 
@@ -170,9 +170,10 @@ function buildContextSummary(
     }
   }
   for (let i = history.length - 1; i >= 0; i--) {
-    const { transcript, chat } = history[i]
+    const { transcript, chat, unsent } = history[i]
+    const reply = `${unsent ? '[你未能发送]' : '[你已发送]'}: ${chat}`
     // Viewer-only rounds have no transcript; an empty [主播] line just confuses the model.
-    const block = transcript.trim() ? `[主播]: ${transcript}\n[你已发送]: ${chat}` : `[你已发送]: ${chat}`
+    const block = transcript.trim() ? `[主播]: ${transcript}\n${reply}` : reply
     if (totalLength + block.length > maxChars) break
     combined.unshift(block)
     totalLength += block.length
@@ -329,6 +330,8 @@ function sessionGuard(): () => boolean {
 async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Promise<boolean> {
   try {
     const roomId = await ensureRoomId()
+    // A torn-down session must not mark or queue: a restart may already have marked the same text.
+    if (!isCurrent()) return false
     const csrfToken = getCsrfToken()
     if (!csrfToken) {
       appendLog('❌ [AI 融入] 未找到登录信息，请先登录 Bilibili')
@@ -354,7 +357,7 @@ function appendHistory(entry: AiChatHistoryEntry): void {
   aiChatHistory.value = next
 }
 
-function recordConvHistory(transcript: string, chat: string): void {
+function recordConvHistory(transcript: string, chat: string, unsent = false): void {
   // Collapse consecutive viewer-only skips: without STT they'd flood the context
   // with identical [跳过] blocks and bias the LLM into a keep-skipping spiral.
   const last = conversationHistory[conversationHistory.length - 1]
@@ -363,7 +366,7 @@ function recordConvHistory(transcript: string, chat: string): void {
     last.chat = chat
     return
   }
-  conversationHistory.push({ transcript, chat })
+  conversationHistory.push({ transcript, chat, unsent })
   while (conversationHistory.length > HISTORY_ENTRIES_CAP) conversationHistory.shift()
 }
 
@@ -410,8 +413,7 @@ async function runGeneration(reason: 'transcript' | 'viewer' | 'manual'): Promis
       if (aiChatAutoSend.value) {
         const ok = await sendAiChatDanmaku(decision.message, isCurrent)
         if (!isCurrent()) return
-        // Marked so the prompt's [你已发送] label doesn't present an unsent reply as posted.
-        recordConvHistory(transcript, ok ? decision.message : `[未发送:${decision.message}]`)
+        recordConvHistory(transcript, decision.message, !ok)
         appendHistory({
           id: nextEntryId++,
           transcript,
