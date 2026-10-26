@@ -22,6 +22,7 @@ import { buildMemeContributeUrl } from './utils'
 
 const MARKER = 'laplace-dm-direct'
 const STYLE_ID = 'laplace-dm-direct-style'
+const MENU_ITEM_ATTR = 'data-laplace-dm-direct-item'
 
 const STYLE = `
 .${MARKER} {
@@ -184,7 +185,7 @@ function closeNativeContextMenu(): void {
 function createContextMenuItem(source: HTMLLIElement, label: string): HTMLLIElement {
   const item = document.createElement('li')
   item.className = source.className
-  item.dataset.lc = ''
+  item.setAttribute(MENU_ITEM_ATTR, '')
   item.textContent = label
   return item
 }
@@ -193,7 +194,7 @@ function tryInjectContextMenuItems(li: HTMLLIElement): void {
   if (li.textContent?.trim() !== '复制弹幕') return
 
   const ul = li.parentElement
-  if (!ul || ul.querySelector('[data-lc]')) return
+  if (!ul || ul.querySelector(`[${MENU_ITEM_ATTR}]`)) return
 
   const readDanmakuText = () => ul.parentElement?.querySelector('span')?.textContent?.trim()
 
@@ -254,7 +255,7 @@ function stopContextMenuHijack(): void {
     contextMenuHandler = null
   }
   // An open or reused native menu would otherwise keep working items after +1模式 is off.
-  for (const el of Array.from(document.querySelectorAll('li[data-lc]'))) {
+  for (const el of Array.from(document.querySelectorAll(`li[${MENU_ITEM_ATTR}]`))) {
     el.remove()
   }
 }
