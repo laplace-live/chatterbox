@@ -10,6 +10,7 @@ import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
   activeTab,
+  cachedStreamerUid,
   danmakuDirectAlwaysShow,
   danmakuDirectConfirm,
   danmakuDirectMode,
@@ -17,9 +18,11 @@ import {
   fasongText,
   normalSendYolo,
 } from './store'
+import { buildMemeContributeUrl } from './utils'
 
 const MARKER = 'laplace-dm-direct'
 const STYLE_ID = 'laplace-dm-direct-style'
+const MENU_ITEM_ATTR = 'data-laplace-dm-direct-item'
 
 const STYLE = `
 .${MARKER} {
@@ -182,7 +185,7 @@ function closeNativeContextMenu(): void {
 function createContextMenuItem(source: HTMLLIElement, label: string): HTMLLIElement {
   const item = document.createElement('li')
   item.className = source.className
-  item.dataset.lc = ''
+  item.setAttribute(MENU_ITEM_ATTR, '')
   item.textContent = label
   return item
 }
@@ -191,12 +194,14 @@ function tryInjectContextMenuItems(li: HTMLLIElement): void {
   if (li.textContent?.trim() !== '复制弹幕') return
 
   const ul = li.parentElement
-  if (!ul || ul.querySelector('[data-lc]')) return
+  if (!ul || ul.querySelector(`[${MENU_ITEM_ATTR}]`)) return
+
+  const readDanmakuText = () => ul.parentElement?.querySelector('span')?.textContent?.trim()
 
   const repeatEl = createContextMenuItem(li, '弹幕 +1')
 
   repeatEl.onclick = (e: MouseEvent) => {
-    const text = ul.parentElement?.querySelector('span')?.textContent?.trim() ?? null
+    const text = readDanmakuText()
     if (text) {
       void handleRepeat(text, { x: e.clientX, y: e.clientY })
     }
@@ -206,13 +211,24 @@ function tryInjectContextMenuItems(li: HTMLLIElement): void {
   const stealEl = createContextMenuItem(li, '偷弹幕')
 
   stealEl.onclick = () => {
-    const text = ul.parentElement?.querySelector('span')?.textContent?.trim() ?? null
+    const text = readDanmakuText()
     if (text) {
       handleSteal(text)
     }
     closeNativeContextMenu()
   }
 
+  const contributeEl = createContextMenuItem(li, '贡献烂梗')
+
+  contributeEl.onclick = () => {
+    const text = readDanmakuText()
+    if (text) {
+      window.open(buildMemeContributeUrl(cachedStreamerUid.value, text), '_blank', 'noopener')
+    }
+    closeNativeContextMenu()
+  }
+
+  ul.insertBefore(contributeEl, ul.firstChild)
   ul.insertBefore(stealEl, ul.firstChild)
   ul.insertBefore(repeatEl, ul.firstChild)
 }
@@ -222,6 +238,8 @@ function initContextMenuHijack(): void {
 
   contextMenuHandler = () => {
     requestAnimationFrame(() => {
+      // +1模式 may have stopped, and cleaned up, since this right-click.
+      if (!contextMenuHandler) return
       for (const li of document.querySelectorAll<HTMLLIElement>('li')) {
         tryInjectContextMenuItems(li)
       }
@@ -235,6 +253,10 @@ function stopContextMenuHijack(): void {
   if (contextMenuHandler) {
     document.removeEventListener('contextmenu', contextMenuHandler)
     contextMenuHandler = null
+  }
+  // An open or reused native menu would otherwise keep working items after +1模式 is off.
+  for (const el of Array.from(document.querySelectorAll(`li[${MENU_ITEM_ATTR}]`))) {
+    el.remove()
   }
 }
 

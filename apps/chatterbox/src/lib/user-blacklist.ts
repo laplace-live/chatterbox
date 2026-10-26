@@ -1,31 +1,37 @@
 /**
- * Adds 自动融入 blacklist toggles to B站's `.danmaku-menu` popover.
- * B站 reuses a SINGLE persistent menu element (toggled via inline display),
- * so this is purely click-driven: toggles are re-injected on every open so
- * their click closures capture the current user/text.
+ * Adds 自动融入 blacklist toggles and 贡献烂梗 to B站's `.danmaku-menu` popover.
+ * B站 reuses one persistent menu element, so items are re-injected on every open to bind the clicked row.
  */
 
+import { isEmoteDanmaku } from './danmaku-stream'
 import { appendLog } from './log'
-import { autoBlendMessageBlacklist, autoBlendUserBlacklist } from './store'
+import { autoBlendMessageBlacklist, autoBlendUserBlacklist, cachedStreamerUid } from './store'
+import { buildMemeContributeUrl } from './utils'
 
 const USER_INJECTED_CLASS = 'lc-blacklist-toggle'
 const MESSAGE_INJECTED_CLASS = 'lc-blacklist-msg-toggle'
+const MEME_INJECTED_CLASS = 'lc-meme-contribute'
+const INJECTED_CLASSES = [USER_INJECTED_CLASS, MESSAGE_INJECTED_CLASS, MEME_INJECTED_CLASS]
 
 let pendingUid: string | null = null
 let pendingUname: string | null = null
 let pendingText: string | null = null
+let pendingMemeText: string | null = null
 let clickHandler: ((e: MouseEvent) => void) | null = null
 
-function captureFromClick(e: MouseEvent): void {
+/** Records the clicked row; returns false for clicks that can't open the menu. */
+function captureFromClick(e: MouseEvent): boolean {
   const target = e.target
-  if (!(target instanceof HTMLElement)) return
-  if (!target.closest('.open-menu')) return
+  // `Element`, not `HTMLElement`: an SVG icon inside `.open-menu` can be the target.
+  if (!(target instanceof Element)) return false
+  if (!target.closest('.open-menu')) return false
   const item = target.closest<HTMLElement>('[data-uid]')
   if (!item) {
     pendingUid = null
     pendingUname = null
     pendingText = null
-    return
+    pendingMemeText = null
+    return true
   }
   pendingUid = item.dataset.uid ?? null
   pendingUname = item.dataset.uname ?? null
@@ -34,41 +40,30 @@ function captureFromClick(e: MouseEvent): void {
   const raw = item.dataset.danmaku
   pendingText = raw !== undefined ? raw.trim() : null
   if (pendingText === '') pendingText = null
+  pendingMemeText = isEmoteDanmaku(item) ? null : pendingText
+  return true
 }
 
 /**
- * Build a menu item that toggles `uid` in `autoBlendUserBlacklist`.
+ * Clone `template` into an item labelled `label` that runs `onClick`, then hides the menu.
  */
-function buildUserToggleItem(template: HTMLElement, uid: string, uname: string | null): HTMLElement {
-  const isBlacklisted = uid in autoBlendUserBlacklist.value
-
-  // Deep-clone to inherit B站's scoped styling; Vue @click lives on vnodes,
-  // so the clone is inert until we wire our own listener.
+function buildMenuItem(template: HTMLElement, className: string, label: string, onClick: () => void): HTMLElement {
+  // Clone for B站's scoped styling; its Vue @click lives on vnodes, so the clone starts inert.
   // `importNode` not `cloneNode`: same deep clone, but typed as the input element.
   const div = document.importNode(template, true)
-  div.classList.add(USER_INJECTED_CLASS)
+  div.classList.add(className)
   // First item (`.go-space`) carries `target="_blank"`; we're not a link.
   div.removeAttribute('target')
   for (const a of Array.from(div.querySelectorAll('a'))) {
     a.removeAttribute('href')
   }
   const span = div.querySelector('span')
-  if (span) span.textContent = isBlacklisted ? '🟣 解除融入黑名单' : '🟣 添加融入黑名单'
+  if (span) span.textContent = label
 
   div.addEventListener('click', e => {
     // Don't re-trigger the menu-open listener or count as an outside click.
     e.stopPropagation()
-
-    const next = { ...autoBlendUserBlacklist.value }
-    const display = uname || uid
-    if (uid in next) {
-      delete next[uid]
-      appendLog(`🚲 已解除融入黑名单：${display}`)
-    } else {
-      next[uid] = uname ?? ''
-      appendLog(`🚲 已加入融入黑名单：${display}`)
-    }
-    autoBlendUserBlacklist.value = next
+    onClick()
 
     // Hide, don't remove: the menu is persistent and reused on next open.
     const menu = div.closest<HTMLElement>('.danmaku-menu')
@@ -79,26 +74,36 @@ function buildUserToggleItem(template: HTMLElement, uid: string, uname: string |
 }
 
 /**
+ * Build a menu item that toggles `uid` in `autoBlendUserBlacklist`.
+ */
+function buildUserToggleItem(template: HTMLElement, uid: string, uname: string | null): HTMLElement {
+  const isBlacklisted = uid in autoBlendUserBlacklist.value
+  const label = isBlacklisted ? '🟣 解除融入黑名单' : '🟣 添加融入黑名单'
+
+  return buildMenuItem(template, USER_INJECTED_CLASS, label, () => {
+    const next = { ...autoBlendUserBlacklist.value }
+    const display = uname || uid
+    if (uid in next) {
+      delete next[uid]
+      appendLog(`🚲 已解除融入黑名单：${display}`)
+    } else {
+      next[uid] = uname ?? ''
+      appendLog(`🚲 已加入融入黑名单：${display}`)
+    }
+    autoBlendUserBlacklist.value = next
+  })
+}
+
+/**
  * Build a menu item that toggles `text` in `autoBlendMessageBlacklist`.
- * Same cloning trick as `buildUserToggleItem`; only the action and class differ.
  */
 function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElement {
   // `Object.hasOwn` not `in`: keys are arbitrary user text, and `in` would
   // match prototype props like "toString".
   const isBlacklisted = Object.hasOwn(autoBlendMessageBlacklist.value, text)
+  const label = isBlacklisted ? '🟣 解除融入消息黑名单' : '🟣 添加融入消息黑名单'
 
-  const div = document.importNode(template, true)
-  div.classList.add(MESSAGE_INJECTED_CLASS)
-  div.removeAttribute('target')
-  for (const a of Array.from(div.querySelectorAll('a'))) {
-    a.removeAttribute('href')
-  }
-  const span = div.querySelector('span')
-  if (span) span.textContent = isBlacklisted ? '🟣 解除融入消息黑名单' : '🟣 添加融入消息黑名单'
-
-  div.addEventListener('click', e => {
-    e.stopPropagation()
-
+  return buildMenuItem(template, MESSAGE_INJECTED_CLASS, label, () => {
     const next = { ...autoBlendMessageBlacklist.value }
     if (Object.hasOwn(next, text)) {
       delete next[text]
@@ -108,27 +113,31 @@ function buildMessageToggleItem(template: HTMLElement, text: string): HTMLElemen
       appendLog(`🚲 已加入融入消息黑名单：${text}`)
     }
     autoBlendMessageBlacklist.value = next
-
-    const menu = div.closest<HTMLElement>('.danmaku-menu')
-    if (menu) menu.style.display = 'none'
   })
-
-  return div
 }
 
-function ensureTogglesInMenu(): void {
-  if (!pendingUid && !pendingText) return
+/**
+ * Build a menu item that opens laplace.live's meme contribution form prefilled with `text`.
+ */
+function buildMemeContributeItem(template: HTMLElement, text: string): HTMLElement {
+  return buildMenuItem(template, MEME_INJECTED_CLASS, '贡献烂梗', () => {
+    window.open(buildMemeContributeUrl(cachedStreamerUid.value, text), '_blank', 'noopener')
+  })
+}
+
+function ensureItemsInMenu(): void {
   const menu = document.querySelector<HTMLElement>('.danmaku-menu')
   if (!menu) return
   const list = menu.querySelector<HTMLElement>('.none-select')
   if (!list) return
-  const template = list.firstElementChild
-  if (!(template instanceof HTMLElement)) return
 
   // Re-inject with current pending values so click closures reference the
   // just-clicked row, not a previous selection.
-  list.querySelector(`.${USER_INJECTED_CLASS}`)?.remove()
-  list.querySelector(`.${MESSAGE_INJECTED_CLASS}`)?.remove()
+  for (const cls of INJECTED_CLASSES) {
+    list.querySelector(`.${cls}`)?.remove()
+  }
+  const template = list.firstElementChild
+  if (!(template instanceof HTMLElement)) return
 
   if (pendingUid) {
     list.appendChild(buildUserToggleItem(template, pendingUid, pendingUname))
@@ -136,17 +145,21 @@ function ensureTogglesInMenu(): void {
   if (pendingText) {
     list.appendChild(buildMessageToggleItem(template, pendingText))
   }
+  if (pendingMemeText) {
+    list.appendChild(buildMemeContributeItem(template, pendingMemeText))
+  }
 }
 
 export function startUserBlacklistHijack(): void {
   if (clickHandler) return
 
   clickHandler = e => {
-    captureFromClick(e)
-    if (!pendingUid && !pendingText) return
+    if (!captureFromClick(e)) return
     // rAF lets Vue flush the username/position update first, so we read the
     // menu B站 just (re)showed.
-    requestAnimationFrame(() => ensureTogglesInMenu())
+    requestAnimationFrame(() => {
+      if (clickHandler) ensureItemsInMenu()
+    })
   }
   document.addEventListener('click', clickHandler, true)
 }
@@ -159,10 +172,8 @@ export function stopUserBlacklistHijack(): void {
   pendingUid = null
   pendingUname = null
   pendingText = null
-  for (const el of Array.from(document.querySelectorAll(`.${USER_INJECTED_CLASS}`))) {
-    el.remove()
-  }
-  for (const el of Array.from(document.querySelectorAll(`.${MESSAGE_INJECTED_CLASS}`))) {
+  pendingMemeText = null
+  for (const el of Array.from(document.querySelectorAll(INJECTED_CLASSES.map(cls => `.${cls}`).join(',')))) {
     el.remove()
   }
 }

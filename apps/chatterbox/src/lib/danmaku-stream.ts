@@ -68,6 +68,12 @@ export function extractDanmakuInfo(node: HTMLElement): DanmakuEvent | null {
   }
 }
 
+/** Whether a chat row is an emote danmaku, whose `data-danmaku` is the emote's name or `emoticon_unique`. */
+export function isEmoteDanmaku(row: Pick<HTMLElement, 'dataset'>): boolean {
+  // Not `.danmaku-item-right.emoticon`: text danmaku nest one around each inline emoji.
+  return row.dataset.type === '1'
+}
+
 function notifyAttach(container: HTMLElement, sub: DanmakuSubscription): void {
   if (sub.onAttach) {
     try {
