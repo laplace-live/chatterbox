@@ -237,6 +237,8 @@ function initContextMenuHijack(): void {
 
   contextMenuHandler = () => {
     requestAnimationFrame(() => {
+      // +1模式 may have stopped, and cleaned up, since this right-click.
+      if (!contextMenuHandler) return
       for (const li of document.querySelectorAll<HTMLLIElement>('li')) {
         tryInjectContextMenuItems(li)
       }
