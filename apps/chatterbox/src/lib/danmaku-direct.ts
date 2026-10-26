@@ -251,6 +251,10 @@ function stopContextMenuHijack(): void {
     document.removeEventListener('contextmenu', contextMenuHandler)
     contextMenuHandler = null
   }
+  // An open or reused native menu would otherwise keep working items after +1模式 is off.
+  for (const el of Array.from(document.querySelectorAll('li[data-lc]'))) {
+    el.remove()
+  }
 }
 
 export function startDanmakuDirect(): void {
