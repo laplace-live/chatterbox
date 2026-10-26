@@ -22,7 +22,8 @@ let clickHandler: ((e: MouseEvent) => void) | null = null
 /** Records the clicked row; returns false for clicks that can't open the menu. */
 function captureFromClick(e: MouseEvent): boolean {
   const target = e.target
-  if (!(target instanceof HTMLElement)) return false
+  // `Element`, not `HTMLElement`: an SVG icon inside `.open-menu` can be the target.
+  if (!(target instanceof Element)) return false
   if (!target.closest('.open-menu')) return false
   const item = target.closest<HTMLElement>('[data-uid]')
   if (!item) {
@@ -131,7 +132,7 @@ function ensureItemsInMenu(): void {
   if (!list) return
 
   // Re-inject with current pending values so click closures reference the
-  // just-clicked row, not a previous selection; a row with none gets no items.
+  // just-clicked row, not a previous selection.
   for (const cls of INJECTED_CLASSES) {
     list.querySelector(`.${cls}`)?.remove()
   }
