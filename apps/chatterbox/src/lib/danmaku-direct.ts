@@ -10,6 +10,7 @@ import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
   activeTab,
+  cachedStreamerUid,
   danmakuDirectAlwaysShow,
   danmakuDirectConfirm,
   danmakuDirectMode,
@@ -17,6 +18,7 @@ import {
   fasongText,
   normalSendYolo,
 } from './store'
+import { buildMemeContributeUrl } from './utils'
 
 const MARKER = 'laplace-dm-direct'
 const STYLE_ID = 'laplace-dm-direct-style'
@@ -193,10 +195,12 @@ function tryInjectContextMenuItems(li: HTMLLIElement): void {
   const ul = li.parentElement
   if (!ul || ul.querySelector('[data-lc]')) return
 
+  const readDanmakuText = () => ul.parentElement?.querySelector('span')?.textContent?.trim()
+
   const repeatEl = createContextMenuItem(li, '弹幕 +1')
 
   repeatEl.onclick = (e: MouseEvent) => {
-    const text = ul.parentElement?.querySelector('span')?.textContent?.trim() ?? null
+    const text = readDanmakuText()
     if (text) {
       void handleRepeat(text, { x: e.clientX, y: e.clientY })
     }
@@ -206,13 +210,24 @@ function tryInjectContextMenuItems(li: HTMLLIElement): void {
   const stealEl = createContextMenuItem(li, '偷弹幕')
 
   stealEl.onclick = () => {
-    const text = ul.parentElement?.querySelector('span')?.textContent?.trim() ?? null
+    const text = readDanmakuText()
     if (text) {
       handleSteal(text)
     }
     closeNativeContextMenu()
   }
 
+  const contributeEl = createContextMenuItem(li, '贡献烂梗')
+
+  contributeEl.onclick = () => {
+    const text = readDanmakuText()
+    if (text) {
+      window.open(buildMemeContributeUrl(cachedStreamerUid.value, text), '_blank', 'noopener')
+    }
+    closeNativeContextMenu()
+  }
+
+  ul.insertBefore(contributeEl, ul.firstChild)
   ul.insertBefore(stealEl, ul.firstChild)
   ul.insertBefore(repeatEl, ul.firstChild)
 }

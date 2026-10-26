@@ -228,6 +228,18 @@ export function buildOvuContributeUrl(
   return `https://laplace.live/ovu?${params.toString()}`
 }
 
+/**
+ * Builds the laplace.live /memes link: `[?contribute=<streamer uid>][&content=<text>]`.
+ * Either param opens the site's contribute dialog, prefilled with what was given.
+ */
+export function buildMemeContributeUrl(streamerUid: number | null, content?: string): string {
+  const params = new URLSearchParams()
+  if (streamerUid) params.set('contribute', String(streamerUid))
+  if (content) params.set('content', content)
+  const query = params.toString()
+  return query ? `https://laplace.live/memes?${query}` : 'https://laplace.live/memes'
+}
+
 /** Runs `cb` once the DOM is parsed — immediately if already done, else on `DOMContentLoaded`. */
 export function whenDomReady(cb: () => void): void {
   if (document.readyState !== 'loading') cb()

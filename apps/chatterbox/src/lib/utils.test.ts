@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM } from './const'
 import {
   addRandomCharacter,
+  buildMemeContributeUrl,
   buildOvuContributeUrl,
   extractBvid,
   extractOpusAuthorUid,
@@ -137,6 +138,32 @@ describe('buildOvuContributeUrl', () => {
     expect(buildOvuContributeUrl(123, { source: 'https://x.test/opus/9' })).toBe(
       'https://laplace.live/ovu?uid=123&source=https%3A%2F%2Fx.test%2Fopus%2F9'
     )
+  })
+})
+
+/** Assembles the 贡献烂梗 link; the streamer uid is null until the room resolves, and an unset param must be omitted. */
+describe('buildMemeContributeUrl', () => {
+  test('streamer uid only (烂梗库 panel link)', () => {
+    expect(buildMemeContributeUrl(1802654492)).toBe('https://laplace.live/memes?contribute=1802654492')
+  })
+
+  test('streamer uid + content round-trips through percent-encoding', () => {
+    const content = '草 & 100% [dog] #1 a+b?'
+    const url = buildMemeContributeUrl(1802654492, content)
+    const parsed = new URL(url)
+    expect(parsed.origin + parsed.pathname).toBe('https://laplace.live/memes')
+    expect(parsed.searchParams.get('contribute')).toBe('1802654492')
+    expect(parsed.searchParams.get('content')).toBe(content)
+  })
+
+  test('unresolved streamer uid keeps the content so the dialog still opens', () => {
+    expect(buildMemeContributeUrl(null, '好')).toBe('https://laplace.live/memes?content=%E5%A5%BD')
+    expect(buildMemeContributeUrl(0, '好')).toBe('https://laplace.live/memes?content=%E5%A5%BD')
+  })
+
+  test('nothing to prefill → bare /memes', () => {
+    expect(buildMemeContributeUrl(null)).toBe('https://laplace.live/memes')
+    expect(buildMemeContributeUrl(null, '')).toBe('https://laplace.live/memes')
   })
 })
 
