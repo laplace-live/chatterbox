@@ -157,7 +157,9 @@ export function startUserBlacklistHijack(): void {
     if (!captureFromClick(e)) return
     // rAF lets Vue flush the username/position update first, so we read the
     // menu B站 just (re)showed.
-    requestAnimationFrame(() => ensureItemsInMenu())
+    requestAnimationFrame(() => {
+      if (clickHandler) ensureItemsInMenu()
+    })
   }
   document.addEventListener('click', clickHandler, true)
 }
