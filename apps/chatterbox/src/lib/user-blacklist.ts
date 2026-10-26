@@ -1,8 +1,6 @@
 /**
- * Adds 自动融入 blacklist toggles and a 贡献烂梗 item to B站's `.danmaku-menu` popover.
- * B站 reuses a SINGLE persistent menu element (toggled via inline display),
- * so this is purely click-driven: items are re-injected on every open so
- * their click closures capture the current user/text.
+ * Adds 自动融入 blacklist toggles and 贡献烂梗 to B站's `.danmaku-menu` popover.
+ * B站 reuses one persistent menu element, so items are re-injected on every open to bind the clicked row.
  */
 
 import { isEmoteDanmaku } from './danmaku-stream'
