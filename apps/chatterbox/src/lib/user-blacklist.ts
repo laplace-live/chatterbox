@@ -5,6 +5,7 @@
  * their click closures capture the current user/text.
  */
 
+import { isEmoteDanmaku } from './danmaku-stream'
 import { appendLog } from './log'
 import { autoBlendMessageBlacklist, autoBlendUserBlacklist, cachedStreamerUid } from './store'
 import { buildMemeContributeUrl } from './utils'
@@ -20,17 +21,18 @@ let pendingText: string | null = null
 let pendingMemeText: string | null = null
 let clickHandler: ((e: MouseEvent) => void) | null = null
 
-function captureFromClick(e: MouseEvent): void {
+/** Records the clicked row; returns false for clicks that can't open the menu. */
+function captureFromClick(e: MouseEvent): boolean {
   const target = e.target
-  if (!(target instanceof HTMLElement)) return
-  if (!target.closest('.open-menu')) return
+  if (!(target instanceof HTMLElement)) return false
+  if (!target.closest('.open-menu')) return false
   const item = target.closest<HTMLElement>('[data-uid]')
   if (!item) {
     pendingUid = null
     pendingUname = null
     pendingText = null
     pendingMemeText = null
-    return
+    return true
   }
   pendingUid = item.dataset.uid ?? null
   pendingUname = item.dataset.uname ?? null
@@ -39,8 +41,8 @@ function captureFromClick(e: MouseEvent): void {
   const raw = item.dataset.danmaku
   pendingText = raw !== undefined ? raw.trim() : null
   if (pendingText === '') pendingText = null
-  // Emote danmaku carry an emote name or `emoticon_unique` here, not meme text.
-  pendingMemeText = item.querySelector('.danmaku-item-right.emoticon') ? null : pendingText
+  pendingMemeText = isEmoteDanmaku(item) ? null : pendingText
+  return true
 }
 
 /**
@@ -126,19 +128,18 @@ function buildMemeContributeItem(template: HTMLElement, text: string): HTMLEleme
 }
 
 function ensureItemsInMenu(): void {
-  if (!pendingUid && !pendingText) return
   const menu = document.querySelector<HTMLElement>('.danmaku-menu')
   if (!menu) return
   const list = menu.querySelector<HTMLElement>('.none-select')
   if (!list) return
-  const template = list.firstElementChild
-  if (!(template instanceof HTMLElement)) return
 
   // Re-inject with current pending values so click closures reference the
-  // just-clicked row, not a previous selection.
+  // just-clicked row, not a previous selection; a row with none gets no items.
   for (const cls of INJECTED_CLASSES) {
     list.querySelector(`.${cls}`)?.remove()
   }
+  const template = list.firstElementChild
+  if (!(template instanceof HTMLElement)) return
 
   if (pendingUid) {
     list.appendChild(buildUserToggleItem(template, pendingUid, pendingUname))
@@ -155,8 +156,7 @@ export function startUserBlacklistHijack(): void {
   if (clickHandler) return
 
   clickHandler = e => {
-    captureFromClick(e)
-    if (!pendingUid && !pendingText) return
+    if (!captureFromClick(e)) return
     // rAF lets Vue flush the username/position update first, so we read the
     // menu B站 just (re)showed.
     requestAnimationFrame(() => ensureItemsInMenu())
