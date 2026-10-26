@@ -47,8 +47,7 @@ function captureFromClick(e: MouseEvent): boolean {
  * Clone `template` into an item labelled `label` that runs `onClick`, then hides the menu.
  */
 function buildMenuItem(template: HTMLElement, className: string, label: string, onClick: () => void): HTMLElement {
-  // Deep-clone to inherit B站's scoped styling; Vue @click lives on vnodes,
-  // so the clone is inert until we wire our own listener.
+  // Clone for B站's scoped styling; its Vue @click lives on vnodes, so the clone starts inert.
   // `importNode` not `cloneNode`: same deep clone, but typed as the input element.
   const div = document.importNode(template, true)
   div.classList.add(className)
