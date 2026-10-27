@@ -4,7 +4,7 @@ import { GM_xmlhttpRequest } from '$'
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304])
 
-export interface GmFetchInit extends RequestInit {
+export interface GmFetchInit extends Pick<RequestInit, 'method' | 'headers' | 'body' | 'credentials' | 'signal'> {
   /** Reject with a `TimeoutError` after this many ms, including time spent on a pending @connect prompt. */
   timeout?: number
 }
