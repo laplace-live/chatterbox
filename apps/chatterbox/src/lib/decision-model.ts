@@ -74,14 +74,11 @@ function endpoint(provider: DecisionProviderProfile, action: 'evaluate' | 'model
   return base.toString()
 }
 
-const cancelled = () => new DOMException('决策请求已取消', 'AbortError')
-
 async function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-  // Unlike GM's own `timeout`, this also bounds a pending userscript-manager @connect prompt.
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   let response: Response
   try {
@@ -92,7 +89,7 @@ async function requestJson(url: string, apiKey: string, body: unknown, signal?: 
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     })
   } catch {
-    if (signal?.aborted) throw cancelled()
+    if (signal?.aborted) throw new DOMException('决策请求已取消', 'AbortError')
     if (timeout.aborted) throw new Error(`决策模型请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`)
     throw new Error('无法连接到决策模型，请检查 API 地址与服务状态')
   }

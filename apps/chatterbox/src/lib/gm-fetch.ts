@@ -1,4 +1,4 @@
-import type { GmAbortHandle, GmResponseEventBase } from '$'
+import type { GmResponseEventBase } from '$'
 
 import { GM_xmlhttpRequest } from '$'
 
@@ -29,26 +29,17 @@ function toResponse({ status, statusText, responseHeaders, responseText }: GmRes
 }
 
 /**
- * `fetch` via the userscript manager, so CORS, mixed-content and private-network blocks don't apply.
- * Text bodies only; cookies only with `credentials: 'include'`. Rejects like `fetch`: the signal's reason on abort, else `TypeError`.
+ * `fetch` via the userscript manager, so CORS, mixed-content and private-network blocks don't apply. Text bodies only; cookies
+ * only with `credentials: 'include'`; rejects like `fetch`. A host missing from `@connect` waits on the manager's prompt, which only `signal` cuts short.
  */
 export function gmFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const { signal } = init
   const abortReason = () => signal?.reason ?? new DOMException('The operation was aborted.', 'AbortError')
   let onAbort = () => {}
   return new Promise<Response>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(abortReason())
-      return
-    }
-    let request: GmAbortHandle | undefined
-    onAbort = () => {
-      reject(abortReason())
-      request?.abort()
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
+    signal?.throwIfAborted()
     // A promise settles once, so callbacks after an abort (e.g. the `onabort` it triggers) are no-ops.
-    request = GM_xmlhttpRequest({
+    const request = GM_xmlhttpRequest({
       method: init.method ?? 'GET',
       url,
       headers: Object.fromEntries(new Headers(init.headers)),
@@ -65,5 +56,10 @@ export function gmFetch(url: string, init: RequestInit = {}): Promise<Response> 
       ontimeout: () => reject(new TypeError('Network request timed out')),
       onabort: () => reject(abortReason()),
     })
+    onAbort = () => {
+      reject(abortReason())
+      request.abort()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
   }).finally(() => signal?.removeEventListener('abort', onAbort))
 }

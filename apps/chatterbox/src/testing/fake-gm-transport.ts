@@ -1,4 +1,4 @@
-import type { GmAbortHandle, GmResponseEvent, GmResponseEventBase, GmXmlhttpRequestOption } from '$'
+import type { GmAbortHandle, GmResponseEventBase, GmXmlhttpRequestOption } from '$'
 
 /** One recorded `GM_xmlhttpRequest` call; the test settles it. */
 export interface FakeGmRequest {
@@ -15,39 +15,33 @@ export interface FakeGmRequest {
 
 export const requests: FakeGmRequest[] = []
 
+function event(status: number, body = '', responseHeaders = ''): GmResponseEventBase<'text'> {
+  return {
+    status,
+    statusText: '',
+    responseHeaders,
+    responseText: body,
+    response: body,
+    responseXML: null,
+    readyState: 4,
+  }
+}
+
 /** Stand-in for the manager's `GM_xmlhttpRequest`: records each call instead of sending it. */
 export function GM_xmlhttpRequest(options: GmXmlhttpRequestOption<'text', unknown>): GmAbortHandle {
   const request: FakeGmRequest = {
     options,
     aborted: 0,
     respond(status, body = '', headers = {}) {
-      const event: GmResponseEvent<'text', unknown> = {
-        status,
-        statusText: '',
-        responseHeaders: Object.entries(headers)
-          .map(([name, value]) => `${name}: ${value}`)
-          .join('\r\n'),
-        responseText: body,
-        response: body,
-        responseXML: null,
-        readyState: 4,
-        finalUrl: options.url,
-        context: options.context,
-      }
-      options.onload?.call(event, event)
+      const raw = Object.entries(headers)
+        .map(([name, value]) => `${name}: ${value}`)
+        .join('\r\n')
+      const loaded = { ...event(status, body, raw), finalUrl: options.url, context: options.context }
+      options.onload?.call(loaded, loaded)
     },
     fail(error = '') {
-      const event: GmResponseEventBase<'text'> & { error: string } = {
-        status: 0,
-        statusText: '',
-        responseHeaders: '',
-        responseText: '',
-        response: '',
-        responseXML: null,
-        readyState: 4,
-        error,
-      }
-      options.onerror?.call(event, event)
+      const failed = { ...event(0), error }
+      options.onerror?.call(failed, failed)
     },
     timeOut() {
       options.ontimeout?.()

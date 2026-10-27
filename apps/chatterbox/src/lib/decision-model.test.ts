@@ -24,7 +24,7 @@ async function harness() {
   )
   return {
     ...client,
-    sent: (index = 0) => JSON.parse(String(client.requests[index]?.options.data)),
+    sent: () => JSON.parse(String(client.requests[0].options.data)),
     respond(json: unknown, status = 200) {
       client.requests.at(-1)?.respond(status, JSON.stringify(json))
     },
