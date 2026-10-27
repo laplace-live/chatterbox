@@ -53,7 +53,6 @@ export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
   if (req.apiKey) headers.Authorization = `Bearer ${req.apiKey}`
 
   const controller = new AbortController()
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   const send = async (): Promise<TranscribeResult> => {
     let response: Response
     try {
@@ -61,11 +60,14 @@ export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
         method: 'POST',
         headers,
         body: form,
-        signal: AbortSignal.any([controller.signal, timeout]),
+        // Self-hosted endpoints may sit behind cookie-based auth (e.g. an SSO proxy).
+        credentials: 'include',
+        signal: controller.signal,
+        timeout: REQUEST_TIMEOUT_MS,
       })
-    } catch {
+    } catch (err) {
       if (controller.signal.aborted) return { ok: false, unreachable: false, message: '请求已中止' }
-      if (timeout.aborted) {
+      if (err instanceof DOMException && err.name === 'TimeoutError') {
         return { ok: false, unreachable: false, message: `请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）` }
       }
       // HTTP statuses resolve; a rejection is transport-level — nothing listening, wrong port.

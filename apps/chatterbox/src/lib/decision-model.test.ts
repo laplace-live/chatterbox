@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 
 import type { DecisionPreset, DecisionProviderProfile } from './decision-model'
 
@@ -16,8 +16,6 @@ const provider: DecisionProviderProfile = {
 const preset: DecisionPreset = { id: 'warm', name: '暖男', instructions: '只发送真诚关心、鼓励或安慰的弹幕。' }
 const state = { candidate: '辛苦了，早点休息', recentMessages: ['今天有点累'] }
 
-afterEach(() => mock.restore())
-
 async function harness() {
   const client = await loadWithFakeGm<typeof import('./decision-model')>(
     new URL('./decision-model.ts', import.meta.url)
@@ -33,7 +31,6 @@ async function harness() {
 
 describe('evaluateDecision', () => {
   test('sends a single preset question and returns its send probability', async () => {
-    const timeout = spyOn(AbortSignal, 'timeout')
     const client = await harness()
     const pending = client.evaluateDecision({ provider, preset, state })
     const request = client.requests[0].options
@@ -41,7 +38,7 @@ describe('evaluateDecision', () => {
     expect(request.method).toBe('POST')
     expect(request.headers?.authorization).toBe('Bearer test-key')
     expect(request.anonymous).toBe(true)
-    expect(timeout).toHaveBeenCalledWith(8_000)
+    expect(request.timeout).toBe(8_000)
     const body = client.sent()
     expect(body.model).toBe('jev-latest')
     expect(body.state).toEqual(state)
@@ -171,14 +168,11 @@ describe('evaluateDecision', () => {
   })
 
   test('times out without retrying', async () => {
-    const timer = new AbortController()
-    spyOn(AbortSignal, 'timeout').mockReturnValue(timer.signal)
     const client = await harness()
     const pending = client.evaluateDecision({ provider, preset, state })
-    timer.abort(new DOMException('timed out', 'TimeoutError'))
+    client.requests[0].timeOut()
     await expect(pending).rejects.toThrow('超时')
     expect(client.requests).toHaveLength(1)
-    expect(client.requests[0].aborted).toBe(1)
   })
 
   test('reports HTTP failures without echoing response secrets', async () => {

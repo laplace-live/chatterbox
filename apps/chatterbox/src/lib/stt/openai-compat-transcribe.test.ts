@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from 'bun:test'
+import { expect, test } from 'bun:test'
 
 import type { TranscribeRequest } from './openai-compat-transcribe'
 
@@ -13,16 +13,18 @@ const segment: TranscribeRequest = {
   sampleRate: 16_000,
 }
 
-afterEach(() => mock.restore())
-
 const load = () =>
   loadWithFakeGm<typeof import('./openai-compat-transcribe')>(new URL('./openai-compat-transcribe.ts', import.meta.url))
 
-test('uploads the segment as form data and reads the transcript', async () => {
+test('uploads the segment as form data with cookies and reads the transcript', async () => {
   const stt = await load()
   const handle = stt.transcribeSegment(segment)
   const { options } = stt.requests[0]
-  expect(options.url).toBe('http://127.0.0.1:8080/v1/audio/transcriptions')
+  expect(options).toMatchObject({
+    url: 'http://127.0.0.1:8080/v1/audio/transcriptions',
+    anonymous: false,
+    timeout: 60_000,
+  })
   expect(options.headers?.authorization).toBeUndefined()
   if (!(options.data instanceof FormData)) throw new Error('expected a FormData body')
   expect(options.data.get('model')).toBe('whisper-1')
@@ -43,15 +45,12 @@ test('HTTP errors are retryable; transport failures mark the server unreachable'
 })
 
 test('abort and timeout settle without marking the server unreachable', async () => {
-  const timer = new AbortController()
-  const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(timer.signal)
   const stt = await load()
   const aborted = stt.transcribeSegment(segment)
   aborted.abort()
   expect(await aborted.promise).toEqual({ ok: false, unreachable: false, message: '请求已中止' })
   expect(stt.requests[0].aborted).toBe(1)
   const timedOut = stt.transcribeSegment(segment)
-  timer.abort(new DOMException('timed out', 'TimeoutError'))
+  stt.requests[1].timeOut()
   expect(await timedOut.promise).toEqual({ ok: false, unreachable: false, message: '请求超时（60 秒）' })
-  expect(timeout).toHaveBeenCalledWith(60_000)
 })

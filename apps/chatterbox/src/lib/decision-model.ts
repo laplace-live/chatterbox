@@ -79,18 +79,20 @@ async function requestJson(url: string, apiKey: string, body: unknown, signal?: 
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   let response: Response
   try {
     response = await gmFetch(url, {
       method: body === undefined ? 'GET' : 'POST',
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      signal,
+      timeout: REQUEST_TIMEOUT_MS,
     })
-  } catch {
+  } catch (err) {
     if (signal?.aborted) throw new DOMException('决策请求已取消', 'AbortError')
-    if (timeout.aborted) throw new Error(`决策模型请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`)
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new Error(`决策模型请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`)
+    }
     throw new Error('无法连接到决策模型，请检查 API 地址与服务状态')
   }
   if (!response.ok) throw new Error(`决策模型请求失败：HTTP ${response.status}`)

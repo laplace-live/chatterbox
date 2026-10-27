@@ -61,6 +61,21 @@ test('an already-aborted signal sends nothing', async () => {
   expect(requests).toHaveLength(0)
 })
 
+test('a timeout rejects with a TimeoutError and cancels the request; the manager gets the same timeout', async () => {
+  const { gmFetch, requests } = await load()
+  const pending = gmFetch('https://a.test', { timeout: 5 })
+  expect(requests[0].options.timeout).toBe(5)
+  await expect(pending).rejects.toHaveProperty('name', 'TimeoutError')
+  expect(requests[0].aborted).toBe(1)
+})
+
+test("the manager's own timeout rejects the same way", async () => {
+  const { gmFetch, requests } = await load()
+  const pending = gmFetch('https://a.test', { timeout: 60_000 })
+  requests[0].timeOut()
+  await expect(pending).rejects.toHaveProperty('name', 'TimeoutError')
+})
+
 const transportFailures: [string, (request: FakeGmRequest) => void, string][] = [
   [
     'a denied @connect prompt',
@@ -68,8 +83,13 @@ const transportFailures: [string, (request: FakeGmRequest) => void, string][] = 
     'Refused to connect to "a.test"',
   ],
   ['a failure without a message', request => request.fail(), 'Failed to fetch'],
-  ['a manager timeout', request => request.timeOut(), 'Network request timed out'],
+  [
+    'an abort the manager starts itself',
+    request => request.options.onabort?.(),
+    'Request aborted by the userscript manager',
+  ],
   ['status 0', request => request.respond(0), 'Failed to fetch'],
+  ['a non-numeric status', request => request.respond(Number.NaN), 'Failed to fetch'],
 ]
 
 test.each(transportFailures)('%s rejects with a TypeError', async (_label, settle, message) => {

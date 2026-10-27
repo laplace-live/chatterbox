@@ -210,7 +210,7 @@ function LlmProviderSettings() {
       <div class={HINT_CLASS}>
         配置兼容 OpenAI API 的大语言模型，用于 AI 集成。可保存多个服务商配置（各自记住 API Key
         与模型），同一时间只有选中的一个生效。模型列表通过 <code>GET {'{API 地址}'}/models</code> 获取。首次连接新的 API
-        地址时，脚本管理器可能会请求跨域访问权限，请选择允许
+        地址时，脚本管理器可能会请求跨域访问权限，请选择「总是允许」，否则每次请求都会再次询问
       </div>
       <div class={ROW_CLASS}>
         <Label htmlFor='llmProviderSelect'>服务商</Label>
