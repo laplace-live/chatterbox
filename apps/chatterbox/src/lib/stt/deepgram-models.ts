@@ -6,6 +6,8 @@ import { DEEPGRAM_API_BASE } from '../const'
 import { gmFetch } from '../gm-fetch'
 import { parseDeepgramModels } from './normalize'
 
+const REQUEST_TIMEOUT_MS = 15_000
+
 export async function fetchDeepgramModels(apiKey: string): Promise<SttModelOption[]> {
   const key = apiKey.trim()
   if (!key) throw new Error('请填写 Deepgram API Key')
@@ -14,8 +16,12 @@ export async function fetchDeepgramModels(apiKey: string): Promise<SttModelOptio
   try {
     response = await gmFetch(`${DEEPGRAM_API_BASE}/models`, {
       headers: { Authorization: `Token ${key}`, Accept: 'application/json' },
+      timeout: REQUEST_TIMEOUT_MS,
     })
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new Error(`请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`)
+    }
     throw new Error('网络请求失败')
   }
   const text = await response.text()

@@ -43,7 +43,7 @@ export function gmFetch(url: string, init: GmFetchInit = {}): Promise<Response> 
   return new Promise<Response>((resolve, reject) => {
     signal?.throwIfAborted()
     const timedOut = () => new DOMException(`Timed out after ${timeout} ms`, 'TimeoutError')
-    // A promise settles once, so callbacks after an abort or timeout (e.g. the `onabort` it triggers) are no-ops.
+    // Our own abort or timeout rejects first, so the `onabort` it triggers can't override the reason.
     const request = GM_xmlhttpRequest({
       method: init.method ?? 'GET',
       url,

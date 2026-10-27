@@ -39,6 +39,11 @@ export function formatLlmPricing(p: LlmModelPricing | undefined): string | null 
   return `${parts.join(' · ')} / 1M tokens`
 }
 
+/** Model lists are small; this mostly bounds a pending @connect prompt. */
+const MODELS_TIMEOUT_MS = 30_000
+/** Backstop for callers without their own deadline; generous so slow reasoning models still finish. */
+const CHAT_TIMEOUT_MS = 120_000
+
 /** Trim trailing slashes off the typed base; `/v1` is deliberately not auto-added or stripped. */
 function normalizeBase(base: string): string {
   return base.trim().replace(/\/+$/, '')
@@ -79,8 +84,12 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
         'X-OpenRouter-Title': PROJECT_NAME,
         'X-OpenRouter-Categories': 'roleplay',
       },
+      timeout: MODELS_TIMEOUT_MS,
     })
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new Error(`请求超时（${MODELS_TIMEOUT_MS / 1000} 秒）`)
+    }
     // DNS / network failures and a denied @connect prompt surface as a TypeError.
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`网络请求失败：${msg}`)
@@ -212,10 +221,14 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
       },
       body: JSON.stringify(body),
       signal: opts.signal,
+      timeout: CHAT_TIMEOUT_MS,
     })
   } catch (err) {
     // AbortError is a DOMException; let it propagate so callers see "cancelled" not "network died".
     if (err instanceof DOMException && err.name === 'AbortError') throw err
+    if (err instanceof DOMException && err.name === 'TimeoutError' && !opts.signal?.aborted) {
+      throw new Error(`请求超时（${CHAT_TIMEOUT_MS / 1000} 秒）`)
+    }
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`网络请求失败：${msg}`)
   }

@@ -166,6 +166,12 @@ function LlmProviderSettings() {
     fetchStatusColor.value = '#666'
     try {
       const ids = await fetchLlmModels(p.apiBase, p.apiKey)
+      // The request may have waited on a @connect prompt while the base or key was edited.
+      const current = llmProviders.value.find(x => x.id === p.id)
+      if (!current || current.apiBase !== p.apiBase || current.apiKey !== p.apiKey) {
+        fetchStatus.value = ''
+        return
+      }
       updateLlmProvider(p.id, { models: ids })
       // Keep a now-missing selected id (don't auto-clobber); rendered as a stale sentinel.
       fetchStatus.value = `已获取 ${ids.length} 个模型`
