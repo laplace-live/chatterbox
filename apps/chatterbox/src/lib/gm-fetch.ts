@@ -71,7 +71,7 @@ export function gmFetch(url: string, init: GmFetchInit = {}): Promise<Response> 
     }
     const onAbort = () => cancel(signal?.reason)
     // GM's own `timeout` doesn't cover a pending @connect prompt, so a page timer backs it up.
-    const timer = timeout ? setTimeout(() => cancel(timedOut()), timeout) : undefined
+    const timer = timeout === undefined ? undefined : setTimeout(() => cancel(timedOut()), timeout)
     signal?.addEventListener('abort', onAbort, { once: true })
     cleanup = () => {
       clearTimeout(timer)

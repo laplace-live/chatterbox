@@ -6,6 +6,16 @@ import { loadWithFakeGm } from '../testing/fake-gm'
 
 const load = () => loadWithFakeGm<typeof import('./gm-fetch')>(new URL('./gm-fetch.ts', import.meta.url))
 
+/** The rejection, or `'pending'` after `ms`: `expect().rejects` on a never-settling promise hangs `bun test`. */
+const settleWithin = (promise: Promise<unknown>, ms = 100) =>
+  Promise.race([
+    promise.then(
+      () => 'resolved',
+      (err: unknown) => err
+    ),
+    Bun.sleep(ms).then(() => 'pending'),
+  ])
+
 test('forwards the request without cookies and resolves error statuses as readable responses', async () => {
   const { gmFetch, requests } = await load()
   const pending = gmFetch('https://llm.test/v1/chat/completions', {
@@ -65,7 +75,13 @@ test('a timeout rejects with a TimeoutError and cancels the request; the manager
   const { gmFetch, requests } = await load()
   const pending = gmFetch('https://a.test', { timeout: 5 })
   expect(requests[0].options.timeout).toBe(5)
-  await expect(pending).rejects.toHaveProperty('name', 'TimeoutError')
+  expect(await settleWithin(pending)).toHaveProperty('name', 'TimeoutError')
+  expect(requests[0].aborted).toBe(1)
+})
+
+test('a zero timeout (an exhausted budget) times out at once instead of disabling the timeout', async () => {
+  const { gmFetch, requests } = await load()
+  expect(await settleWithin(gmFetch('https://a.test', { timeout: 0 }))).toHaveProperty('name', 'TimeoutError')
   expect(requests[0].aborted).toBe(1)
 })
 
