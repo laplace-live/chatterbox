@@ -44,7 +44,7 @@ test('HTTP errors are retryable; transport failures mark the server unreachable'
   expect(await refused.promise).toMatchObject({ ok: false, unreachable: true })
 })
 
-test('abort and timeout settle without marking the server unreachable', async () => {
+test("aborts (ours or the manager's) and timeouts settle without marking the server unreachable", async () => {
   const stt = await load()
   const aborted = stt.transcribeSegment(segment)
   aborted.abort()
@@ -53,4 +53,7 @@ test('abort and timeout settle without marking the server unreachable', async ()
   const timedOut = stt.transcribeSegment(segment)
   stt.requests[1].timeOut()
   expect(await timedOut.promise).toEqual({ ok: false, unreachable: false, message: '请求超时（60 秒）' })
+  const managerAborted = stt.transcribeSegment(segment)
+  stt.requests[2].options.onabort?.()
+  expect(await managerAborted.promise).toEqual({ ok: false, unreachable: false, message: '请求已中止' })
 })

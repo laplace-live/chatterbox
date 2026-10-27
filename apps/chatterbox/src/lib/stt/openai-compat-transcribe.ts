@@ -4,7 +4,7 @@
  * blocked three ways over: mixed content, CORS, and Private Network Access.
  */
 
-import { gmFetch } from '../gm-fetch'
+import { gmFetch, ManagerAbortError } from '../gm-fetch'
 import { readStringField } from './normalize'
 import { encodeWav } from './wav'
 
@@ -66,7 +66,9 @@ export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
         timeout: REQUEST_TIMEOUT_MS,
       })
     } catch (err) {
-      if (controller.signal.aborted) return { ok: false, unreachable: false, message: '请求已中止' }
+      if (controller.signal.aborted || err instanceof ManagerAbortError) {
+        return { ok: false, unreachable: false, message: '请求已中止' }
+      }
       if (err instanceof DOMException && err.name === 'TimeoutError') {
         return { ok: false, unreachable: false, message: `请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）` }
       }

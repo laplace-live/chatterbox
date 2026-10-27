@@ -4,6 +4,11 @@ import { GM_xmlhttpRequest } from '$'
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304])
 
+/** The manager aborted the request on its own (e.g. the script was disabled), not the caller's signal. */
+export class ManagerAbortError extends TypeError {
+  name = 'ManagerAbortError'
+}
+
 export interface GmFetchInit extends Pick<RequestInit, 'method' | 'headers' | 'body' | 'credentials' | 'signal'> {
   /** Reject with a `TimeoutError` after this many ms, including time spent on a pending @connect prompt. */
   timeout?: number
@@ -64,7 +69,7 @@ export function gmFetch(url: string, init: GmFetchInit = {}): Promise<Response> 
       ontimeout: () => reject(timedOut()),
       // An abort the manager starts itself (e.g. the script being disabled) is a transport failure, not the caller's cancel.
       onabort: () =>
-        reject(signal?.aborted ? signal.reason : new TypeError('Request aborted by the userscript manager')),
+        reject(signal?.aborted ? signal.reason : new ManagerAbortError('Request aborted by the userscript manager')),
     })
     const cancel = (reason: unknown) => {
       reject(reason)
