@@ -1,0 +1,82 @@
+import { expect, test } from 'bun:test'
+
+import type { FakeGmRequest } from '../testing/fake-gm-transport'
+
+import { loadWithFakeGm } from '../testing/fake-gm'
+
+const load = () => loadWithFakeGm<typeof import('./gm-fetch')>(new URL('./gm-fetch.ts', import.meta.url))
+
+test('forwards the request without cookies and resolves error statuses as readable responses', async () => {
+  const { gmFetch, requests } = await load()
+  const pending = gmFetch('https://llm.test/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer key', 'Content-Type': 'application/json' },
+    body: '{"model":"m"}',
+  })
+  expect(requests[0].options).toMatchObject({
+    url: 'https://llm.test/v1/chat/completions',
+    method: 'POST',
+    headers: { authorization: 'Bearer key', 'content-type': 'application/json' },
+    data: '{"model":"m"}',
+    anonymous: true,
+  })
+  requests[0].respond(401, '{"error":"bad key"}', { 'Content-Type': 'application/json' })
+  const response = await pending
+  expect(response.ok).toBe(false)
+  expect(response.status).toBe(401)
+  expect(response.headers.get('content-type')).toBe('application/json')
+  expect(await response.json()).toEqual({ error: 'bad key' })
+})
+
+test('sends cookies only with credentials: include, and passes form data through as-is', async () => {
+  const { gmFetch, requests } = await load()
+  const form = new FormData()
+  gmFetch('https://a.test', { method: 'POST', body: form, credentials: 'include' })
+  gmFetch('https://a.test')
+  expect(requests[0].options).toMatchObject({ anonymous: false, data: form })
+  expect(requests[1].options).toMatchObject({ method: 'GET', anonymous: true })
+})
+
+test('a 204 resolves with a null body', async () => {
+  const { gmFetch, requests } = await load()
+  const pending = gmFetch('https://a.test')
+  requests[0].respond(204)
+  expect((await pending).body).toBeNull()
+})
+
+test("aborting rejects with the signal's reason, cancels the request, and ignores a late response", async () => {
+  const { gmFetch, requests } = await load()
+  const controller = new AbortController()
+  const pending = gmFetch('https://a.test', { signal: controller.signal })
+  const reason = new DOMException('timed out', 'TimeoutError')
+  controller.abort(reason)
+  requests[0].respond(200, 'late')
+  await expect(pending).rejects.toBe(reason)
+  expect(requests[0].aborted).toBe(1)
+})
+
+test('an already-aborted signal sends nothing', async () => {
+  const { gmFetch, requests } = await load()
+  await expect(gmFetch('https://a.test', { signal: AbortSignal.abort() })).rejects.toHaveProperty('name', 'AbortError')
+  expect(requests).toHaveLength(0)
+})
+
+const transportFailures: [string, (request: FakeGmRequest) => void, string][] = [
+  [
+    'a denied @connect prompt',
+    request => request.fail('Refused to connect to "a.test"'),
+    'Refused to connect to "a.test"',
+  ],
+  ['a failure without a message', request => request.fail(), 'Failed to fetch'],
+  ['a manager timeout', request => request.timeOut(), 'Network request timed out'],
+  ['status 0', request => request.respond(0), 'Failed to fetch'],
+]
+
+test.each(transportFailures)('%s rejects with a TypeError', async (_label, settle, message) => {
+  const { gmFetch, requests } = await load()
+  const pending = gmFetch('https://a.test')
+  settle(requests[0])
+  const error = await pending.catch((err: unknown) => err)
+  expect(error).toBeInstanceOf(TypeError)
+  expect(error).toHaveProperty('message', message)
+})

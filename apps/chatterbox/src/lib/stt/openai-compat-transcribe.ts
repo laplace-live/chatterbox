@@ -1,10 +1,10 @@
 /**
  * One-shot upload to an OpenAI-compatible `/audio/transcriptions` endpoint.
- * Goes through `GM_xmlhttpRequest` because a plain `fetch` at a local server is
+ * Goes through `gmFetch` because a plain `fetch` at a local server is
  * blocked three ways over: mixed content, CORS, and Private Network Access.
  */
 
-import { GM_xmlhttpRequest } from '$'
+import { gmFetch } from '../gm-fetch'
 import { readStringField } from './normalize'
 import { encodeWav } from './wav'
 
@@ -52,34 +52,33 @@ export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
   const headers: Record<string, string> = {}
   if (req.apiKey) headers.Authorization = `Bearer ${req.apiKey}`
 
-  let request: { abort: () => void } | null = null
-  const promise = new Promise<TranscribeResult>(resolve => {
-    request = GM_xmlhttpRequest({
-      method: 'POST',
-      url: `${req.baseUrl.replace(/\/+$/, '')}/audio/transcriptions`,
-      headers,
-      data: form,
-      timeout: REQUEST_TIMEOUT_MS,
-      onload: response => {
-        if (response.status < 200 || response.status >= 300) {
-          const detail = response.responseText ? `：${response.responseText.slice(0, 200)}` : ''
-          resolve({ ok: false, unreachable: false, message: `HTTP ${response.status}${detail}` })
-          return
-        }
-        const text = readTranscript(response.responseText)
-        if (text === undefined) {
-          resolve({ ok: false, unreachable: false, message: '返回内容不是合法的 { text } JSON' })
-          return
-        }
-        resolve({ ok: true, text })
-      },
-      // HTTP statuses arrive via onload; onerror is transport-level — nothing listening, wrong port.
-      onerror: () =>
-        resolve({ ok: false, unreachable: true, message: '无法连接到语音识别服务，请检查服务地址与服务是否已启动' }),
-      onabort: () => resolve({ ok: false, unreachable: false, message: '请求已中止' }),
-      ontimeout: () =>
-        resolve({ ok: false, unreachable: false, message: `请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）` }),
-    })
-  })
-  return { promise, abort: () => request?.abort() }
+  const controller = new AbortController()
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const send = async (): Promise<TranscribeResult> => {
+    let response: Response
+    try {
+      response = await gmFetch(`${req.baseUrl.replace(/\/+$/, '')}/audio/transcriptions`, {
+        method: 'POST',
+        headers,
+        body: form,
+        signal: AbortSignal.any([controller.signal, timeout]),
+      })
+    } catch {
+      if (controller.signal.aborted) return { ok: false, unreachable: false, message: '请求已中止' }
+      if (timeout.aborted) {
+        return { ok: false, unreachable: false, message: `请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）` }
+      }
+      // HTTP statuses resolve; a rejection is transport-level — nothing listening, wrong port.
+      return { ok: false, unreachable: true, message: '无法连接到语音识别服务，请检查服务地址与服务是否已启动' }
+    }
+    const raw = await response.text()
+    if (!response.ok) {
+      const detail = raw ? `：${raw.slice(0, 200)}` : ''
+      return { ok: false, unreachable: false, message: `HTTP ${response.status}${detail}` }
+    }
+    const text = readTranscript(raw)
+    if (text === undefined) return { ok: false, unreachable: false, message: '返回内容不是合法的 { text } JSON' }
+    return { ok: true, text }
+  }
+  return { promise: send(), abort: () => controller.abort() }
 }

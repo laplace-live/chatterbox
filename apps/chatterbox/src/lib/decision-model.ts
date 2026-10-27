@@ -1,4 +1,4 @@
-import { GM_xmlhttpRequest } from '$'
+import { gmFetch } from './gm-fetch'
 import { readStringField } from './stt/normalize'
 import { readPath } from './utils'
 
@@ -76,64 +76,32 @@ function endpoint(provider: DecisionProviderProfile, action: 'evaluate' | 'model
 
 const cancelled = () => new DOMException('决策请求已取消', 'AbortError')
 
-function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(cancelled())
-      return
-    }
-    const headers: Record<string, string> = { Accept: 'application/json' }
-    if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
-    if (body !== undefined) headers['Content-Type'] = 'application/json'
+async function requestJson(url: string, apiKey: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-    let request: { abort?: () => void } | undefined
-    let timer: ReturnType<typeof setTimeout> | undefined
-    // A promise settles once, so repeat calls (e.g. `onabort` after our own abort) are no-ops.
-    const finish = (error?: Error, value?: unknown) => {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', abort)
-      if (error) reject(error)
-      else resolve(value)
-    }
-    const abort = () => {
-      finish(cancelled())
-      request?.abort?.()
-    }
-    const timeout = () => {
-      finish(new Error(`决策模型请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`))
-      request?.abort?.()
-    }
-    // Armed before the call so a synchronous callback's `finish` clears them. The manual timer also
-    // bounds a pending userscript-manager @connect prompt, which GM's own `timeout` doesn't cover.
-    signal?.addEventListener('abort', abort, { once: true })
-    timer = setTimeout(timeout, REQUEST_TIMEOUT_MS)
-    try {
-      request = GM_xmlhttpRequest({
-        method: body === undefined ? 'GET' : 'POST',
-        url,
-        headers,
-        data: body === undefined ? undefined : JSON.stringify(body),
-        timeout: REQUEST_TIMEOUT_MS,
-        anonymous: true,
-        onload: response => {
-          if (response.status < 200 || response.status >= 300) {
-            finish(new Error(`决策模型请求失败：HTTP ${response.status}`))
-            return
-          }
-          try {
-            finish(undefined, JSON.parse(response.responseText))
-          } catch {
-            finish(new Error('决策模型返回内容不是合法 JSON'))
-          }
-        },
-        onerror: () => finish(new Error('无法连接到决策模型，请检查 API 地址与服务状态')),
-        onabort: () => finish(cancelled()),
-        ontimeout: timeout,
-      })
-    } catch {
-      finish(new Error('无法发起决策模型请求'))
-    }
-  })
+  // Unlike GM's own `timeout`, this also bounds a pending userscript-manager @connect prompt.
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await gmFetch(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    })
+  } catch {
+    if (signal?.aborted) throw cancelled()
+    if (timeout.aborted) throw new Error(`决策模型请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`)
+    throw new Error('无法连接到决策模型，请检查 API 地址与服务状态')
+  }
+  if (!response.ok) throw new Error(`决策模型请求失败：HTTP ${response.status}`)
+  try {
+    return await response.json()
+  } catch {
+    throw new Error('决策模型返回内容不是合法 JSON')
+  }
 }
 
 /** Fetch the provider's decision models; manually entered model IDs remain valid. */

@@ -1,6 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 
 import type { DecisionPreset, DecisionProviderProfile } from './decision-model'
+
+import { loadWithFakeGm } from '../testing/fake-gm'
 
 const provider: DecisionProviderProfile = {
   id: 'test',
@@ -13,63 +15,34 @@ const provider: DecisionProviderProfile = {
 }
 const preset: DecisionPreset = { id: 'warm', name: '暖男', instructions: '只发送真诚关心、鼓励或安慰的弹幕。' }
 const state = { candidate: '辛苦了，早点休息', recentMessages: ['今天有点累'] }
-const source = await Bun.file(new URL('./decision-model.ts', import.meta.url)).text()
-let harnessId = 0
 
-interface MockRequest {
-  aborted: number
-  options: {
-    url: string
-    method: string
-    headers: Record<string, string>
-    data?: string
-    timeout: number
-    onload: (response: { status: number; responseText: string }) => void
-    onabort: () => void
-    onerror: () => void
-    ontimeout: () => void
-  }
-}
+afterEach(() => mock.restore())
 
 async function harness() {
-  // Each data-URL module owns its transport; Bun's global module cache stays untouched.
-  const transportUrl = `data:text/javascript;base64,${Buffer.from(`
-    export const requests = [];
-    export function GM_xmlhttpRequest(options) {
-      const request = { options, aborted: 0 };
-      requests.push(request);
-      return { abort() { request.aborted++; options.onabort(); } };
-    }
-    // instance ${harnessId++}
-  `).toString('base64')}`
-  const transport: { requests: MockRequest[] } = await import(transportUrl)
-  const testSource = source
-    .replace("from '$'", `from '${transportUrl}'`)
-    .replace("from './stt/normalize'", `from '${new URL('./stt/normalize.ts', import.meta.url).href}'`)
-    .replace("from './utils'", `from '${new URL('./utils.ts', import.meta.url).href}'`)
-  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(testSource)
-  const client: typeof import('./decision-model') = await import(
-    `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
+  const client = await loadWithFakeGm<typeof import('./decision-model')>(
+    new URL('./decision-model.ts', import.meta.url)
   )
   return {
     ...client,
-    requests: transport.requests,
+    sent: (index = 0) => JSON.parse(String(client.requests[index]?.options.data)),
     respond(json: unknown, status = 200) {
-      transport.requests.at(-1)?.options.onload({ status, responseText: JSON.stringify(json) })
+      client.requests.at(-1)?.respond(status, JSON.stringify(json))
     },
   }
 }
 
 describe('evaluateDecision', () => {
   test('sends a single preset question and returns its send probability', async () => {
+    const timeout = spyOn(AbortSignal, 'timeout')
     const client = await harness()
     const pending = client.evaluateDecision({ provider, preset, state })
     const request = client.requests[0].options
     expect(request.url).toBe('https://api.typesafe.ai/v1/systemone')
     expect(request.method).toBe('POST')
-    expect(request.headers.Authorization).toBe('Bearer test-key')
-    expect(request.timeout).toBe(8_000)
-    const body = JSON.parse(request.data ?? '{}')
+    expect(request.headers?.authorization).toBe('Bearer test-key')
+    expect(request.anonymous).toBe(true)
+    expect(timeout).toHaveBeenCalledWith(8_000)
+    const body = client.sent()
     expect(body.model).toBe('jev-latest')
     expect(body.state).toEqual(state)
     expect(Object.keys(body.questions)).toEqual(['send'])
@@ -105,8 +78,8 @@ describe('evaluateDecision', () => {
       state,
     })
     expect(client.requests[0].options.url).toBe('http://127.0.0.1:8080/v1/systemone')
-    expect(client.requests[0].options.headers.Authorization).toBeUndefined()
-    expect(JSON.parse(client.requests[0].options.data ?? '{}').model).toBe('custom-decision')
+    expect(client.requests[0].options.headers?.authorization).toBeUndefined()
+    expect(client.sent().model).toBe('custom-decision')
     client.respond({ answers: { send: { type: 'noul', noul: 0 } } })
     await expect(pending).resolves.toEqual({ sendProbability: 0 })
   })
@@ -129,10 +102,7 @@ describe('evaluateDecision', () => {
   test('rejects infinite JSON number', async () => {
     const client = await harness()
     const pending = client.evaluateDecision({ provider, preset, state })
-    client.requests[0].options.onload({
-      status: 200,
-      responseText: '{"answers":{"send":{"type":"noul","noul":1e999}}}',
-    })
+    client.requests[0].respond(200, '{"answers":{"send":{"type":"noul","noul":1e999}}}')
     await expect(pending).rejects.toThrow('发送判断无效')
   })
 
@@ -173,7 +143,7 @@ describe('evaluateDecision', () => {
       preset,
       state: { candidate, recentMessages: Array.from({ length: 30 }, (_, i) => `${i}:${'x'.repeat(600)}`) },
     })
-    const sentState = JSON.parse(client.requests[0].options.data ?? '{}').state
+    const sentState = client.sent().state
     expect(sentState.candidate).toBe(candidate)
     expect(sentState.recentMessages).toHaveLength(20)
     expect(sentState.recentMessages[0]).toStartWith('10:')
@@ -201,9 +171,11 @@ describe('evaluateDecision', () => {
   })
 
   test('times out without retrying', async () => {
+    const timer = new AbortController()
+    spyOn(AbortSignal, 'timeout').mockReturnValue(timer.signal)
     const client = await harness()
     const pending = client.evaluateDecision({ provider, preset, state })
-    client.requests[0].options.ontimeout()
+    timer.abort(new DOMException('timed out', 'TimeoutError'))
     await expect(pending).rejects.toThrow('超时')
     expect(client.requests).toHaveLength(1)
     expect(client.requests[0].aborted).toBe(1)
