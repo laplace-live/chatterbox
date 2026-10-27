@@ -161,16 +161,29 @@ function LlmProviderSettings() {
   const refreshModels = async () => {
     const p = activeLlmProvider.value
     if (!p || fetching.value) return
+    // The request may wait on a @connect prompt while the base or key is edited; its outcome is stale then.
+    const settingsChanged = () => {
+      const current = llmProviders.value.find(x => x.id === p.id)
+      return !current || current.apiBase !== p.apiBase || current.apiKey !== p.apiKey
+    }
     fetching.value = true
     fetchStatus.value = '正在获取模型列表…'
     fetchStatusColor.value = '#666'
     try {
       const ids = await fetchLlmModels(p.apiBase, p.apiKey)
+      if (settingsChanged()) {
+        fetchStatus.value = ''
+        return
+      }
       updateLlmProvider(p.id, { models: ids })
       // Keep a now-missing selected id (don't auto-clobber); rendered as a stale sentinel.
       fetchStatus.value = `已获取 ${ids.length} 个模型`
       fetchStatusColor.value = '#36a185'
     } catch (err) {
+      if (settingsChanged()) {
+        fetchStatus.value = ''
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
       fetchStatus.value = `获取失败：${msg}`
       fetchStatusColor.value = '#f44'
@@ -209,8 +222,8 @@ function LlmProviderSettings() {
       <div class={HEADING_CLASS}>LLM 设置</div>
       <div class={HINT_CLASS}>
         配置兼容 OpenAI API 的大语言模型，用于 AI 集成。可保存多个服务商配置（各自记住 API Key
-        与模型），同一时间只有选中的一个生效。模型列表通过 <code>GET {'{API 地址}'}/models</code>{' '}
-        获取，因此需要服务端允许浏览器跨域访问
+        与模型），同一时间只有选中的一个生效。模型列表通过 <code>GET {'{API 地址}'}/models</code> 获取。首次连接新的 API
+        地址时，脚本管理器可能会请求跨域访问权限，请选择「总是允许」，否则每次请求都会再次询问
       </div>
       <div class={ROW_CLASS}>
         <Label htmlFor='llmProviderSelect'>服务商</Label>

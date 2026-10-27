@@ -33,10 +33,17 @@ export default defineConfig({
           '*://www.bilibili.com/opus/*',
         ],
         'run-at': 'document-start',
-        // Deepgram model-list fetch has no CORS headers, so routes via GM_xmlhttpRequest; WebSockets and ElevenLabs token fetch need no @connect.
-        // The OpenAI-compatible STT endpoint is whatever the user types, hence the wildcard; local hosts are listed so the common case needs no manager prompt.
-        // Decision-model default hosts are listed for the same reason: requests held behind the prompt hit the 8 s decision timeout.
-        connect: ['api.deepgram.com', 'api.typesafe.ai', 'openrouter.ai', 'localhost', '127.0.0.1', '*'],
+        // Hosts gmFetch (GM_xmlhttpRequest) may reach; page fetch and WebSockets don't consult this. Unlisted hosts get a one-time manager
+        // prompt, so built-in defaults and local hosts are listed (a held decision request would hit its 8 s timeout); `*` covers user-typed ones.
+        connect: [
+          'api.deepgram.com',
+          'api.typesafe.ai',
+          'openrouter.ai',
+          'api.openai.com',
+          'localhost',
+          '127.0.0.1',
+          '*',
+        ],
         // Managers poll the ~1 KB meta file and only fetch the full script when it changes.
         downloadURL: `${DOWNLOAD_BASE}/laplace-chatterbox.user.js`,
         updateURL: `${DOWNLOAD_BASE}/laplace-chatterbox.meta.js`,
