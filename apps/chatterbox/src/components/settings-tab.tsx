@@ -161,14 +161,17 @@ function LlmProviderSettings() {
   const refreshModels = async () => {
     const p = activeLlmProvider.value
     if (!p || fetching.value) return
+    // The request may wait on a @connect prompt while the base or key is edited; its outcome is stale then.
+    const settingsChanged = () => {
+      const current = llmProviders.value.find(x => x.id === p.id)
+      return !current || current.apiBase !== p.apiBase || current.apiKey !== p.apiKey
+    }
     fetching.value = true
     fetchStatus.value = '正在获取模型列表…'
     fetchStatusColor.value = '#666'
     try {
       const ids = await fetchLlmModels(p.apiBase, p.apiKey)
-      // The request may have waited on a @connect prompt while the base or key was edited.
-      const current = llmProviders.value.find(x => x.id === p.id)
-      if (!current || current.apiBase !== p.apiBase || current.apiKey !== p.apiKey) {
+      if (settingsChanged()) {
         fetchStatus.value = ''
         return
       }
@@ -177,6 +180,10 @@ function LlmProviderSettings() {
       fetchStatus.value = `已获取 ${ids.length} 个模型`
       fetchStatusColor.value = '#36a185'
     } catch (err) {
+      if (settingsChanged()) {
+        fetchStatus.value = ''
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
       fetchStatus.value = `获取失败：${msg}`
       fetchStatusColor.value = '#f44'
