@@ -79,10 +79,11 @@ test('a timeout rejects with a TimeoutError and cancels the request; the manager
   expect(requests[0].aborted).toBe(1)
 })
 
-test('a zero timeout (an exhausted budget) times out at once instead of disabling the timeout', async () => {
+test('a zero or negative timeout (an exhausted budget) times out without sending anything', async () => {
   const { gmFetch, requests } = await load()
   expect(await settleWithin(gmFetch('https://a.test', { timeout: 0 }))).toHaveProperty('name', 'TimeoutError')
-  expect(requests[0].aborted).toBe(1)
+  expect(await settleWithin(gmFetch('https://a.test', { timeout: -5 }))).toHaveProperty('name', 'TimeoutError')
+  expect(requests).toHaveLength(0)
 })
 
 test("the manager's own timeout rejects the same way", async () => {

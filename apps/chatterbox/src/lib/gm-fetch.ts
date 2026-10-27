@@ -43,6 +43,8 @@ export function gmFetch(url: string, init: GmFetchInit = {}): Promise<Response> 
   return new Promise<Response>((resolve, reject) => {
     signal?.throwIfAborted()
     const timedOut = () => new DOMException(`Timed out after ${timeout} ms`, 'TimeoutError')
+    // An exhausted budget fails before anything is sent, so the server can't act on an expired request.
+    if (timeout !== undefined && timeout <= 0) throw timedOut()
     // Our own abort or timeout rejects first, so the `onabort` it triggers can't override the reason.
     const request = GM_xmlhttpRequest({
       method: init.method ?? 'GET',
