@@ -38,8 +38,11 @@ async function createHarness() {
       _csrf: string,
       _priority: number,
       _source: string,
-      _guard?: () => boolean
-    ): Promise<SendDanmakuResult> => ({ success: true, message, isEmoticon: false })
+      guard?: () => boolean
+    ): Promise<SendDanmakuResult> =>
+      guard && !guard()
+        ? { success: false, cancelled: true, message, isEmoticon: false }
+        : { success: true, message, isEmoticon: false }
   )
   let subscriber: HarnessSubscription | undefined
   let now = 10_000
@@ -99,7 +102,26 @@ async function createHarness() {
     engine.startAiChatEngine()
   }
 
-  return { engine, enqueue, schedule, send, message, restart, advance: (ms: number) => (now += ms) }
+  function deferSend(dispatchImmediately = true) {
+    const pending = Promise.withResolvers<SendDanmakuResult>()
+    let allowed: boolean | undefined
+    let dispatch = (): boolean => {
+      throw new Error('Send has not been queued')
+    }
+    enqueue.mockImplementationOnce((message, _room, _csrf, _priority, _source, guard) => {
+      dispatch = () => {
+        if (allowed !== undefined) throw new Error('Send already dispatched')
+        allowed = guard?.() ?? true
+        if (!allowed) pending.resolve({ success: false, cancelled: true, message, isEmoticon: false })
+        return allowed
+      }
+      if (dispatchImmediately) dispatch()
+      return pending.promise
+    })
+    return { resolve: pending.resolve, dispatch: () => dispatch(), wasAllowed: () => allowed }
+  }
+
+  return { engine, enqueue, schedule, send, message, restart, deferSend, advance: (ms: number) => (now += ms) }
 }
 
 afterEach(() => {
@@ -109,14 +131,11 @@ afterEach(() => {
 describe('AI chat echo markers across restarts', () => {
   test('ignores an in-flight send echo before and after the send completes', async () => {
     const h = await createHarness()
-    const pending = Promise.withResolvers<SendDanmakuResult>()
-    h.enqueue.mockImplementationOnce(() => pending.promise)
+    const pending = h.deferSend()
     await h.send()
-    const guard = h.enqueue.mock.calls[0]?.[5]
-    expect(guard?.()).toBe(true)
+    expect(pending.wasAllowed()).toBe(true)
 
     h.restart()
-    expect(guard?.()).toBe(false)
     h.message()
     expect(h.engine.aiChatViewerCount.value).toBe(0)
     expect(h.schedule).not.toHaveBeenCalled()
@@ -145,7 +164,7 @@ describe('AI chat echo markers across restarts', () => {
     expect(h.engine.aiChatViewerCount.value).toBe(1)
   })
 
-  test('does not revive a marker that expired while stopped', async () => {
+  test('accepts viewer text after its matching send expired while stopped', async () => {
     const h = await createHarness()
     await h.send()
     h.engine.stopAiChatEngine()
@@ -157,8 +176,7 @@ describe('AI chat echo markers across restarts', () => {
 
   test('keeps markers after a send completes with an unknown outcome', async () => {
     const h = await createHarness()
-    const pending = Promise.withResolvers<SendDanmakuResult>()
-    h.enqueue.mockImplementationOnce(() => pending.promise)
+    const pending = h.deferSend()
     await h.send()
     h.restart()
     pending.resolve({ success: false, message: '好耶', isEmoticon: false, error: 'network error' })
@@ -170,8 +188,7 @@ describe('AI chat echo markers across restarts', () => {
   for (const outcome of ['cancelled', 'rejected'] as const) {
     test(`removes a ${outcome} send marker after restart`, async () => {
       const h = await createHarness()
-      const pending = Promise.withResolvers<SendDanmakuResult>()
-      h.enqueue.mockImplementationOnce(() => pending.promise)
+      const pending = h.deferSend()
       await h.send()
       h.restart()
       h.message()
@@ -185,8 +202,7 @@ describe('AI chat echo markers across restarts', () => {
 
     test(`a ${outcome} old send cannot remove a newer marker for the same text`, async () => {
       const h = await createHarness()
-      const pending = Promise.withResolvers<SendDanmakuResult>()
-      h.enqueue.mockImplementationOnce(() => pending.promise)
+      const pending = h.deferSend()
       await h.send()
       h.restart()
       await h.send()
@@ -198,4 +214,87 @@ describe('AI chat echo markers across restarts', () => {
       expect(h.schedule).not.toHaveBeenCalled()
     })
   }
+
+  test('a queued send cancelled by restart never filters viewer text', async () => {
+    const h = await createHarness()
+    const pending = h.deferSend(false)
+    await h.send()
+    expect(pending.wasAllowed()).toBeUndefined()
+    h.restart()
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(1)
+
+    expect(pending.dispatch()).toBe(false)
+    await flush()
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(2)
+  })
+
+  test('starts the echo expiry at dispatch after a long queue wait', async () => {
+    const h = await createHarness()
+    const pending = h.deferSend(false)
+    await h.send()
+    h.advance(30_001)
+    expect(pending.dispatch()).toBe(true)
+    h.restart()
+    h.advance(30_000)
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(0)
+
+    h.advance(1)
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(1)
+    pending.resolve({ success: true, message: '好耶', isEmoticon: false })
+    await flush()
+  })
+
+  for (const outcome of ['cancelled', 'rejected'] as const) {
+    test(`a ${outcome} newer send preserves the older same-text send until its original expiry`, async () => {
+      const h = await createHarness()
+      await h.send()
+      h.advance(20_000)
+      h.restart()
+      const pending = h.deferSend()
+      await h.send()
+      pending.resolve({ success: false, message: '好耶', isEmoticon: false, [outcome]: true })
+      await flush()
+      h.message()
+      expect(h.engine.aiChatViewerCount.value).toBe(0)
+
+      h.advance(10_000)
+      h.message()
+      expect(h.engine.aiChatViewerCount.value).toBe(0)
+      h.advance(1)
+      h.message()
+      expect(h.engine.aiChatViewerCount.value).toBe(1)
+    })
+  }
+
+  test('identical sends expire independently and rejecting the newer one does not revive the older one', async () => {
+    const h = await createHarness()
+    await h.send()
+    h.advance(20_000)
+    const pending = h.deferSend()
+    await h.send()
+    h.restart()
+    h.advance(10_001)
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(0)
+
+    pending.resolve({ success: false, message: '好耶', isEmoticon: false, rejected: true })
+    await flush()
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(1)
+  })
+
+  test('caps retained sends even when their texts are identical', async () => {
+    const h = await createHarness()
+    await h.send('最早的弹幕')
+    for (let i = 0; i < 64; i++) await h.send()
+    h.restart()
+    h.message('最早的弹幕')
+    expect(h.engine.aiChatViewerCount.value).toBe(1)
+    h.message()
+    expect(h.engine.aiChatViewerCount.value).toBe(1)
+  })
 })

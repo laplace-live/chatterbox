@@ -2,4 +2,4 @@
 'laplace-chatterbox': patch
 ---
 
-Keep unexpired AI chat echo markers across engine restarts so delayed echoes of in-flight sends are not treated as viewer messages.
+Keep independent AI chat echo markers from dispatch through engine restarts, so queued sends do not suppress viewer messages and cancelling one send does not expose another send's delayed echo.
