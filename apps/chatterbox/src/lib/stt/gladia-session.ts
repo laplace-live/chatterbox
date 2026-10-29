@@ -19,6 +19,8 @@ export interface GladiaSessionConfig {
   model: string
   /** BCP-47 language hints; `[]` = auto-detect. A single entry locks the language. */
   languages: string[]
+  translation?: { targetLanguage: string }
+  signal?: AbortSignal
 }
 
 export async function initGladiaSession(config: GladiaSessionConfig): Promise<string> {
@@ -30,6 +32,7 @@ export async function initGladiaSession(config: GladiaSessionConfig): Promise<st
     res = await fetch(`${GLADIA_API_BASE}/live`, {
       method: 'POST',
       headers: { 'x-gladia-key': key, 'content-type': 'application/json' },
+      signal: config.signal,
       body: JSON.stringify({
         encoding: 'wav/pcm',
         sample_rate: PCM_SAMPLE_RATE,
@@ -39,6 +42,15 @@ export async function initGladiaSession(config: GladiaSessionConfig): Promise<st
         endpointing: ENDPOINTING_SECONDS,
         // `[]` auto-detects; >1 hint (or none) allows mid-stream language switches.
         language_config: { languages: config.languages, code_switching: config.languages.length !== 1 },
+        ...(config.translation
+          ? {
+              realtime_processing: {
+                translation: true,
+                translation_config: { target_languages: [config.translation.targetLanguage], model: 'base' },
+              },
+              messages_config: { receive_realtime_processing_events: true },
+            }
+          : {}),
       }),
     })
   } catch (err) {

@@ -1,13 +1,13 @@
 /**
  * Shared mic → PCM16 capture for every STT engine but Soniox, whose SDK records on its own.
- * AudioContext pinned to 16 kHz so the browser resamples; AudioWorklet blob-loaded
+ * AudioContext defaults to 16 kHz so the browser resamples; AudioWorklet blob-loaded
  * (userscript has no separate asset for `addModule()`). Targeted Bilibili pages
  * enforce no `script-src` CSP that would block the blob module.
  */
 
 import { floatTo16 } from './audio'
 
-/** Sample rate the capture is pinned to; also what engines report to the server. */
+/** Default capture sample rate in Hz. */
 export const PCM_SAMPLE_RATE = 16000
 
 const DEFAULT_FRAME_SAMPLES = 4096
@@ -49,7 +49,9 @@ export interface PcmCaptureOptions {
   deviceId: string
   /** Samples per `onFrame` block; defaults to 4096 (256 ms). */
   frameSamples?: number
-  /** Called with each Int16 PCM block (little-endian, 16 kHz, mono). */
+  /** Capture sample rate in Hz; defaults to 16000. */
+  sampleRate?: number
+  /** Called with each Int16 PCM block (little-endian, mono). */
   onFrame: (frame: Int16Array<ArrayBuffer>) => void
 }
 
@@ -66,7 +68,7 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
     },
   }
   const stream = await navigator.mediaDevices.getUserMedia(constraints)
-  const context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE })
+  const context = new AudioContext({ sampleRate: opts.sampleRate ?? PCM_SAMPLE_RATE })
   try {
     const source = context.createMediaStreamSource(stream)
     const moduleUrl = URL.createObjectURL(new Blob([PCM_TAP_PROCESSOR], { type: 'application/javascript' }))

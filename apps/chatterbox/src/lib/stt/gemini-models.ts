@@ -1,4 +1,4 @@
-/** List Gemini Live transcription models via `gmFetch`, since a gateway or proxy root may not send CORS headers. */
+/** List Gemini Live transcription and translation models through gateway-compatible `gmFetch`. */
 
 import type { SttModelOption } from './types'
 
@@ -14,6 +14,6 @@ export async function fetchGeminiModels(apiKey: string, baseUrl: string): Promis
     buildGeminiModelsUrl(baseUrl),
     { 'x-goog-api-key': key },
     parseGeminiModels,
-    '返回列表中没有实时转写模型'
+    '返回列表中没有实时转录或翻译模型'
   )
 }

@@ -8,11 +8,15 @@ import { ensureRoomId, getCsrfToken } from '../lib/api'
 import {
   DEEPGRAM_DEFAULT_MODEL,
   ELEVENLABS_DEFAULT_MODEL,
+  ELEVENLABS_TRANSLATION_MODE,
   GEMINI_API_BASE,
   GEMINI_DEFAULT_MODEL,
+  GEMINI_TRANSLATION_MODEL,
+  GEMINI_TRANSLATION_STOP_TIMEOUT_MS,
   GLADIA_DEFAULT_MODEL,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
+  OPENAI_TRANSLATION_MODEL,
   SONIOX_DEFAULT_MODEL,
   STT_STOP_TIMEOUT_MS,
   WHISPER_CPP_URL,
@@ -28,17 +32,28 @@ import {
   deepgramModels,
   elevenLabsApiKey,
   elevenLabsLanguageCode,
+  elevenLabsMode,
+  elevenLabsTranslationTarget,
+  elevenLabsTranslationToken,
+  elevenLabsTranslationVoiceId,
   geminiApiKey,
   geminiBaseUrl,
   geminiLanguage,
   geminiModel,
   geminiModels,
+  geminiTranslationTarget,
   gladiaApiKey,
   gladiaLanguage,
+  gladiaTranslationEnabled,
+  gladiaTranslationTarget,
+  openaiSttApi,
   openaiSttApiKey,
   openaiSttBaseUrl,
   openaiSttLanguage,
   openaiSttModel,
+  openaiSttTranslationEnabled,
+  openaiTranslationApiKey,
+  openaiTranslationTarget,
   sonioxApiKey,
   sonioxLanguageHints,
   sonioxModel,
@@ -54,6 +69,7 @@ import {
   sttTranscriptBuffer,
   sttWrapBrackets,
 } from '../lib/store'
+import { translationCapabilities } from '../lib/stt/capabilities'
 import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
 import { fetchGeminiModels } from '../lib/stt/gemini-models'
 import { reduceChunks } from '../lib/stt/normalize'
@@ -80,6 +96,7 @@ const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> =
   deepgram: { label: 'Deepgram', signupUrl: 'https://deepgram.com/' },
   gladia: { label: 'Gladia', signupUrl: 'https://gladia.io/' },
   gemini: { label: 'Google AI Studio', signupUrl: 'https://aistudio.google.com/apikey' },
+  openai: { label: 'OpenAI 实时翻译', signupUrl: 'https://platform.openai.com/api-keys' },
   'openai-compat': { label: '本地 / OpenAI 兼容', signupUrl: WHISPER_CPP_URL },
 }
 
@@ -92,6 +109,7 @@ const API_KEY_SIGNALS: Record<SttProvider, Signal<string>> = {
   deepgram: deepgramApiKey,
   gladia: gladiaApiKey,
   gemini: geminiApiKey,
+  openai: openaiTranslationApiKey,
   'openai-compat': openaiSttApiKey,
 }
 
@@ -122,7 +140,7 @@ const GEMINI_LANGUAGES: LanguageOption[] = [
 ]
 
 const LANGUAGE_SETTINGS: Record<
-  Exclude<SttProvider, 'soniox'>,
+  Exclude<SttProvider, 'soniox' | 'openai'>,
   { signal: Signal<string>; options: LanguageOption[] }
 > = {
   elevenlabs: { signal: elevenLabsLanguageCode, options: AUTO_DETECT_LANGUAGES },
@@ -145,6 +163,17 @@ const MODEL_PICKERS: Partial<Record<SttProvider, ModelPicker>> = {
   gemini: { model: geminiModel, models: geminiModels, fetch: key => fetchGeminiModels(key, geminiBaseUrl.value) },
 }
 
+const TRANSLATION_SETTINGS: Partial<Record<SttProvider, { enabled?: Signal<boolean>; target?: Signal<string> }>> = {
+  soniox: { enabled: sonioxTranslationEnabled, target: sonioxTranslationTarget },
+  gladia: { enabled: gladiaTranslationEnabled, target: gladiaTranslationTarget },
+  gemini: { target: geminiTranslationTarget },
+  elevenlabs: { target: elevenLabsTranslationTarget },
+  openai: { target: openaiTranslationTarget },
+  'openai-compat': { enabled: openaiSttTranslationEnabled },
+}
+
+const TARGET_LABELS: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語', ko: '한국어' }
+
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
   const state = useSignal<'stopped' | 'starting' | 'running' | 'stopping'>('stopped')
@@ -152,6 +181,8 @@ export function SttTab() {
   const statusColor = useSignal('#666')
   const finalText = useSignal('')
   const nonFinalText = useSignal('')
+  const sourceFinalText = useSignal('')
+  const sourceNonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
   const modelFetching = useSignal(false)
   const modelFetchStatus = useSignal('')
@@ -164,6 +195,8 @@ export function SttTab() {
   const isFlushing = useRef(false)
   // Translation toggle captured at start() so long-lived handlers see the value picked at click time.
   const translationModeRef = useRef(false)
+  const sessionTarget = useRef('en')
+  const sessionHasSource = useRef(true)
   const stopWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const enumerateMics = async () => {
@@ -224,6 +257,8 @@ export function SttTab() {
     acc.current = ''
     finalText.value = ''
     nonFinalText.value = ''
+    sourceFinalText.value = ''
+    sourceNonFinalText.value = ''
     clearStopWatchdog()
     if (flushTimeout.current) {
       clearTimeout(flushTimeout.current)
@@ -233,21 +268,22 @@ export function SttTab() {
 
   const sendSegment = async (segment: string) => {
     if (!segment.trim()) return
+    const label = translationModeRef.current ? '同传' : '转录'
     try {
       const roomId = await ensureRoomId()
       const csrfToken = getCsrfToken()
       if (!csrfToken) {
-        appendLog('❌ 同传：未找到登录信息')
+        appendLog(`❌ ${label}：未找到登录信息`)
         return
       }
       const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.STT, 'stt')
-      appendLog(result, '同传', segment)
+      appendLog(result, label, segment)
       if (!result.success && !result.cancelled) {
-        await tryAiEvasion(segment, roomId, csrfToken, '同传', 'stt')
+        await tryAiEvasion(segment, roomId, csrfToken, label, 'stt')
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      appendLog(`🔴 同传发送出错：${msg}`)
+      appendLog(`🔴 ${label}发送出错：${msg}`)
     }
   }
 
@@ -294,8 +330,16 @@ export function SttTab() {
     let display = acc.current
     if (display.length > 500) display = `…${display.slice(-500)}`
     finalText.value = display
-    nonFinalText.value = nonFinal
-    if (newFinal) sttTranscriptBuffer.value = sttTranscriptBuffer.value + newFinal
+    if (!translationModeRef.current || chunks.some(chunk => chunk.kind === 'translation')) {
+      nonFinalText.value = nonFinal
+    }
+    const original =
+      translationModeRef.current && sessionHasSource.current ? reduceChunks(chunks, false) : { newFinal, nonFinal }
+    if (translationModeRef.current && sessionHasSource.current && chunks.some(chunk => chunk.kind === 'original')) {
+      sourceFinalText.value = (sourceFinalText.peek() + original.newFinal).slice(-500)
+      sourceNonFinalText.value = original.nonFinal
+    }
+    if (original.newFinal) sttTranscriptBuffer.value += original.newFinal
   }
 
   const handleEndpoint = () => {
@@ -317,7 +361,7 @@ export function SttTab() {
       waitCount++
     }
     await flushBuffer()
-    appendLog('🎤 同传已停止')
+    appendLog(`🎤 ${translationModeRef.current ? '同传' : '转录'}已停止`)
     resetState()
   }
 
@@ -349,13 +393,12 @@ export function SttTab() {
     state.value = 'running'
     sttRunning.value = true
     if (translationModeRef.current) {
-      const target = sonioxTranslationTarget.value
-      const langNames: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' }
-      statusText.value = `正在识别并翻译为${langNames[target] ?? target}…`
-      appendLog(`🎤 同传已启动（翻译模式：${target}）`)
+      const target = sessionTarget.current
+      statusText.value = `正在转录并翻译为${TARGET_LABELS[target] ?? target}…`
+      appendLog(`🎤 同传已启动（目标语言：${target}）`)
     } else {
-      statusText.value = '正在识别…'
-      appendLog('🎤 同传已启动')
+      statusText.value = '正在转录…'
+      appendLog('🎤 转录已启动')
     }
     statusColor.value = '#36a185'
   }
@@ -366,7 +409,8 @@ export function SttTab() {
   // Batch provider: no realtime socket, no interim transcripts, key optional.
   const isOpenAiCompat = provider === 'openai-compat'
   const isGemini = provider === 'gemini'
-  const apiKeySignal = API_KEY_SIGNALS[provider]
+  const isElevenTranslation = provider === 'elevenlabs' && elevenLabsMode.value === ELEVENLABS_TRANSLATION_MODE
+  const apiKeySignal = isElevenTranslation ? elevenLabsTranslationToken : API_KEY_SIGNALS[provider]
   const modelPicker = MODEL_PICKERS[provider]
   const activeApiKey = apiKeySignal.value.trim()
   const activeBaseUrl = openaiSttBaseUrl.value.trim()
@@ -377,59 +421,57 @@ export function SttTab() {
     !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
   const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
 
-  const translationEnabledForHook = isSoniox && sonioxTranslationEnabled.value
+  const model =
+    provider === 'soniox'
+      ? sonioxModel.value || SONIOX_DEFAULT_MODEL
+      : provider === 'elevenlabs'
+        ? elevenLabsMode.value
+        : provider === 'gladia'
+          ? GLADIA_DEFAULT_MODEL
+          : provider === 'gemini'
+            ? geminiModel.value.trim() || GEMINI_DEFAULT_MODEL
+            : provider === 'openai'
+              ? OPENAI_TRANSLATION_MODEL
+              : provider === 'openai-compat'
+                ? openaiSttModel.value.trim() || OPENAI_STT_DEFAULT_MODEL
+                : deepgramModel.value || DEEPGRAM_DEFAULT_MODEL
+  const capabilities = translationCapabilities(provider, model, openaiSttApi.value)
+  const translationSettings = TRANSLATION_SETTINGS[provider]
+  const requestedTarget = translationSettings?.target?.value ?? 'en'
+  const targetLanguage = capabilities.targets.includes(requestedTarget) ? requestedTarget : 'en'
+  const translationEnabledForHook =
+    capabilities.mode === 'required' || (capabilities.mode === 'optional' && !!translationSettings?.enabled?.value)
+  const languageSettings = provider !== 'soniox' && provider !== 'openai' ? LANGUAGE_SETTINGS[provider] : undefined
 
-  const buildParams = (): SttSessionParams => {
-    const base = { apiKey: activeApiKey, audioDeviceId: effectiveDeviceId }
-    if (provider === 'soniox') {
-      return {
-        ...base,
-        model: sonioxModel.value || SONIOX_DEFAULT_MODEL,
-        languageHints: sonioxLanguageHints.value,
-        ...(sonioxTranslationEnabled.value ? { translation: { targetLanguage: sonioxTranslationTarget.value } } : {}),
-      }
-    }
-    if (provider === 'elevenlabs') {
-      return {
-        ...base,
-        model: ELEVENLABS_DEFAULT_MODEL,
-        languageHints: elevenLabsLanguageCode.value ? [elevenLabsLanguageCode.value] : [],
-      }
-    }
-    if (provider === 'gladia') {
-      return {
-        ...base,
-        model: GLADIA_DEFAULT_MODEL,
-        languageHints: gladiaLanguage.value ? [gladiaLanguage.value] : [],
-      }
-    }
-    if (provider === 'gemini') {
-      return {
-        ...base,
-        model: geminiModel.value.trim() || GEMINI_DEFAULT_MODEL,
-        languageHints: geminiLanguage.value ? [geminiLanguage.value] : [],
-        baseUrl: geminiBaseUrl.value.trim(),
-      }
-    }
-    if (provider === 'openai-compat') {
-      return {
-        ...base,
-        model: openaiSttModel.value.trim() || OPENAI_STT_DEFAULT_MODEL,
-        languageHints: openaiSttLanguage.value ? [openaiSttLanguage.value] : [],
-        // Gate in toggle() requires an absolute http(s) URL, so this is valid whenever the engine starts.
-        baseUrl: activeBaseUrl,
-      }
-    }
-    return {
-      ...base,
-      model: deepgramModel.value || DEEPGRAM_DEFAULT_MODEL,
-      languageHints: deepgramLanguage.value ? [deepgramLanguage.value] : [],
-    }
+  const params: SttSessionParams = {
+    apiKey: isElevenTranslation ? '' : activeApiKey,
+    audioDeviceId: effectiveDeviceId,
+    model,
+    languageHints: isSoniox
+      ? sonioxLanguageHints.value
+      : languageSettings?.signal.value
+        ? [languageSettings.signal.value]
+        : [],
+    ...(isGemini ? { baseUrl: geminiBaseUrl.value.trim() } : {}),
+    ...(isOpenAiCompat ? { baseUrl: activeBaseUrl, translationApi: openaiSttApi.value } : {}),
+    ...(translationEnabledForHook
+      ? {
+          translation: {
+            targetLanguage: isGemini && targetLanguage === 'zh' ? 'zh-Hans' : targetLanguage,
+            ...(provider === 'elevenlabs'
+              ? {
+                  voiceId: elevenLabsTranslationVoiceId.value.trim(),
+                  authorizationToken: elevenLabsTranslationToken.value.trim(),
+                }
+              : {}),
+          },
+        }
+      : {}),
   }
 
   const recording = useSttRecording({
     provider,
-    params: buildParams(),
+    params,
     onTranscript: handleTranscript,
     onEndpoint: handleEndpoint,
     onError: handleError,
@@ -473,9 +515,18 @@ export function SttTab() {
     if (state.value === 'stopped') {
       // Local servers need no key, so this provider gates on a valid endpoint instead.
       if (isOpenAiCompat ? !isHttpUrl(activeBaseUrl) : !activeApiKey) {
-        const missing = isOpenAiCompat ? '服务地址（http:// 或 https://）' : 'API Key'
+        const missing = isOpenAiCompat
+          ? '服务地址（http:// 或 https://）'
+          : isElevenTranslation
+            ? 'Authorization Token'
+            : 'API Key'
         appendLog(`⚠️ 请先输入 ${PROVIDER_META[provider].label} ${missing}`)
         statusText.value = `请输入${missing}`
+        statusColor.value = '#f44'
+        return
+      }
+      if (provider === 'elevenlabs' && translationEnabledForHook && !elevenLabsTranslationVoiceId.value.trim()) {
+        statusText.value = '请输入 ElevenLabs Voice ID'
         statusColor.value = '#f44'
         return
       }
@@ -487,10 +538,14 @@ export function SttTab() {
       finalText.value = ''
       nonFinalText.value = ''
       acc.current = ''
+      sourceFinalText.value = ''
+      sourceNonFinalText.value = ''
       state.value = 'starting'
       statusText.value = '正在连接…'
       statusColor.value = '#666'
       translationModeRef.current = translationEnabledForHook
+      sessionTarget.current = targetLanguage
+      sessionHasSource.current = !isOpenAiCompat
       // No pre-warm needed: the engine sets up the SDK/socket and reports failure via onError.
       recording.start()
     } else if (state.value === 'running') {
@@ -501,13 +556,16 @@ export function SttTab() {
       // or a server that never answers) would need a page reload. Disarmed by
       // handleFinished/handleError the moment either one arrives.
       clearStopWatchdog()
-      stopWatchdog.current = setTimeout(() => {
-        stopWatchdog.current = null
-        if (state.value !== 'stopping') return
-        appendLog('⚠️ 同传停止超时，已强制结束会话')
-        recording.cancel()
-        resetState()
-      }, STT_STOP_TIMEOUT_MS)
+      stopWatchdog.current = setTimeout(
+        () => {
+          stopWatchdog.current = null
+          if (state.value !== 'stopping') return
+          appendLog(`⚠️ ${translationModeRef.current ? '同传' : '转录'}停止超时，已强制结束会话`)
+          recording.cancel()
+          resetState()
+        },
+        isGemini && translationModeRef.current ? GEMINI_TRANSLATION_STOP_TIMEOUT_MS : STT_STOP_TIMEOUT_MS
+      )
       void recording.stop()
     }
   }
@@ -520,14 +578,18 @@ export function SttTab() {
     sonioxLanguageHints.value = hints
   }
 
+  const showingTranslation = state.value === 'stopped' ? translationEnabledForHook : translationModeRef.current
+
+  const modeLabel = showingTranslation ? '同传' : '转录'
+
   const btnText =
     state.value === 'starting'
       ? '启动中…'
       : state.value === 'stopping'
         ? '停止中…'
         : state.value === 'running'
-          ? '停止同传'
-          : '开始同传'
+          ? `停止${modeLabel}`
+          : `开始${modeLabel}`
 
   const hints = sonioxLanguageHints.value
   const devices = audioDevices.value
@@ -536,7 +598,10 @@ export function SttTab() {
   const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
-  const modelOptions = (modelPicker?.models.value ?? []).map(m => ({
+  const knownModels = isGemini
+    ? [{ id: GEMINI_DEFAULT_MODEL }, { id: GEMINI_TRANSLATION_MODEL }, ...(modelPicker?.models.value ?? [])]
+    : (modelPicker?.models.value ?? [])
+  const modelOptions = [...new Map(knownModels.map(m => [m.id, m])).values()].map(m => ({
     value: m.id,
     label: m.id,
     searchText: [m.id, m.name].filter(Boolean).join(' '),
@@ -544,30 +609,39 @@ export function SttTab() {
 
   return (
     <>
-      <div class={'my-2'}>
-        <div class={HEADING_CLASS}>语音识别服务</div>
-        <div class={ROW_CLASS}>
-          <Label htmlFor='sttProvider'>服务商</Label>
-          <NativeSelect
-            id='sttProvider'
-            className='min-w-37.5 flex-1 pr-5'
-            value={provider}
-            // Locked while live: a provider switch would only take effect on the next start.
-            disabled={state.value !== 'stopped'}
-            onChange={e => {
-              const next = e.currentTarget.value
-              if (isSttProvider(next)) sttProvider.value = next
-            }}
-          >
-            {Object.entries(PROVIDER_META).map(([value, meta]) => (
-              <option key={value} value={value}>
-                {meta.label}
-              </option>
-            ))}
-          </NativeSelect>
+      <fieldset disabled={state.value !== 'stopped'} class='m-0 min-w-0 border-0 p-0'>
+        <div class={'my-2'}>
+          <div class={HEADING_CLASS}>语音服务</div>
+          <div class={ROW_CLASS}>
+            <Label htmlFor='sttProvider'>服务商</Label>
+            <NativeSelect
+              id='sttProvider'
+              className='min-w-37.5 flex-1 pr-5'
+              value={provider}
+              // Locked while live: a provider switch would only take effect on the next start.
+              disabled={state.value !== 'stopped'}
+              onChange={e => {
+                const next = e.currentTarget.value
+                if (isSttProvider(next)) sttProvider.value = next
+              }}
+            >
+              {Object.entries(PROVIDER_META).map(([value, meta]) => (
+                <option key={value} value={value}>
+                  {meta.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div class='text-ga6'>
+            {capabilities.mode === 'required'
+              ? '当前模型用于同传，将语音翻译为目标语言。'
+              : capabilities.mode === 'optional'
+                ? '当前模型支持转录，也可开启同传输出译文。'
+                : '当前模型仅转录原文。'}
+          </div>
+          {isOpenAiCompat && <div class='text-ga6'>分段转录，延迟约 1–4 秒，无实时预览</div>}
         </div>
-        {isOpenAiCompat && <div class='text-ga6'>分段识别，延迟约 1–4 秒，无实时预览</div>}
-      </div>
+      </fieldset>
 
       <Separator />
 
@@ -578,6 +652,7 @@ export function SttTab() {
             <Label htmlFor='openaiSttBaseUrl'>服务地址</Label>
             <Input
               id='openaiSttBaseUrl'
+              disabled={state.value !== 'stopped'}
               className='min-w-37.5 flex-1'
               placeholder={OPENAI_STT_DEFAULT_BASE_URL}
               value={openaiSttBaseUrl.value}
@@ -592,6 +667,7 @@ export function SttTab() {
             <Label htmlFor='geminiBaseUrl'>接口地址</Label>
             <Input
               id='geminiBaseUrl'
+              disabled={state.value !== 'stopped'}
               className='min-w-37.5 flex-1'
               placeholder={GEMINI_API_BASE}
               value={geminiBaseUrl.value}
@@ -604,7 +680,14 @@ export function SttTab() {
         <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
-            placeholder={isOpenAiCompat ? 'API Key（本地服务可留空）' : `输入 ${PROVIDER_META[provider].label} API Key`}
+            disabled={state.value !== 'stopped'}
+            placeholder={
+              isOpenAiCompat
+                ? 'API Key（本地服务可留空）'
+                : isElevenTranslation
+                  ? 'ElevenLabs Authorization Token'
+                  : `输入 ${PROVIDER_META[provider].label} API Key`
+            }
             className='min-w-37.5 flex-1'
             value={apiKeySignal.value}
             onInput={e => {
@@ -629,8 +712,11 @@ export function SttTab() {
                 whisper.cpp
               </a>
               ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
-              <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
+              <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址。 使用
+              whisper.cpp 时，请将「接口类型」设为「whisper.cpp（多语言模型）」后再启用翻译。
             </>
+          ) : isElevenTranslation ? (
+            <>填写企业 Realtime Translation 的 Authorization Token；Scribe API Key 不适用于此处。</>
           ) : (
             <>
               前往{' '}
@@ -640,7 +726,8 @@ export function SttTab() {
               {isGemini ? (
                 <>
                   获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
-                  <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>，需关闭网关的身份验证）或反向代理地址
+                  <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>
+                  ，需关闭网关的身份验证）或反向代理地址
                 </>
               ) : (
                 '注册账号并获取 API Key'
@@ -652,143 +739,172 @@ export function SttTab() {
 
       <Separator />
 
-      <div class={'my-2'}>
-        <div class={HEADING_CLASS}>语音识别设置</div>
-        <div class={ROW_CLASS}>
-          <Label htmlFor='sttAudioDevice'>设备</Label>
-          <NativeSelect
-            id='sttAudioDevice'
-            className='min-w-37.5 flex-1 pr-5'
-            value={savedDeviceId}
-            onChange={e => {
-              sttAudioDeviceId.value = e.currentTarget.value
-            }}
-          >
-            <option value=''>系统默认</option>
-            {devices.map((d, i) => (
-              <option key={d.deviceId || `mic-${i}`} value={d.deviceId}>
-                {d.label || `麦克风 ${i + 1}`}
-              </option>
-            ))}
-            {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
-          </NativeSelect>
-          {!hasMicLabels && (
-            <Button variant='outline' size='sm' onClick={() => void requestMicPermission()}>
-              授权
-            </Button>
-          )}
-          <Button variant='outline' size='sm' onClick={() => void enumerateMics()}>
-            刷新
-          </Button>
-        </div>
-
-        {modelPicker ? (
-          <>
-            {isGemini && (
-              <div class={ROW_CLASS}>
-                <Label htmlFor='geminiModel'>模型</Label>
-                {/* Free text: the list below holds only transcription models, and new ones work without a script update. */}
-                <Input
-                  id='geminiModel'
-                  className='min-w-37.5 flex-1'
-                  placeholder={GEMINI_DEFAULT_MODEL}
-                  value={geminiModel.value}
-                  onInput={e => {
-                    geminiModel.value = e.currentTarget.value
-                  }}
-                />
-              </div>
-            )}
-            <div class={ROW_CLASS}>
-              {!isGemini && <Label htmlFor='sttModel'>模型</Label>}
-              <Combobox
-                id='sttModel'
-                className='min-w-37.5 flex-1'
-                value={modelPicker.model.value}
-                options={modelOptions}
-                onChange={v => {
-                  modelPicker.model.value = v
-                }}
-                placeholder={isGemini ? '从模型列表选择' : '选择模型'}
-                searchPlaceholder='输入关键词过滤模型…'
-                emptyText='未找到匹配模型'
-                unloadedText={isGemini ? '可直接填写模型 ID，或点击「刷新」获取列表' : '请点击「刷新」获取模型列表'}
-                // Only once a list is loaded; before that `unloadedText` explains the empty picker.
-                missingLabel={modelOptions.length > 0 ? v => `${v}（已保存，不在当前列表中）` : undefined}
-              />
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={modelFetching.value || !apiKeySignal.value.trim()}
-                onClick={() => void refreshModels()}
-              >
-                {modelFetching.value ? '加载中…' : '刷新'}
-              </Button>
-            </div>
-            {modelFetchStatus.value && (
-              <div class='mb-2' style={{ color: modelFetchStatusColor.value }}>
-                {modelFetchStatus.value}
-              </div>
-            )}
-          </>
-        ) : isOpenAiCompat ? (
+      <fieldset disabled={state.value !== 'stopped'} class='m-0 min-w-0 border-0 p-0'>
+        <div class={'my-2'}>
+          <div class={HEADING_CLASS}>语音识别设置</div>
           <div class={ROW_CLASS}>
-            <Label htmlFor='openaiSttModel'>模型</Label>
-            {/* Free text: servers disagree on whether /models exists or lists STT models at all. */}
-            <Input
-              id='openaiSttModel'
-              className='min-w-37.5 flex-1'
-              placeholder={OPENAI_STT_DEFAULT_MODEL}
-              value={openaiSttModel.value}
-              onInput={e => {
-                openaiSttModel.value = e.currentTarget.value
+            <Label htmlFor='sttAudioDevice'>设备</Label>
+            <NativeSelect
+              id='sttAudioDevice'
+              className='min-w-37.5 flex-1 pr-5'
+              value={savedDeviceId}
+              onChange={e => {
+                sttAudioDeviceId.value = e.currentTarget.value
               }}
-            />
+            >
+              <option value=''>系统默认</option>
+              {devices.map((d, i) => (
+                <option key={d.deviceId || `mic-${i}`} value={d.deviceId}>
+                  {d.label || `麦克风 ${i + 1}`}
+                </option>
+              ))}
+              {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
+            </NativeSelect>
+            {!hasMicLabels && (
+              <Button variant='outline' size='sm' onClick={() => void requestMicPermission()}>
+                授权
+              </Button>
+            )}
+            <Button variant='outline' size='sm' onClick={() => void enumerateMics()}>
+              刷新
+            </Button>
           </div>
-        ) : (
-          <div class={ROW_CLASS}>
-            <Label>模型</Label>
-            {/* Read-only: ElevenLabs and Gladia each have one fixed model, no list endpoint. */}
-            <span class='text-ga6'>{provider === 'gladia' ? GLADIA_DEFAULT_MODEL : ELEVENLABS_DEFAULT_MODEL}</span>
-          </div>
-        )}
 
-        {isSoniox ? (
-          <div class={ROW_CLASS}>
-            <span>语言提示：</span>
-            {['zh', 'en', 'ja', 'ko'].map(lang => {
-              const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
-              return (
+          {modelPicker ? (
+            <>
+              {isGemini && (
+                <div class={ROW_CLASS}>
+                  <Label htmlFor='geminiModel'>模型</Label>
+                  {/* Keep custom model IDs available alongside the built-in choices. */}
+                  <Input
+                    id='geminiModel'
+                    className='min-w-37.5 flex-1'
+                    placeholder={GEMINI_DEFAULT_MODEL}
+                    value={geminiModel.value}
+                    onInput={e => {
+                      geminiModel.value = e.currentTarget.value
+                    }}
+                  />
+                </div>
+              )}
+              <div class={ROW_CLASS}>
+                {!isGemini && <Label htmlFor='sttModel'>模型</Label>}
+                <Combobox
+                  id='sttModel'
+                  className='min-w-37.5 flex-1'
+                  value={modelPicker.model.value}
+                  options={modelOptions}
+                  onChange={v => {
+                    modelPicker.model.value = v
+                  }}
+                  placeholder={isGemini ? '从模型列表选择' : '选择模型'}
+                  searchPlaceholder='输入关键词过滤模型…'
+                  emptyText='未找到匹配模型'
+                  unloadedText={isGemini ? '可直接填写模型 ID，或点击「刷新」获取列表' : '请点击「刷新」获取模型列表'}
+                  // Only once a list is loaded; before that `unloadedText` explains the empty picker.
+                  missingLabel={modelOptions.length > 0 ? v => `${v}（已保存，不在当前列表中）` : undefined}
+                />
+                <Button
+                  variant='outline'
+                  size='sm'
+                  disabled={modelFetching.value || !apiKeySignal.value.trim()}
+                  onClick={() => void refreshModels()}
+                >
+                  {modelFetching.value ? '加载中…' : '刷新'}
+                </Button>
+              </div>
+              {modelFetchStatus.value && (
+                <div class='mb-2' style={{ color: modelFetchStatusColor.value }}>
+                  {modelFetchStatus.value}
+                </div>
+              )}
+            </>
+          ) : isOpenAiCompat ? (
+            <div class={ROW_CLASS}>
+              <Label htmlFor='openaiSttModel'>模型</Label>
+              {/* Free text: servers disagree on whether /models exists or lists STT models at all. */}
+              <Input
+                id='openaiSttModel'
+                className='min-w-37.5 flex-1'
+                placeholder={OPENAI_STT_DEFAULT_MODEL}
+                value={openaiSttModel.value}
+                onInput={e => {
+                  openaiSttModel.value = e.currentTarget.value
+                }}
+              />
+            </div>
+          ) : provider === 'elevenlabs' ? (
+            <div class={ROW_CLASS}>
+              <Label htmlFor='elevenLabsMode'>服务模式</Label>
+              <NativeSelect
+                id='elevenLabsMode'
+                value={elevenLabsMode.value}
+                onChange={e => {
+                  elevenLabsMode.value = e.currentTarget.value
+                }}
+              >
+                <option value={ELEVENLABS_DEFAULT_MODEL}>Scribe v2 Realtime · 转录</option>
+                <option value={ELEVENLABS_TRANSLATION_MODE}>Realtime Translation · 同传（企业 Alpha）</option>
+              </NativeSelect>
+            </div>
+          ) : (
+            <div class={ROW_CLASS}>
+              <Label>模型</Label>
+              <span class='text-ga6'>{model}</span>
+            </div>
+          )}
+
+          {isOpenAiCompat && (
+            <div class={ROW_CLASS}>
+              <Label htmlFor='openaiSttApi'>接口类型</Label>
+              <NativeSelect
+                id='openaiSttApi'
+                value={openaiSttApi.value}
+                onChange={e => {
+                  openaiSttApi.value = e.currentTarget.value === 'whisper-cpp' ? 'whisper-cpp' : 'openai'
+                }}
+              >
+                <option value='openai'>OpenAI 兼容</option>
+                <option value='whisper-cpp'>whisper.cpp（多语言模型）</option>
+              </NativeSelect>
+            </div>
+          )}
+
+          {isSoniox ? (
+            <div class={ROW_CLASS}>
+              <span>语言提示：</span>
+              {['zh', 'en', 'ja', 'ko'].map(lang => (
                 <Checkbox
                   key={lang}
                   id={`stt-lang-${lang}`}
                   checked={hints.includes(lang)}
                   onChange={e => updateLangHints(lang, e.currentTarget.checked)}
-                  label={labels[lang]}
+                  label={TARGET_LABELS[lang]}
                 />
-              )
-            })}
-          </div>
-        ) : (
-          <div class={ROW_CLASS}>
-            <Label htmlFor='sttLanguage'>语言</Label>
-            <NativeSelect
-              id='sttLanguage'
-              className='min-w-25 pr-5'
-              value={LANGUAGE_SETTINGS[provider].signal.value}
-              onChange={e => {
-                LANGUAGE_SETTINGS[provider].signal.value = e.currentTarget.value
-              }}
-            >
-              {LANGUAGE_SETTINGS[provider].options.map(l => (
-                <option key={l.value || 'auto'} value={l.value}>
-                  {l.label}
-                </option>
               ))}
-            </NativeSelect>
-          </div>
-        )}
-
+            </div>
+          ) : languageSettings && (capabilities.mode !== 'required' || isElevenTranslation) ? (
+            <div class={ROW_CLASS}>
+              <Label htmlFor='sttLanguage'>{isElevenTranslation ? '源语言' : '转录语言'}</Label>
+              <NativeSelect
+                id='sttLanguage'
+                className='min-w-25 pr-5'
+                value={languageSettings.signal.value}
+                onChange={e => {
+                  languageSettings.signal.value = e.currentTarget.value
+                }}
+              >
+                {languageSettings.options.map(l => (
+                  <option key={l.value || 'auto'} value={l.value}>
+                    {l.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          ) : null}
+        </div>
+      </fieldset>
+      <div class='my-2'>
         <div class={ROW_CLASS}>
           <Label htmlFor='sttMaxLength'>超过</Label>
           <Input
@@ -811,7 +927,7 @@ export function SttTab() {
             onInput={e => {
               sttAutoSend.value = e.currentTarget.checked
             }}
-            label='识别完成后自动发送弹幕'
+            label='自动将输出文本发送为弹幕'
           />
           <Checkbox
             id='sttWrapBrackets'
@@ -819,49 +935,72 @@ export function SttTab() {
             onInput={e => {
               sttWrapBrackets.value = e.currentTarget.checked
             }}
-            label='使用【】包裹同传内容'
+            label='使用【】包裹输出文本'
           />
         </div>
       </div>
 
-      {/* Realtime translation is Soniox-only; the others transcribe but don't translate. */}
-      {isSoniox && (
-        <>
-          <Separator />
-          <div class={'my-2'}>
-            <div class={HEADING_CLASS}>实时翻译设置</div>
-            <div class={ROW_CLASS}>
-              <Checkbox
-                id='sonioxTranslationEnabled'
-                checked={sonioxTranslationEnabled.value}
-                onInput={e => {
-                  sonioxTranslationEnabled.value = e.currentTarget.checked
-                }}
-                label='启用实时翻译'
-              />
+      <fieldset disabled={state.value !== 'stopped'} class='m-0 min-w-0 border-0 p-0'>
+        {capabilities.mode !== 'none' && (
+          <>
+            <Separator />
+            <div class='my-2'>
+              <div class={HEADING_CLASS}>同传设置</div>
+              {capabilities.mode === 'optional' && translationSettings?.enabled && (
+                <div class={ROW_CLASS}>
+                  <Checkbox
+                    id='sttTranslationEnabled'
+                    checked={translationSettings.enabled.value}
+                    onInput={e => {
+                      if (translationSettings.enabled) translationSettings.enabled.value = e.currentTarget.checked
+                    }}
+                    label={isOpenAiCompat ? '启用分段翻译' : '启用同传'}
+                  />
+                </div>
+              )}
+              <div class={ROW_CLASS}>
+                <Label htmlFor='sttTranslationTarget'>翻译目标语言</Label>
+                <NativeSelect
+                  id='sttTranslationTarget'
+                  value={targetLanguage}
+                  disabled={capabilities.targets.length === 1}
+                  onChange={e => {
+                    if (translationSettings?.target) translationSettings.target.value = e.currentTarget.value
+                  }}
+                >
+                  {capabilities.targets.map(lang => (
+                    <option key={lang} value={lang}>
+                      {TARGET_LABELS[lang] ?? lang}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              {provider === 'elevenlabs' && (
+                <>
+                  <div class={ROW_CLASS}>
+                    <Label htmlFor='elevenLabsTranslationVoiceId'>Voice ID</Label>
+                    <Input
+                      id='elevenLabsTranslationVoiceId'
+                      value={elevenLabsTranslationVoiceId.value}
+                      onInput={e => {
+                        elevenLabsTranslationVoiceId.value = e.currentTarget.value
+                      }}
+                    />
+                  </div>
+                  <div class='text-ga6'>需要已开通 Realtime Translation 的企业账号；服务要求提供 Voice ID。</div>
+                </>
+              )}
+              <div class='text-ga6'>
+                {isOpenAiCompat
+                  ? 'Whisper 分段翻译仅输出英文；兼容服务须支持所选翻译接口。'
+                  : '同传时显示原文与译文，自动发送使用译文。'}
+              </div>
             </div>
-            <div class='flex flex-wrap items-center gap-2'>
-              <Label htmlFor='sonioxTranslationTarget'>翻译目标语言：</Label>
-              <NativeSelect
-                id='sonioxTranslationTarget'
-                className='min-w-20'
-                value={sonioxTranslationTarget.value}
-                onChange={e => {
-                  sonioxTranslationTarget.value = e.currentTarget.value
-                }}
-              >
-                <option value='en'>English</option>
-                <option value='zh'>中文</option>
-                <option value='ja'>日本語</option>
-              </NativeSelect>
-            </div>
-            <div class='text-ga6'>启用后将发送翻译结果而非原始识别文字</div>
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      <Separator />
-
+        <Separator />
+      </fieldset>
       <div class='my-2'>
         <div class={ROW_CLASS}>
           <Button
@@ -874,8 +1013,17 @@ export function SttTab() {
           </Button>
           <span style={{ color: statusColor.value }}>{statusText.value}</span>
         </div>
+        {showingTranslation && !isOpenAiCompat && (
+          <div class='my-2'>
+            <div class='mb-1 font-bold'>原文转录：</div>
+            <div class='max-h-25 min-h-10 overflow-y-auto rounded bg-bg2 p-2 break-all'>
+              <span>{sourceFinalText.value}</span>
+              <span class='text-ga6'>{sourceNonFinalText.value}</span>
+            </div>
+          </div>
+        )}
         <div class='my-2'>
-          <div class='mb-1 font-bold'>实时识别结果：</div>
+          <div class='mb-1 font-bold'>{showingTranslation ? '翻译结果：' : '转录结果：'}</div>
           <div class='max-h-25 min-h-10 overflow-y-auto rounded bg-bg2 p-2 break-all'>
             <span>{finalText.value}</span>
             <span class='text-ga6'>{nonFinalText.value}</span>

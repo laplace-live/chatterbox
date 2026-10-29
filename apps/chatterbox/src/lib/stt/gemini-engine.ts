@@ -1,15 +1,16 @@
 /**
- * Gemini Live `SttEngine` (`gemini-3.5-transcribe-live`) — raw WebSocket, key in the URL. The server caps
- * each connection at ~10 min, so the engine swaps in a fresh one (on `goAway` or a drop) while the mic keeps running.
+ * Gemini Live transcription and translation over WebSocket. Connections rotate on `goAway` while capture continues.
  */
 
 import type { SttChunk, SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
-import { GEMINI_DEFAULT_MODEL, STT_STOP_TIMEOUT_MS } from '../const'
+import { GEMINI_DEFAULT_MODEL, GEMINI_TRANSLATION_STOP_TIMEOUT_MS, STT_STOP_TIMEOUT_MS } from '../const'
 import { int16ToBase64 } from './audio'
+import { translationCapabilities } from './capabilities'
 import { buildGeminiLiveUrl } from './gemini-url'
-import { parseGeminiLiveMessage } from './normalize'
+import { parseGeminiLiveMessage, parseGeminiTranslationMessage, readField } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
+import { createTranslationText } from './translation-text'
 
 // Google's documented chunk size (~100 ms); the shared 256 ms default adds latency.
 const FRAME_SAMPLES = 1600
@@ -25,10 +26,12 @@ const NATURAL_BREAK_WAIT_MS = 20_000
 const FINAL_GRACE_MS = 2000
 // The same wait with no interim out yet, for speech that started too recently to have one.
 const QUIET_GRACE_MS = 1000
+// Continuous translation may omit turn markers; drain until text has been quiet for this long.
+const TRANSLATION_GRACE_MS = 5000
 // Only a connection that served this long is reconnected after an unexpected close, so a persistent fault can't loop.
 const MIN_RETRY_LIFETIME_MS = 30_000
 // Audio held through a drain plus the longest setup; a replacement slower than that fails on its setup timeout instead.
-const MAX_BACKLOG_FRAMES = Math.ceil((FINAL_GRACE_MS + SETUP_TIMEOUT_MS) / FRAME_MS)
+const MAX_BACKLOG_FRAMES = Math.ceil((STT_STOP_TIMEOUT_MS + SETUP_TIMEOUT_MS) / FRAME_MS)
 // A stop waiting on a reconnect or a final still finishes before the tab force-cancels it.
 const STOP_DEADLINE_MS = STT_STOP_TIMEOUT_MS - 2000
 
@@ -54,14 +57,23 @@ function describeClose(event: CloseEvent, conn: LiveConnection): string {
 
 export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineEventHandler): SttEngine {
   const decoder = new TextDecoder()
+  const translationText = createTranslationText(onEvent)
   const backlog: Int16Array<ArrayBuffer>[] = []
+  const model = (params.model.trim() || GEMINI_DEFAULT_MODEL).replace(/^models\//, '')
+  const translating = translationCapabilities('gemini', model).mode === 'required'
+  const targetLanguage = params.translation?.targetLanguage.trim()
   const setupMessage = {
     setup: {
-      // Typed ids may already carry the `models/` prefix that `models.list` returns.
-      model: `models/${(params.model || GEMINI_DEFAULT_MODEL).replace(/^models\//, '')}`,
-      generationConfig: { responseModalities: ['TEXT'] },
+      model: `models/${model}`,
+      generationConfig: translating
+        ? {
+            responseModalities: ['AUDIO'],
+            translationConfig: { targetLanguageCode: targetLanguage, echoTargetLanguage: true },
+          }
+        : { responseModalities: ['TEXT'] },
       // `[]` = auto-detect, including mid-stream language switches.
-      inputAudioTranscription: { languageCodes: params.languageHints },
+      inputAudioTranscription: translating ? {} : { languageCodes: params.languageHints },
+      ...(translating ? { outputAudioTranscription: {} } : {}),
     },
   }
   let url = ''
@@ -74,9 +86,11 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   // Set while waiting on a final after `audioStreamEnd`; audio is held meanwhile so the stream stays ended.
   let afterDrain: (() => void) | null = null
   let drainTimer: ReturnType<typeof setTimeout> | null = null
+  let drainDeadline = 0
   // Set while a `goAway` swap waits for a pause; audio keeps flowing to the old connection.
   let breakTimer: ReturnType<typeof setTimeout> | null = null
   let stopTimer: ReturnType<typeof setTimeout> | null = null
+  let stopDeadline = 0
 
   const send = (conn: LiveConnection, message: object): void => {
     if (conn.socket.readyState === WebSocket.OPEN) conn.socket.send(JSON.stringify(message))
@@ -102,6 +116,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const cancelDrain = (): void => {
     if (drainTimer) clearTimeout(drainTimer)
     drainTimer = null
+    drainDeadline = 0
     afterDrain = null
   }
 
@@ -124,20 +139,28 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     conn.interim = ''
   }
 
+  const expireDrain = (conn: LiveConnection): void => {
+    if (translating && Date.now() >= drainDeadline) {
+      fail(new Error('等待 Gemini 同传最终结果超时'))
+      return
+    }
+    commitInterim(conn)
+    completeDrain()
+  }
+
   /** End the stream with `audioStreamEnd`, then run `next` once a final lands or the grace period lapses. */
   const drain = (conn: LiveConnection, next: () => void): void => {
     send(conn, { realtimeInput: { audioStreamEnd: true } })
     afterDrain = next
+    drainDeadline = translating && stopping ? stopDeadline : Date.now() + STOP_DEADLINE_MS
     drainTimer = setTimeout(
-      () => {
-        commitInterim(conn)
-        completeDrain()
-      },
-      conn.interim ? FINAL_GRACE_MS : QUIET_GRACE_MS
+      () => expireDrain(conn),
+      translating ? TRANSLATION_GRACE_MS : conn.interim ? FINAL_GRACE_MS : QUIET_GRACE_MS
     )
   }
 
   const teardown = (): void => {
+    translationText.cancel()
     cancelDrain()
     cancelBreakWait()
     if (stopTimer) clearTimeout(stopTimer)
@@ -151,6 +174,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
 
   const finish = (): void => {
     if (settled) return
+    translationText.flush()
     settled = true
     teardown()
     onEvent({ type: 'state', state: 'stopped' })
@@ -203,6 +227,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const swap = (conn: LiveConnection): void => {
+    translationText.flush()
     retire(conn)
     connect()
   }
@@ -225,10 +250,37 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     } catch {
       return
     }
-    const message = parseGeminiLiveMessage(raw)
-    if (message.setupComplete) handleReady(conn)
-    if (message.goAway) rotate(conn)
+    if (readField(raw, 'setupComplete') !== undefined) handleReady(conn)
+    if (readField(raw, 'goAway') !== undefined) rotate(conn)
 
+    if (translating) {
+      const result = parseGeminiTranslationMessage(raw)
+      if (result.error) {
+        fail(new Error(result.error))
+        return
+      }
+      if (result.original) {
+        onEvent({ type: 'transcript', chunks: [{ text: result.original, isFinal: true, kind: 'original' }] })
+      }
+      if (result.translation) translationText.push(result.translation)
+      if (result.complete) translationText.flush()
+      if (result.complete) {
+        if (afterDrain) completeDrain()
+        else if (breakTimer) {
+          cancelBreakWait()
+          drain(conn, () => swap(conn))
+        }
+      } else if (afterDrain && (result.original || result.translation)) {
+        if (drainTimer) clearTimeout(drainTimer)
+        drainTimer = setTimeout(
+          () => expireDrain(conn),
+          Math.max(0, Math.min(TRANSLATION_GRACE_MS, drainDeadline - Date.now()))
+        )
+      }
+      return
+    }
+
+    const message = parseGeminiLiveMessage(raw)
     const chunks: SttChunk[] = []
     if (message.final !== undefined) {
       conn.interim = ''
@@ -255,6 +307,10 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const handleClose = (conn: LiveConnection, event: CloseEvent): void => {
     if (conn !== current || settled) return
     if (stopping) {
+      if (translating && event.code !== 1000) {
+        fail(new Error(describeClose(event, conn)))
+        return
+      }
       commitInterim(conn)
       finish()
       return
@@ -264,6 +320,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       return
     }
     // Dropped mid-session (e.g. the cap hit without a `goAway`): keep what it heard, reconnect while capture fills the backlog.
+    translationText.flush()
     commitInterim(conn)
     cancelDrain()
     cancelBreakWait()
@@ -298,6 +355,14 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const start = (): void => {
+    if (translating && !targetLanguage) {
+      fail(new Error('请为 Gemini 同传选择翻译目标语言'))
+      return
+    }
+    if (!translating && params.translation) {
+      fail(new Error('当前 Gemini 模型仅支持转录，请选择 Live Translate 模型进行同传'))
+      return
+    }
     try {
       url = buildGeminiLiveUrl(params.baseUrl ?? '', params.apiKey)
     } catch (err) {
@@ -314,10 +379,16 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     onEvent({ type: 'state', state: 'stopping' })
     capture?.stop()
     capture = null
+    const stopBudget = translating ? GEMINI_TRANSLATION_STOP_TIMEOUT_MS - 2000 : STOP_DEADLINE_MS
+    stopDeadline = Date.now() + stopBudget
     stopTimer = setTimeout(() => {
+      if (translating) {
+        fail(new Error('等待 Gemini 同传最终结果超时'))
+        return
+      }
       if (current) commitInterim(current)
       finish()
-    }, STOP_DEADLINE_MS)
+    }, stopBudget)
     const conn = current
     // A replacement still setting up gets the buffered audio first (`handleReady`), then drains.
     if (conn && conn.readyAt === 0 && backlog.length > 0) return
@@ -327,6 +398,11 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     }
     // A swap is already draining this connection: audio queued for the replacement rides the swap, else finish here.
     if (afterDrain) {
+      if (translating) {
+        drainDeadline = stopDeadline
+        if (drainTimer) clearTimeout(drainTimer)
+        drainTimer = setTimeout(() => expireDrain(conn), TRANSLATION_GRACE_MS)
+      }
       if (backlog.length === 0) afterDrain = finish
       return
     }

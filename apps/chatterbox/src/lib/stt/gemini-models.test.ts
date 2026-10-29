@@ -41,7 +41,7 @@ test('a list without transcription models is an error, and so is a missing key',
   const gemini = await load()
   const pending = gemini.fetchGeminiModels('key', '')
   gemini.requests[0].respond(200, JSON.stringify({ models: [] }))
-  await expect(pending).rejects.toThrow('返回列表中没有实时转写模型')
+  await expect(pending).rejects.toThrow('返回列表中没有实时转录或翻译模型')
   await expect(gemini.fetchGeminiModels('  ', '')).rejects.toThrow('请填写 Google AI Studio API Key')
   expect(gemini.requests).toHaveLength(1)
 })

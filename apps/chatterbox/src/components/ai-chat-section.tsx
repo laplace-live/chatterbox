@@ -176,7 +176,7 @@ export function AiChatSection() {
         <div class={`${ROW_CLASS} text-ga6`}>
           <span style={{ color: pill.color }}>{pill.label}</span>
           <span>·</span>
-          <span>同传：{sttRunning.value ? '已启动' : '未启动（可选）'}</span>
+          <span>转录：{sttRunning.value ? '已启动' : '未启动（可选）'}</span>
           <span>·</span>
           <span>本次观众消息：{aiChatViewerCount.value}</span>
           <span>·</span>
@@ -201,7 +201,7 @@ export function AiChatSection() {
               {candidates.length > 0 && <span class='font-normal text-ga6'> ({candidates.length})</span>}
             </div>
             {candidates.length === 0 ? (
-              <div class='text-ga4'>暂无候选 — 等待观众消息或同传语音触发生成</div>
+              <div class='text-ga4'>暂无候选 — 等待观众消息或转录文本触发生成</div>
             ) : (
               <div class='max-h-45 overflow-y-auto'>
                 {/* Engine appends to the end; reverse for newest-first display. */}
@@ -392,7 +392,7 @@ export function AiChatSection() {
             <div class='text-ga6'>
               观众触发：累积一定数量的新观众弹幕后自动调用 LLM。观众窗口：每次提示词中携带的最近 N
               条观众消息。上下文上限：发送到 LLM 的上下文（历史 +
-              观众）字符总数预算。未启动同传时仅由观众弹幕与「立即生成」触发。
+              观众）字符总数预算。未启动转录时仅由观众弹幕与「立即生成」触发。
             </div>
           </AccordionContent>
         </AccordionItem>

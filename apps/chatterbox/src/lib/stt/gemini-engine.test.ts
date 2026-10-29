@@ -645,3 +645,386 @@ describe('createGeminiEngine', () => {
     expect(sockets).toHaveLength(1)
   })
 })
+
+describe('Gemini Live Translate', () => {
+  const translationParams = {
+    model: 'gemini-3.5-live-translate-preview',
+    translation: { targetLanguage: 'zh-Hans' },
+  }
+
+  test('requests translated audio transcripts with the canonical setup field placement', async () => {
+    const { engine } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    expect(ws.sent[0]).toEqual({
+      setup: {
+        model: 'models/gemini-3.5-live-translate-preview',
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          translationConfig: { targetLanguageCode: 'zh-Hans', echoTargetLanguage: true },
+        },
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+      },
+    })
+    onFrame(frame(4))
+    expect(ws.audio.at(-1)).toBe(b64(4))
+    engine.cancel()
+  })
+
+  test('keeps original and translated text separate without inserting spaces into split words', async () => {
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { inputTranscription: { text: 'Hello' }, outputTranscription: { text: 'Bon' } } })
+    ws.receive({ serverContent: { outputTranscription: { text: 'jour le monde.' } } }, true)
+    expect(events.slice(2)).toEqual([
+      { type: 'transcript', chunks: [{ text: 'Hello', isFinal: true, kind: 'original' }] },
+      { type: 'transcript', chunks: [{ text: 'Bon', isFinal: false, kind: 'translation' }] },
+      { type: 'transcript', chunks: [{ text: 'Bonjour le monde.', isFinal: false, kind: 'translation' }] },
+    ])
+    ws.receive({ serverContent: { generationComplete: true } })
+    expect(events.slice(-2)).toEqual([
+      { type: 'transcript', chunks: [{ text: 'Bonjour le monde.', isFinal: true, kind: 'translation' }] },
+      { type: 'endpoint' },
+    ])
+    engine.cancel()
+  })
+
+  test.each([
+    ['3.', '14'],
+    ['example.', 'com'],
+  ])('does not flush a period inside split translated tokens: %s%s', async (first, rest) => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { outputTranscription: { text: first } } })
+    jest.advanceTimersByTime(400)
+    expect(events.filter(event => event.type === 'endpoint')).toHaveLength(0)
+    ws.receive({ serverContent: { outputTranscription: { text: rest } } })
+    expect(events.filter(event => event.type === 'endpoint')).toHaveLength(0)
+    expect(events.filter(event => event.type === 'transcript').at(-1)).toEqual({
+      type: 'transcript',
+      chunks: [{ text: first + rest, isFinal: false, kind: 'translation' }],
+    })
+    ws.receive({ serverContent: { generationComplete: true } })
+    const text = events
+      .flatMap(event => (event.type === 'transcript' ? event.chunks : []))
+      .filter(chunk => chunk.kind === 'translation' && chunk.isFinal)
+      .map(chunk => chunk.text)
+      .join('')
+    expect(text).toBe(first + rest)
+    engine.cancel()
+  })
+
+  test('cancellation discards an unconfirmed translated tail without a late idle flush', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { outputTranscription: { text: 'unfinished' } } })
+    engine.cancel()
+    const count = events.length
+    jest.advanceTimersByTime(10000)
+    expect(events).toHaveLength(count)
+    expect(events.some(event => event.type === 'endpoint')).toBe(false)
+  })
+
+  test('stop waits past source transcription for delayed translated output', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    await engine.stop()
+    expect(ws.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+    ws.receive({ serverContent: { inputTranscription: { text: 'Last words.' } } })
+    jest.advanceTimersByTime(3000)
+    expect(events.some(e => e.type === 'finished')).toBe(false)
+    ws.receive({ serverContent: { outputTranscription: { text: '最后一句。' } } })
+    ws.receive({ serverContent: { generationComplete: true } })
+    expect(events.slice(-3)).toEqual([{ type: 'endpoint' }, { type: 'state', state: 'stopped' }, { type: 'finished' }])
+    expect(ws.closed).toBe(1)
+  })
+
+  test('active translation remains bounded by the 28-second stop deadline', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    await engine.stop()
+    for (let elapsed = 4000; elapsed < 28000; elapsed += 4000) {
+      jest.advanceTimersByTime(4000)
+      expect(errorMessage(events)).toBeUndefined()
+      ws.receive({ serverContent: { outputTranscription: { text: 'still streaming ' } } })
+    }
+    jest.advanceTimersByTime(3999)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(ws.closed).toBe(0)
+    ws.receive({ serverContent: { outputTranscription: { text: 'last fragment' } } })
+    jest.advanceTimersByTime(1)
+    expect(errorMessage(events)).toBe('等待 Gemini 同传最终结果超时')
+    expect(events.some(e => e.type === 'finished')).toBe(false)
+    expect(ws.closed).toBe(1)
+  })
+
+  test.each([
+    { inputTranscription: { text: 'Waiting for translation' } },
+    { outputTranscription: { text: 'Punctuation is not a completion marker.' } },
+    { modelTurn: { parts: [{ inlineData: { data: 'AA==', mimeType: 'audio/pcm;rate=24000' } }] } },
+  ])('stops a quiet continuous translation stream without requiring a turn marker', async serverContent => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent })
+    await engine.stop()
+    jest.advanceTimersByTime(5000)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(ws.closed).toBe(1)
+  })
+
+  test('a silent translation session can finish after the idle grace', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    await ready(sockets[0])
+    await engine.stop()
+    jest.advanceTimersByTime(5000)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+  })
+
+  test('an abnormal close during translation stop is a failure', async () => {
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    await engine.stop()
+    ws.drop(1006)
+    expect(errorMessage(events)).toContain('1006')
+    expect(events.some(e => e.type === 'finished')).toBe(false)
+  })
+
+  test('a normal server close completes translation stop', async () => {
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    await engine.stop()
+    ws.receive({ serverContent: { outputTranscription: { text: 'Final words' } } })
+    ws.drop(1000)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+  })
+
+  test('rotates a quiet translation stream without turn markers and replays buffered audio', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { outputTranscription: { text: 'Translation before rotation' } } })
+    ws.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(20000)
+    onFrame(frame(2))
+    jest.advanceTimersByTime(5000)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(sockets).toHaveLength(2)
+    expect(ws.closed).toBe(1)
+    await ready(sockets[1])
+    expect(sockets[1].audio).toEqual([...LEAD_IN, b64(2)])
+    expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
+    engine.cancel()
+  })
+
+  test('stop gives an in-progress translation drain a fresh quiet period and deadline', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(24000)
+    ws.receive({ serverContent: { outputTranscription: { text: 'Finishing the old stream' } } })
+    jest.advanceTimersByTime(3000)
+    await engine.stop()
+    jest.advanceTimersByTime(1000)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(events.some(e => e.type === 'finished')).toBe(false)
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(3999)
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(1)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(sockets).toHaveLength(1)
+  })
+
+  test('stop refreshes a rotation drain while preserving queued audio for its replacement', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [first] = sockets
+    await ready(first)
+    first.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(24000)
+    first.receive({ serverContent: { outputTranscription: { text: 'Old stream' } } })
+    onFrame(frame(2))
+    jest.advanceTimersByTime(3000)
+    await engine.stop()
+    jest.advanceTimersByTime(1000)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(first.closed).toBe(0)
+    first.receive({ serverContent: { outputTranscription: { text: ' tail' }, generationComplete: true } })
+    expect(sockets).toHaveLength(2)
+    const second = sockets[1]
+    await ready(second)
+    expect(second.audio).toEqual([...LEAD_IN, b64(2)])
+    expect(second.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+    second.receive({ serverContent: { outputTranscription: { text: 'Queued speech' }, generationComplete: true } })
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+    expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
+  })
+
+  test.each([0, 14999])(
+    'markerless stop drains both connections with replacement setup delayed by %d ms',
+    async setupDelay => {
+      jest.useFakeTimers()
+      const { engine, events } = start(translationParams)
+      const [first] = sockets
+      await ready(first)
+      first.receive({ goAway: { timeLeft: '50s' } })
+      jest.advanceTimersByTime(20000)
+      first.receive({ serverContent: { outputTranscription: { text: 'Old translation' } } })
+      onFrame(frame(2))
+      await engine.stop()
+      jest.advanceTimersByTime(5000)
+      expect(first.closed).toBe(1)
+      expect(sockets).toHaveLength(2)
+      const second = sockets[1]
+      jest.advanceTimersByTime(setupDelay)
+      expect(errorMessage(events)).toBeUndefined()
+      await ready(second)
+      expect(second.audio).toEqual([...LEAD_IN, b64(2)])
+      expect(second.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+      jest.advanceTimersByTime(1000)
+      second.receive({ serverContent: { outputTranscription: { text: 'Queued translation' } } })
+      jest.advanceTimersByTime(4999)
+      expect(second.closed).toBe(0)
+      expect(events.some(e => e.type === 'finished')).toBe(false)
+      jest.advanceTimersByTime(1)
+      expect(errorMessage(events)).toBeUndefined()
+      expect(events.at(-1)).toEqual({ type: 'finished' })
+      expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
+      const finals = events
+        .flatMap(event => (event.type === 'transcript' ? event.chunks : []))
+        .filter(chunk => chunk.kind === 'translation' && chunk.isFinal)
+        .map(chunk => chunk.text)
+      expect(finals).toEqual(['Old translation', 'Queued translation'])
+    }
+  )
+
+  test('rotation without a stop keeps its existing eight-second drain bound', async () => {
+    jest.useFakeTimers()
+    const { events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(24000)
+    ws.receive({ serverContent: { outputTranscription: { text: 'still streaming ' } } })
+    jest.advanceTimersByTime(3999)
+    expect(errorMessage(events)).toBeUndefined()
+    ws.receive({ serverContent: { outputTranscription: { text: 'last fragment' } } })
+    jest.advanceTimersByTime(1)
+    expect(errorMessage(events)).toBe('等待 Gemini 同传最终结果超时')
+    expect(sockets).toHaveLength(1)
+  })
+
+  test('trailing unused audio does not keep a text-only stop alive', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { outputTranscription: { text: 'Complete text without a turn marker' } } })
+    await engine.stop()
+    for (let i = 0; i < 5; i++) {
+      jest.advanceTimersByTime(999)
+      ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { data: 'AA==' } }] } } })
+    }
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(5)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+    expect(ws.closed).toBe(1)
+    jest.advanceTimersByTime(10000)
+    expect(events.filter(e => e.type === 'finished')).toHaveLength(1)
+    expect(errorMessage(events)).toBeUndefined()
+  })
+
+  test('late source and translated text extend the quiet grace and are delivered before finishing', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    await engine.stop()
+    jest.advanceTimersByTime(2000)
+    ws.receive({ serverContent: { inputTranscription: { text: 'Last words' } } })
+    jest.advanceTimersByTime(500)
+    ws.receive({ serverContent: { outputTranscription: { text: '最后的译文' } } })
+    jest.advanceTimersByTime(4999)
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(1)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+    expect(events.filter(e => e.type === 'transcript')).toEqual([
+      { type: 'transcript', chunks: [{ text: 'Last words', isFinal: true, kind: 'original' }] },
+      { type: 'transcript', chunks: [{ text: '最后的译文', isFinal: false, kind: 'translation' }] },
+      { type: 'transcript', chunks: [{ text: '最后的译文', isFinal: true, kind: 'translation' }] },
+    ])
+  })
+
+  test('late source text alone extends the grace while waiting for a possible translation', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    await engine.stop()
+    jest.advanceTimersByTime(2000)
+    ws.receive({ serverContent: { inputTranscription: { text: 'Last source fragment' } } })
+    jest.advanceTimersByTime(4999)
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(1)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+  })
+
+  test('goAway drains translation before rotating and replays buffered source audio', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [first] = sockets
+    await ready(first)
+    first.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(20_000)
+    expect(first.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+    onFrame(frame(2))
+    first.receive({ serverContent: { inputTranscription: { text: 'Bye' } } })
+    expect(sockets).toHaveLength(1)
+    first.receive({ serverContent: { outputTranscription: { text: '再见。' }, turnComplete: true } })
+    expect(sockets).toHaveLength(2)
+    const second = sockets[1]
+    await ready(second)
+    expect(second.audio).toEqual([...LEAD_IN, b64(2)])
+    expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
+    engine.cancel()
+  })
+
+  test('reports provider errors and rejects incompatible translation configuration before connecting', async () => {
+    const { events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ error: { code: 429, message: 'Translation quota exceeded' } })
+    expect(errorMessage(events)).toBe('Translation quota exceeded')
+    expect(ws.closed).toBe(1)
+    const missing = start({ model: translationParams.model })
+    expect(errorMessage(missing.events)).toContain('翻译目标语言')
+    const incompatible = start({ translation: translationParams.translation })
+    expect(errorMessage(incompatible.events)).toContain('仅支持转录')
+    expect(sockets).toHaveLength(1)
+  })
+})

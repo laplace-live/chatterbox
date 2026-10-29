@@ -40,12 +40,18 @@ export const WHISPER_CPP_URL = 'https://github.com/ggml-org/whisper.cpp/releases
 /** Bounds the 'stopping' state when a graceful shutdown yields neither `finished` nor `error`; engine drain timeouts must stay under it. */
 export const STT_STOP_TIMEOUT_MS = 10_000
 
+/** Allow a retiring Gemini stream, replacement setup, and final translation to drain. */
+export const GEMINI_TRANSLATION_STOP_TIMEOUT_MS = 30_000
+
 /** Default realtime model id per provider; fallback when a session passes no model id. */
 export const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
 export const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
 export const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
 export const GLADIA_DEFAULT_MODEL = 'solaria-1'
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-transcribe-live'
+export const GEMINI_TRANSLATION_MODEL = 'gemini-3.5-live-translate-preview'
+export const ELEVENLABS_TRANSLATION_MODE = 'realtime-translation'
+export const OPENAI_TRANSLATION_MODEL = 'gpt-realtime-translate'
 
 /** mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns to `window.mpegts` at runtime. */
 export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.2/dist/mpegts.js'

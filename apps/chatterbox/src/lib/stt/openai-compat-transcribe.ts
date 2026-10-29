@@ -1,8 +1,10 @@
 /**
- * One-shot upload to an OpenAI-compatible `/audio/transcriptions` endpoint.
+ * One-shot transcription or translation upload to an OpenAI-compatible endpoint.
  * Goes through `gmFetch` because a plain `fetch` at a local server is
  * blocked three ways over: mixed content, CORS, and Private Network Access.
  */
+
+import type { SttTranslationApi } from './types'
 
 import { gmFetch, ManagerAbortError } from '../gm-fetch'
 import { readStringField } from './normalize'
@@ -21,6 +23,10 @@ export interface TranscribeRequest {
   language: string
   samples: Int16Array
   sampleRate: number
+  /** Whisper translation supports English output only. */
+  translation?: { targetLanguage: string }
+  /** whisper.cpp uses an inference flag instead of `/audio/translations`. */
+  translationApi?: SttTranslationApi
 }
 
 export type TranscribeResult = { ok: true; text: string } | { ok: false; unreachable: boolean; message: string }
@@ -41,12 +47,24 @@ function readTranscript(raw: string): string | undefined {
 }
 
 export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
+  if (req.translation && req.translation.targetLanguage !== 'en') {
+    return {
+      promise: Promise.resolve({ ok: false, unreachable: false, message: 'Whisper 仅支持翻译为英语' }),
+      abort: () => {},
+    }
+  }
+  const translateWithOpenAi = !!req.translation && req.translationApi !== 'whisper-cpp'
   const form = new FormData()
   form.append('file', new Blob([encodeWav(req.samples, req.sampleRate)], { type: 'audio/wav' }), 'segment.wav')
   form.append('model', req.model)
   form.append('response_format', 'json')
   form.append('temperature', '0')
-  if (req.language) form.append('language', req.language)
+  if (req.translationApi === 'whisper-cpp') {
+    form.append('language', req.language || 'auto')
+    form.append('translate', req.translation ? 'true' : 'false')
+  } else if (req.language && !translateWithOpenAi) {
+    form.append('language', req.language)
+  }
 
   // No Content-Type header: the boundary is generated with the body, so setting it by hand corrupts the request.
   const headers: Record<string, string> = {}
@@ -56,7 +74,8 @@ export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
   const send = async (): Promise<TranscribeResult> => {
     let response: Response
     try {
-      response = await gmFetch(`${req.baseUrl.replace(/\/+$/, '')}/audio/transcriptions`, {
+      const endpoint = translateWithOpenAi ? 'translations' : 'transcriptions'
+      response = await gmFetch(`${req.baseUrl.replace(/\/+$/, '')}/audio/${endpoint}`, {
         method: 'POST',
         headers,
         body: form,

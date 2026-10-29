@@ -4,7 +4,8 @@
  * SDK, so it's safe to import anywhere (including Bun tests).
  */
 
-export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram' | 'gladia' | 'gemini' | 'openai-compat'
+export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram' | 'gladia' | 'gemini' | 'openai' | 'openai-compat'
+export type SttTranslationApi = 'openai' | 'whisper-cpp'
 
 /** A selectable STT model; `id` is the value sent to the provider (e.g. Deepgram `canonical_name`). */
 export interface SttModelOption {
@@ -30,7 +31,7 @@ export type SttRecordingState =
   | 'canceled'
   | 'error'
 
-/** One transcribed fragment; ElevenLabs only ever emits `'original'` (Scribe realtime has no translation). */
+/** A fragment of source-language transcription or translated text. */
 export interface SttChunk {
   text: string
   isFinal: boolean
@@ -52,11 +53,13 @@ export interface SttSessionParams {
   model: string
   /** ElevenLabs uses only the first entry as its `languageCode`; empty = auto-detect. */
   languageHints: string[]
-  /** Soniox-only realtime translation target. ElevenLabs ignores this. */
-  translation?: { targetLanguage: string }
+  /** Present only when the selected model/API supports translation. */
+  translation?: { targetLanguage: string; voiceId?: string; authorizationToken?: string }
+  /** Explicit backend contract for Whisper translation requests. */
+  translationApi?: SttTranslationApi
   /** Resolved microphone device id; `''` = system default. */
   audioDeviceId: string
-  /** API root: required by `openai-compat`; optional for `gemini` ('' = Google directly). */
+  /** API root: required by `openai-compat`; optional for Gemini and OpenAI. */
   baseUrl?: string
 }
 
