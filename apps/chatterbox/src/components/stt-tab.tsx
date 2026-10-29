@@ -12,6 +12,7 @@ import {
   GEMINI_API_BASE,
   GEMINI_DEFAULT_MODEL,
   GEMINI_TRANSLATION_MODEL,
+  GEMINI_TRANSLATION_STOP_TIMEOUT_MS,
   GLADIA_DEFAULT_MODEL,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
@@ -555,13 +556,16 @@ export function SttTab() {
       // or a server that never answers) would need a page reload. Disarmed by
       // handleFinished/handleError the moment either one arrives.
       clearStopWatchdog()
-      stopWatchdog.current = setTimeout(() => {
-        stopWatchdog.current = null
-        if (state.value !== 'stopping') return
-        appendLog(`⚠️ ${translationModeRef.current ? '同传' : '转录'}停止超时，已强制结束会话`)
-        recording.cancel()
-        resetState()
-      }, STT_STOP_TIMEOUT_MS)
+      stopWatchdog.current = setTimeout(
+        () => {
+          stopWatchdog.current = null
+          if (state.value !== 'stopping') return
+          appendLog(`⚠️ ${translationModeRef.current ? '同传' : '转录'}停止超时，已强制结束会话`)
+          recording.cancel()
+          resetState()
+        },
+        isGemini && translationModeRef.current ? GEMINI_TRANSLATION_STOP_TIMEOUT_MS : STT_STOP_TIMEOUT_MS
+      )
       void recording.stop()
     }
   }
@@ -708,7 +712,8 @@ export function SttTab() {
                 whisper.cpp
               </a>
               ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
-              <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
+              <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址。 使用
+              whisper.cpp 时，请将「接口类型」设为「whisper.cpp（多语言模型）」后再启用翻译。
             </>
           ) : isElevenTranslation ? (
             <>填写企业 Realtime Translation 的 Authorization Token；Scribe API Key 不适用于此处。</>

@@ -113,7 +113,7 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
     if (started || settled) return
     started = true
     onEvent({ type: 'state', state: 'connecting' })
-    timer = setTimeout(() => fail(new Error('同传服务连接超时')), CONNECT_TIMEOUT_MS)
+    timer = setTimeout(() => fail(new Error(ready ? '同传麦克风启动超时' : '同传服务连接超时')), CONNECT_TIMEOUT_MS)
     void config
       .connect(controller.signal)
       .then(connection => {

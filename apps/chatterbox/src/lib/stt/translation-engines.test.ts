@@ -424,7 +424,7 @@ describe('microphone startup deadline', () => {
       expect(errors(events)).toEqual([])
       expect(events.some(e => e.type === 'connected')).toBe(false)
       jest.advanceTimersByTime(1)
-      expect(errors(events)).toEqual(['同传服务连接超时'])
+      expect(errors(events)).toEqual(['同传麦克风启动超时'])
       expect(socket.closed).toBe(1)
       release()
       await tick()

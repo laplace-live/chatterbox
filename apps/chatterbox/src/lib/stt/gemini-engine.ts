@@ -4,7 +4,7 @@
 
 import type { SttChunk, SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
-import { GEMINI_DEFAULT_MODEL, STT_STOP_TIMEOUT_MS } from '../const'
+import { GEMINI_DEFAULT_MODEL, GEMINI_TRANSLATION_STOP_TIMEOUT_MS, STT_STOP_TIMEOUT_MS } from '../const'
 import { int16ToBase64 } from './audio'
 import { translationCapabilities } from './capabilities'
 import { buildGeminiLiveUrl } from './gemini-url'
@@ -90,6 +90,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   // Set while a `goAway` swap waits for a pause; audio keeps flowing to the old connection.
   let breakTimer: ReturnType<typeof setTimeout> | null = null
   let stopTimer: ReturnType<typeof setTimeout> | null = null
+  let stopDeadline = 0
 
   const send = (conn: LiveConnection, message: object): void => {
     if (conn.socket.readyState === WebSocket.OPEN) conn.socket.send(JSON.stringify(message))
@@ -151,7 +152,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const drain = (conn: LiveConnection, next: () => void): void => {
     send(conn, { realtimeInput: { audioStreamEnd: true } })
     afterDrain = next
-    drainDeadline = Date.now() + STOP_DEADLINE_MS
+    drainDeadline = translating && stopping ? stopDeadline : Date.now() + STOP_DEADLINE_MS
     drainTimer = setTimeout(
       () => expireDrain(conn),
       translating ? TRANSLATION_GRACE_MS : conn.interim ? FINAL_GRACE_MS : QUIET_GRACE_MS
@@ -378,6 +379,8 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     onEvent({ type: 'state', state: 'stopping' })
     capture?.stop()
     capture = null
+    const stopBudget = translating ? GEMINI_TRANSLATION_STOP_TIMEOUT_MS - 2000 : STOP_DEADLINE_MS
+    stopDeadline = Date.now() + stopBudget
     stopTimer = setTimeout(() => {
       if (translating) {
         fail(new Error('等待 Gemini 同传最终结果超时'))
@@ -385,7 +388,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       }
       if (current) commitInterim(current)
       finish()
-    }, STOP_DEADLINE_MS)
+    }, stopBudget)
     const conn = current
     // A replacement still setting up gets the buffered audio first (`handleReady`), then drains.
     if (conn && conn.readyAt === 0 && backlog.length > 0) return
@@ -396,7 +399,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     // A swap is already draining this connection: audio queued for the replacement rides the swap, else finish here.
     if (afterDrain) {
       if (translating) {
-        drainDeadline = Date.now() + STOP_DEADLINE_MS
+        drainDeadline = stopDeadline
         if (drainTimer) clearTimeout(drainTimer)
         drainTimer = setTimeout(() => expireDrain(conn), TRANSLATION_GRACE_MS)
       }

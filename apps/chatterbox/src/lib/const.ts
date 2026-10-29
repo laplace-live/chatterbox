@@ -40,6 +40,9 @@ export const WHISPER_CPP_URL = 'https://github.com/ggml-org/whisper.cpp/releases
 /** Bounds the 'stopping' state when a graceful shutdown yields neither `finished` nor `error`; engine drain timeouts must stay under it. */
 export const STT_STOP_TIMEOUT_MS = 10_000
 
+/** Allow a retiring Gemini stream, replacement setup, and final translation to drain. */
+export const GEMINI_TRANSLATION_STOP_TIMEOUT_MS = 30_000
+
 /** Default realtime model id per provider; fallback when a session passes no model id. */
 export const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
 export const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
