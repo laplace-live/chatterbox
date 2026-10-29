@@ -10,7 +10,7 @@ import { floatTo16 } from './audio'
 /** Sample rate the capture is pinned to; also what engines report to the server. */
 export const PCM_SAMPLE_RATE = 16000
 
-// 4096 samples ≈ 256 ms at 16 kHz — the cadence the STT engines already stream at.
+// Default frame: 4096 samples ≈ 256 ms at 16 kHz.
 const FRAME_SAMPLES = 4096
 
 // AudioWorklet source (runs in AudioWorkletGlobalScope, not the DOM): batch mono
@@ -48,6 +48,8 @@ export interface PcmCapture {
 export interface PcmCaptureOptions {
   /** Microphone device id; '' = system default. */
   deviceId: string
+  /** Samples per `onFrame` block; defaults to 4096 (256 ms). */
+  frameSamples?: number
   /** Called with each Int16 PCM block (little-endian, 16 kHz, mono). */
   onFrame: (frame: Int16Array<ArrayBuffer>) => void
 }
@@ -77,7 +79,7 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
     const node = new AudioWorkletNode(context, 'pcm-tap', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
-      processorOptions: { frameSize: FRAME_SAMPLES },
+      processorOptions: { frameSize: opts.frameSamples ?? FRAME_SAMPLES },
     })
     node.port.onmessage = (event: MessageEvent<Float32Array>) => {
       opts.onFrame(floatTo16(event.data))

@@ -24,6 +24,7 @@ import type {
 
 import { createDeepgramEngine } from './stt/deepgram-engine'
 import { createElevenLabsEngine } from './stt/elevenlabs-engine'
+import { createGeminiEngine } from './stt/gemini-engine'
 import { createGladiaEngine } from './stt/gladia-engine'
 import { createOpenAiCompatEngine } from './stt/openai-compat-engine'
 import { createSonioxEngine } from './stt/soniox-engine'
@@ -64,6 +65,7 @@ const ENGINE_FACTORIES: Record<SttProvider, SttEngineFactory> = {
   elevenlabs: createElevenLabsEngine,
   deepgram: createDeepgramEngine,
   gladia: createGladiaEngine,
+  gemini: createGeminiEngine,
   'openai-compat': createOpenAiCompatEngine,
 }
 

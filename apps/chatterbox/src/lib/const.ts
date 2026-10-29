@@ -25,6 +25,9 @@ export const DEEPGRAM_API_BASE = 'https://api.deepgram.com/v1'
 /** Gladia realtime STT. No fixed WS URL: `POST ${GLADIA_API_BASE}/live` (header `x-gladia-key`) returns a one-shot WS URL with an embedded session token. Init endpoint sends permissive CORS, so a plain `fetch` works — no `GM_xmlhttpRequest`. */
 export const GLADIA_API_BASE = 'https://api.gladia.io/v2'
 
+/** Gemini API root for the Live transcription WebSocket. Blocked in mainland China, so the tab also accepts a Cloudflare AI Gateway or reverse-proxy root. */
+export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com'
+
 /** OpenAI-compatible batch STT root; `/audio/transcriptions` is appended. whisper.cpp serves `/inference` and has no OpenAI alias, so it must be started with `--request-path /v1 --inference-path /audio/transcriptions` to match this default. Host is user-supplied, hence the wildcard `@connect`. */
 export const OPENAI_STT_DEFAULT_BASE_URL = 'http://127.0.0.1:8080/v1'
 
@@ -42,6 +45,7 @@ export const SONIOX_DEFAULT_MODEL = 'stt-rt-v5'
 export const ELEVENLABS_DEFAULT_MODEL = 'scribe_v2_realtime'
 export const DEEPGRAM_DEFAULT_MODEL = 'nova-3'
 export const GLADIA_DEFAULT_MODEL = 'solaria-1'
+export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-transcribe-live'
 
 /** mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns to `window.mpegts` at runtime. */
 export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.2/dist/mpegts.js'

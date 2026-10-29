@@ -278,6 +278,13 @@ export const gladiaApiKey = gmSignal('gladiaApiKey', '')
 // One model family (`solaria-1`), no list endpoint, so no model signal (like ElevenLabs). Single language code ('' = auto-detect with code-switching).
 export const gladiaLanguage = gmSignal('gladiaLanguage', '')
 
+// --- Gemini Live (provider-specific) ---
+export const geminiApiKey = gmSignal('geminiApiKey', '')
+// '' = Google directly; otherwise a Cloudflare AI Gateway or reverse-proxy root, for networks that can't reach Google.
+export const geminiBaseUrl = gmSignal('geminiBaseUrl', '')
+// Fixed transcription model, so no model signal. One BCP-47 code ('' = auto-detect with code-switching).
+export const geminiLanguage = gmSignal('geminiLanguage', '')
+
 // --- OpenAI-compatible batch STT (provider-specific) ---
 // Not realtime: audio is cut on silence and uploaded per segment. `openaiSttApiKey` stays empty for local servers; the start gate requires the base URL instead.
 export const openaiSttBaseUrl = gmSignal('openaiSttBaseUrl', OPENAI_STT_DEFAULT_BASE_URL)

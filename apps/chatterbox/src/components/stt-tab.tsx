@@ -1,4 +1,4 @@
-import { useSignal } from '@preact/signals'
+import { type Signal, useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
 import type { SttChunk, SttProvider, SttSessionParams } from '../lib/stt/types'
@@ -8,6 +8,8 @@ import { ensureRoomId, getCsrfToken } from '../lib/api'
 import {
   DEEPGRAM_DEFAULT_MODEL,
   ELEVENLABS_DEFAULT_MODEL,
+  GEMINI_API_BASE,
+  GEMINI_DEFAULT_MODEL,
   GLADIA_DEFAULT_MODEL,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
@@ -26,6 +28,9 @@ import {
   deepgramModels,
   elevenLabsApiKey,
   elevenLabsLanguageCode,
+  geminiApiKey,
+  geminiBaseUrl,
+  geminiLanguage,
   gladiaApiKey,
   gladiaLanguage,
   openaiSttApiKey,
@@ -71,28 +76,58 @@ const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> =
   elevenlabs: { label: 'ElevenLabs', signupUrl: 'https://elevenlabs.io/' },
   deepgram: { label: 'Deepgram', signupUrl: 'https://deepgram.com/' },
   gladia: { label: 'Gladia', signupUrl: 'https://gladia.io/' },
+  gemini: { label: 'Google AI Studio', signupUrl: 'https://aistudio.google.com/apikey' },
   'openai-compat': { label: '本地 / OpenAI 兼容', signupUrl: WHISPER_CPP_URL },
 }
 
 /** `PROVIDER_META` is keyed by every provider, so membership is the validity test. */
 const isSttProvider = (value: string): value is SttProvider => value in PROVIDER_META
 
+const API_KEY_SIGNALS: Record<SttProvider, Signal<string>> = {
+  soniox: sonioxApiKey,
+  elevenlabs: elevenLabsApiKey,
+  deepgram: deepgramApiKey,
+  gladia: gladiaApiKey,
+  gemini: geminiApiKey,
+  'openai-compat': openaiSttApiKey,
+}
+
+type LanguageOption = { value: string; label: string }
+
 // Single-value language pickers; Soniox uses multi-hint checkboxes instead.
-// Shared by ElevenLabs / Gladia / openai-compat ('' = auto-detect); Deepgram alone differs ('multi').
-const AUTO_DETECT_LANGUAGES: Array<{ value: string; label: string }> = [
+// '' = auto-detect, except Deepgram ('multi'); Gemini needs full BCP-47 tags.
+const AUTO_DETECT_LANGUAGES: LanguageOption[] = [
   { value: '', label: '自动检测' },
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
-const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
+const DEEPGRAM_LANGUAGES: LanguageOption[] = [
   { value: 'multi', label: '多语种' },
   { value: 'en', label: 'English' },
   { value: 'zh', label: '中文' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
+const GEMINI_LANGUAGES: LanguageOption[] = [
+  { value: '', label: '自动检测' },
+  { value: 'cmn-Hans-CN', label: '中文' },
+  { value: 'en-US', label: 'English' },
+  { value: 'ja-JP', label: '日本語' },
+  { value: 'ko-KR', label: '한국어' },
+]
+
+const LANGUAGE_SETTINGS: Record<
+  Exclude<SttProvider, 'soniox'>,
+  { signal: Signal<string>; options: LanguageOption[] }
+> = {
+  elevenlabs: { signal: elevenLabsLanguageCode, options: AUTO_DETECT_LANGUAGES },
+  deepgram: { signal: deepgramLanguage, options: DEEPGRAM_LANGUAGES },
+  gladia: { signal: gladiaLanguage, options: AUTO_DETECT_LANGUAGES },
+  gemini: { signal: geminiLanguage, options: GEMINI_LANGUAGES },
+  'openai-compat': { signal: openaiSttLanguage, options: AUTO_DETECT_LANGUAGES },
+}
 
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
@@ -315,16 +350,8 @@ export function SttTab() {
   const isSoniox = provider === 'soniox'
   // Batch provider: no realtime socket, no interim transcripts, key optional.
   const isOpenAiCompat = provider === 'openai-compat'
-  const apiKeySignal =
-    provider === 'soniox'
-      ? sonioxApiKey
-      : provider === 'elevenlabs'
-        ? elevenLabsApiKey
-        : provider === 'deepgram'
-          ? deepgramApiKey
-          : provider === 'openai-compat'
-            ? openaiSttApiKey
-            : gladiaApiKey
+  const isGemini = provider === 'gemini'
+  const apiKeySignal = API_KEY_SIGNALS[provider]
   const activeApiKey = apiKeySignal.value.trim()
   const activeBaseUrl = openaiSttBaseUrl.value.trim()
 
@@ -358,6 +385,14 @@ export function SttTab() {
         ...base,
         model: GLADIA_DEFAULT_MODEL,
         languageHints: gladiaLanguage.value ? [gladiaLanguage.value] : [],
+      }
+    }
+    if (provider === 'gemini') {
+      return {
+        ...base,
+        model: GEMINI_DEFAULT_MODEL,
+        languageHints: geminiLanguage.value ? [geminiLanguage.value] : [],
+        baseUrl: geminiBaseUrl.value.trim(),
       }
     }
     if (provider === 'openai-compat') {
@@ -538,6 +573,20 @@ export function SttTab() {
             />
           </div>
         )}
+        {isGemini && (
+          <div class={ROW_CLASS}>
+            <Label htmlFor='geminiBaseUrl'>接口地址</Label>
+            <Input
+              id='geminiBaseUrl'
+              className='min-w-37.5 flex-1'
+              placeholder={GEMINI_API_BASE}
+              value={geminiBaseUrl.value}
+              onInput={e => {
+                geminiBaseUrl.value = e.currentTarget.value
+              }}
+            />
+          </div>
+        )}
         <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
@@ -567,6 +616,15 @@ export function SttTab() {
               </a>
               ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
               <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
+            </>
+          ) : isGemini ? (
+            <>
+              前往{' '}
+              <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
+                {PROVIDER_META[provider].label}
+              </a>{' '}
+              获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
+              <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>，需关闭网关的身份验证）或反向代理地址
             </>
           ) : (
             <>
@@ -662,8 +720,14 @@ export function SttTab() {
         ) : (
           <div class={ROW_CLASS}>
             <Label>模型</Label>
-            {/* Read-only: ElevenLabs and Gladia each have one fixed model, no list endpoint. */}
-            <span class='text-ga6'>{provider === 'gladia' ? GLADIA_DEFAULT_MODEL : ELEVENLABS_DEFAULT_MODEL}</span>
+            {/* Read-only: ElevenLabs, Gladia and Google AI Studio each have one fixed transcription model. */}
+            <span class='text-ga6'>
+              {provider === 'gladia'
+                ? GLADIA_DEFAULT_MODEL
+                : provider === 'gemini'
+                  ? GEMINI_DEFAULT_MODEL
+                  : ELEVENLABS_DEFAULT_MODEL}
+            </span>
           </div>
         )}
 
@@ -689,23 +753,12 @@ export function SttTab() {
             <NativeSelect
               id='sttLanguage'
               className='min-w-25 pr-5'
-              value={
-                provider === 'deepgram'
-                  ? deepgramLanguage.value
-                  : provider === 'gladia'
-                    ? gladiaLanguage.value
-                    : provider === 'openai-compat'
-                      ? openaiSttLanguage.value
-                      : elevenLabsLanguageCode.value
-              }
+              value={LANGUAGE_SETTINGS[provider].signal.value}
               onChange={e => {
-                if (provider === 'deepgram') deepgramLanguage.value = e.currentTarget.value
-                else if (provider === 'gladia') gladiaLanguage.value = e.currentTarget.value
-                else if (provider === 'openai-compat') openaiSttLanguage.value = e.currentTarget.value
-                else elevenLabsLanguageCode.value = e.currentTarget.value
+                LANGUAGE_SETTINGS[provider].signal.value = e.currentTarget.value
               }}
             >
-              {(provider === 'deepgram' ? DEEPGRAM_LANGUAGES : AUTO_DETECT_LANGUAGES).map(l => (
+              {LANGUAGE_SETTINGS[provider].options.map(l => (
                 <option key={l.value || 'auto'} value={l.value}>
                   {l.label}
                 </option>

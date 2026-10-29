@@ -4,7 +4,7 @@
  * SDK, so it's safe to import anywhere (including Bun tests).
  */
 
-export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram' | 'gladia' | 'openai-compat'
+export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram' | 'gladia' | 'gemini' | 'openai-compat'
 
 /** A selectable STT model; `id` is the value sent to the provider (e.g. Deepgram `canonical_name`). */
 export interface SttModelOption {
@@ -56,7 +56,7 @@ export interface SttSessionParams {
   translation?: { targetLanguage: string }
   /** Resolved microphone device id; `''` = system default. */
   audioDeviceId: string
-  /** OpenAI-compatible API root; only the `openai-compat` provider reads it. */
+  /** API root: required by `openai-compat`; optional for `gemini` ('' = Google directly). */
   baseUrl?: string
 }
 

@@ -96,6 +96,40 @@ export function parseGladiaResult(value: unknown): { transcript: string; isFinal
   return { transcript, isFinal: readField(data, 'is_final') === true }
 }
 
+// Han, kana and CJK/fullwidth punctuation; Hangul is left out since Korean spaces separate words.
+const CJK_CHAR = String.raw`[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\u30fc\uff00-\uffef]`
+const CJK_GAP = new RegExp(String.raw`(?<=${CJK_CHAR})\s+(?=${CJK_CHAR})`, 'gu')
+
+/** Drop the spaces Gemini sometimes emits between Chinese/Japanese characters (`今 天 我 们`), and lead Latin-script text with a space so consecutive utterances don't glue. */
+export function tidyGeminiText(text: string): string {
+  const tidy = text.replace(CJK_GAP, '')
+  return /^[\p{Script=Latin}\d]/u.test(tidy) ? ` ${tidy}` : tidy
+}
+
+/** The parts of a Gemini Live server message the transcription engine acts on; texts pass through {@link tidyGeminiText}. */
+export interface GeminiLiveMessage {
+  setupComplete: boolean
+  goAway: boolean
+  /** `inputTranscription`: authoritative text of a finished utterance; '' if the server sent none. */
+  final?: string
+  /** `interimInputTranscription`: the whole running hypothesis for the utterance in progress, not a delta. */
+  interim?: string
+}
+
+/** Parse a Gemini Live server message; unrelated or malformed messages parse to all-empty. */
+export function parseGeminiLiveMessage(value: unknown): GeminiLiveMessage {
+  const content = readField(value, 'serverContent')
+  const input = readField(content, 'inputTranscription')
+  const interim = readStringField(readField(content, 'interimInputTranscription'), 'text')
+  return {
+    setupComplete: readField(value, 'setupComplete') !== undefined,
+    goAway: readField(value, 'goAway') !== undefined,
+    final:
+      typeof input === 'object' && input !== null ? tidyGeminiText(readStringField(input, 'text') ?? '') : undefined,
+    interim: interim === undefined ? undefined : tidyGeminiText(interim),
+  }
+}
+
 /** Parse Deepgram's `GET /v1/models` response into picker options; keeps only `streaming: true`, ids from `canonical_name` (fallback `name`), sorted + de-duped. */
 export function parseDeepgramModels(value: unknown): SttModelOption[] {
   const stt = readField(value, 'stt')
