@@ -8,7 +8,7 @@ const GOOGLE_HOST = new URL(GEMINI_API_BASE).hostname
 const CF_GATEWAY_HOST = 'gateway.ai.cloudflare.com'
 // `/v1/{account_id}/{gateway}`, then whatever provider route was copied along (e.g. `/google-ai-studio/v1beta/openai`).
 const CF_GATEWAY_PATH = /^\/v1\/[^/]+\/[^/]+/
-// Browsers block `ws://` from an HTTPS page except to loopback, so a remote plain-HTTP root could only leak the key.
+// Browsers block insecure WebSockets from an HTTPS page except to loopback, so a remote plain-HTTP root could only leak the key.
 const LOOPBACK_HOST = /^(?:(?:.+\.)?localhost|127(?:\.\d{1,3}){3}|\[::1\])$/
 
 /** Parse the API root onto the `scheme` family, keeping its TLS; `gateway` is set for a Cloudflare AI Gateway root. */
