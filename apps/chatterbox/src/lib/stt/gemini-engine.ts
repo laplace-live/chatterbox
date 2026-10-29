@@ -52,7 +52,8 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const backlog: Int16Array<ArrayBuffer>[] = []
   const setupMessage = {
     setup: {
-      model: `models/${params.model || GEMINI_DEFAULT_MODEL}`,
+      // Typed ids may already carry the `models/` prefix that `models.list` returns.
+      model: `models/${(params.model || GEMINI_DEFAULT_MODEL).replace(/^models\//, '')}`,
       generationConfig: { responseModalities: ['TEXT'] },
       // `[]` = auto-detect, including mid-stream language switches.
       inputAudioTranscription: { languageCodes: params.languageHints },

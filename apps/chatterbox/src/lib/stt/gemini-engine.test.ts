@@ -162,6 +162,17 @@ describe('createGeminiEngine', () => {
     expect(ws.sent.at(-1)).toEqual({ realtimeInput: { audio: { data: b64(1), mimeType: 'audio/pcm;rate=16000' } } })
   })
 
+  test('accepts a typed model id with or without the models/ prefix, and falls back when empty', () => {
+    for (const model of ['gemini-4-transcribe-live', 'models/gemini-4-transcribe-live', '']) {
+      start({ model })
+      const ws = sockets[sockets.length - 1]
+      ws.open()
+      expect(ws.sent[0]).toMatchObject({
+        setup: { model: model ? 'models/gemini-4-transcribe-live' : 'models/gemini-3.5-transcribe-live' },
+      })
+    }
+  })
+
   test('maps interim and final transcriptions from text and binary frames', async () => {
     const { events } = start()
     const [ws] = sockets

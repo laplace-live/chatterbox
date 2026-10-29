@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { buildGeminiLiveUrl } from './gemini-url'
+import { buildGeminiLiveUrl, buildGeminiModelsUrl } from './gemini-url'
 
 const LIVE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
@@ -40,5 +40,22 @@ describe('buildGeminiLiveUrl', () => {
   test('rejects non-URLs and non-web schemes', () => {
     expect(() => buildGeminiLiveUrl('gateway.ai.cloudflare.com/v1/acct/gw', 'k1')).toThrow('接口地址无效')
     expect(() => buildGeminiLiveUrl('ftp://example.com', 'k1')).toThrow('接口地址须以 https:// 或 http:// 开头')
+  })
+})
+
+describe('buildGeminiModelsUrl', () => {
+  test('lists from the same root as the Live socket', () => {
+    expect(buildGeminiModelsUrl('')).toBe('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000')
+    expect(buildGeminiModelsUrl('https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/openai')).toBe(
+      'https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/models?pageSize=1000'
+    )
+    expect(buildGeminiModelsUrl('wss://proxy.example.com/gemini/')).toBe(
+      'https://proxy.example.com/gemini/v1beta/models?pageSize=1000'
+    )
+    expect(buildGeminiModelsUrl('ws://127.0.0.1:8787')).toBe('http://127.0.0.1:8787/v1beta/models?pageSize=1000')
+  })
+
+  test('rejects an unusable root', () => {
+    expect(() => buildGeminiModelsUrl('ftp://example.com')).toThrow('接口地址须以 https:// 或 http:// 开头')
   })
 })

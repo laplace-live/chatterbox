@@ -130,6 +130,31 @@ export function parseGeminiLiveMessage(value: unknown): GeminiLiveMessage {
   }
 }
 
+/** Parse Gemini's `GET /v1beta/models` response into picker options: Live transcription models only, ids without `models/`, sorted + de-duped. */
+export function parseGeminiModels(value: unknown): SttModelOption[] {
+  const list = readField(value, 'models')
+  if (!Array.isArray(list)) return []
+  const models: SttModelOption[] = []
+  const seen = new Set<string>()
+  for (const raw of list) {
+    const entry: unknown = raw
+    const methods = readField(entry, 'supportedGenerationMethods')
+    if (!Array.isArray(methods) || !methods.includes('bidiGenerateContent')) continue
+    const id = readStringField(entry, 'name')
+      ?.trim()
+      .replace(/^models\//, '')
+    // The other Live models are voice agents and translators: they answer the speaker instead of transcribing.
+    if (!id?.includes('transcribe') || seen.has(id)) continue
+    seen.add(id)
+    const model: SttModelOption = { id }
+    const name = readStringField(entry, 'displayName')?.trim()
+    if (name && name !== id) model.name = name
+    models.push(model)
+  }
+  models.sort((a, b) => a.id.localeCompare(b.id))
+  return models
+}
+
 /** Parse Deepgram's `GET /v1/models` response into picker options; keeps only `streaming: true`, ids from `canonical_name` (fallback `name`), sorted + de-duped. */
 export function parseDeepgramModels(value: unknown): SttModelOption[] {
   const stt = readField(value, 'stt')

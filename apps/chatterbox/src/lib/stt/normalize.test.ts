@@ -10,6 +10,7 @@ import {
   parseDeepgramModels,
   parseDeepgramResult,
   parseGeminiLiveMessage,
+  parseGeminiModels,
   parseGladiaResult,
   readStringField,
   reduceChunks,
@@ -244,6 +245,38 @@ describe('parseGeminiLiveMessage', () => {
       parseGeminiLiveMessage({ serverContent: { inputTranscription: 'x', interimInputTranscription: 1 } })
     ).toEqual(none)
     expect(parseGeminiLiveMessage(null)).toEqual(none)
+  })
+})
+
+describe('parseGeminiModels', () => {
+  const model = (name: string, methods: string[], displayName?: string) => ({
+    name: `models/${name}`,
+    displayName,
+    supportedGenerationMethods: methods,
+  })
+
+  test('keeps only Live transcription models, ids without the models/ prefix, sorted', () => {
+    const models = parseGeminiModels({
+      models: [
+        model('gemini-3.8-live', ['bidiGenerateContent'], 'Gemini 3.8 Live'),
+        model('gemini-3.5-transcribe-live', ['bidiGenerateContent'], 'Gemini 3.5 Transcribe Live'),
+        model('gemini-3.5-transcribe', ['generateContent', 'countTokens'], 'Gemini 3.5 Transcribe'),
+        model('gemini-3.5-live-translate-preview', ['bidiGenerateContent']),
+        model('gemini-4-transcribe-live', ['bidiGenerateContent']),
+        model('gemini-3.5-transcribe-live', ['bidiGenerateContent']),
+      ],
+    })
+    expect(models).toEqual([
+      { id: 'gemini-3.5-transcribe-live', name: 'Gemini 3.5 Transcribe Live' },
+      { id: 'gemini-4-transcribe-live' },
+    ])
+  })
+
+  test('returns [] for a missing/non-array models list or malformed entries', () => {
+    expect(parseGeminiModels({})).toEqual([])
+    expect(parseGeminiModels({ models: 'nope' })).toEqual([])
+    expect(parseGeminiModels({ models: [{ name: 'models/x-transcribe' }, null] })).toEqual([])
+    expect(parseGeminiModels(null)).toEqual([])
   })
 })
 

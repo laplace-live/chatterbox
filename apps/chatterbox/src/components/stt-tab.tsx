@@ -31,6 +31,8 @@ import {
   geminiApiKey,
   geminiBaseUrl,
   geminiLanguage,
+  geminiModel,
+  geminiModels,
   gladiaApiKey,
   gladiaLanguage,
   openaiSttApiKey,
@@ -53,6 +55,7 @@ import {
   sttWrapBrackets,
 } from '../lib/store'
 import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
+import { fetchGeminiModels } from '../lib/stt/gemini-models'
 import { reduceChunks } from '../lib/stt/normalize'
 import { useSttRecording } from '../lib/use-stt-recording'
 import { isHttpUrl, splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
@@ -390,7 +393,7 @@ export function SttTab() {
     if (provider === 'gemini') {
       return {
         ...base,
-        model: GEMINI_DEFAULT_MODEL,
+        model: geminiModel.value.trim() || GEMINI_DEFAULT_MODEL,
         languageHints: geminiLanguage.value ? [geminiLanguage.value] : [],
         baseUrl: geminiBaseUrl.value.trim(),
       }
@@ -421,9 +424,13 @@ export function SttTab() {
     onConnected: handleConnected,
   })
 
-  // Fetch the model list; only Soniox (fetch+CORS) and Deepgram (GM_xmlhttpRequest) expose one.
+  // Fetch the model list; Soniox (fetch+CORS), Deepgram and Gemini (GM_xmlhttpRequest) expose one.
   const refreshModels = async () => {
     if (modelFetching.value) return
+    const key = apiKeySignal.value
+    const baseUrl = geminiBaseUrl.value
+    // A custom Gemini host's @connect prompt can hold the request while the key or address is edited; drop that outcome.
+    const stale = () => provider === 'gemini' && (apiKeySignal.value !== key || geminiBaseUrl.value !== baseUrl)
     modelFetching.value = true
     modelFetchStatus.value = '正在获取模型列表…'
     modelFetchStatusColor.value = '#666'
@@ -437,12 +444,24 @@ export function SttTab() {
         const models = await fetchDeepgramModels(apiKeySignal.value)
         deepgramModels.value = models
         count = models.length
+      } else if (provider === 'gemini') {
+        const models = await fetchGeminiModels(key, baseUrl)
+        if (stale()) {
+          modelFetchStatus.value = ''
+          return
+        }
+        geminiModels.value = models
+        count = models.length
       } else {
         return
       }
       modelFetchStatus.value = `已获取 ${count} 个实时模型`
       modelFetchStatusColor.value = '#36a185'
     } catch (err) {
+      if (stale()) {
+        modelFetchStatus.value = ''
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
       modelFetchStatus.value = `获取失败：${msg}`
       modelFetchStatusColor.value = '#f44'
@@ -519,10 +538,11 @@ export function SttTab() {
   const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
-  // Model picker resolution for the fetch-list providers (Soniox / Deepgram).
-  const usesModelFetch = provider === 'soniox' || provider === 'deepgram'
-  const modelSignal = provider === 'deepgram' ? deepgramModel : sonioxModel
-  const modelOptions = (provider === 'deepgram' ? deepgramModels.value : sonioxModels.value).map(m => ({
+  // Model picker resolution for the fetch-list providers (Soniox / Deepgram / Gemini).
+  const usesModelFetch = provider === 'soniox' || provider === 'deepgram' || isGemini
+  const modelSignal = provider === 'deepgram' ? deepgramModel : isGemini ? geminiModel : sonioxModel
+  const modelList = provider === 'deepgram' ? deepgramModels : isGemini ? geminiModels : sonioxModels
+  const modelOptions = modelList.value.map(m => ({
     value: m.id,
     label: m.id,
     searchText: [m.id, m.name].filter(Boolean).join(' '),
@@ -672,8 +692,23 @@ export function SttTab() {
 
         {usesModelFetch ? (
           <>
+            {isGemini && (
+              <div class={ROW_CLASS}>
+                <Label htmlFor='geminiModel'>模型</Label>
+                {/* Free text: the list below holds only transcription models, and new ones work without a script update. */}
+                <Input
+                  id='geminiModel'
+                  className='min-w-37.5 flex-1'
+                  placeholder={GEMINI_DEFAULT_MODEL}
+                  value={geminiModel.value}
+                  onInput={e => {
+                    geminiModel.value = e.currentTarget.value
+                  }}
+                />
+              </div>
+            )}
             <div class={ROW_CLASS}>
-              <Label htmlFor='sttModel'>模型</Label>
+              {!isGemini && <Label htmlFor='sttModel'>模型</Label>}
               <Combobox
                 id='sttModel'
                 className='min-w-37.5 flex-1'
@@ -682,11 +717,12 @@ export function SttTab() {
                 onChange={v => {
                   modelSignal.value = v
                 }}
-                placeholder='选择模型'
+                placeholder={isGemini ? '从模型列表选择' : '选择模型'}
                 searchPlaceholder='输入关键词过滤模型…'
                 emptyText='未找到匹配模型'
-                unloadedText='请点击「刷新」获取模型列表'
-                missingLabel={v => `${v}（已保存，不在当前列表中）`}
+                unloadedText={isGemini ? '可直接填写模型 ID，或点击「刷新」获取列表' : '请点击「刷新」获取模型列表'}
+                // Only once a list is loaded; before that `unloadedText` explains the empty picker.
+                missingLabel={modelOptions.length > 0 ? v => `${v}（已保存，不在当前列表中）` : undefined}
               />
               <Button
                 variant='outline'
@@ -720,14 +756,8 @@ export function SttTab() {
         ) : (
           <div class={ROW_CLASS}>
             <Label>模型</Label>
-            {/* Read-only: ElevenLabs, Gladia and Google AI Studio each have one fixed transcription model. */}
-            <span class='text-ga6'>
-              {provider === 'gladia'
-                ? GLADIA_DEFAULT_MODEL
-                : provider === 'gemini'
-                  ? GEMINI_DEFAULT_MODEL
-                  : ELEVENLABS_DEFAULT_MODEL}
-            </span>
+            {/* Read-only: ElevenLabs and Gladia each have one fixed model, no list endpoint. */}
+            <span class='text-ga6'>{provider === 'gladia' ? GLADIA_DEFAULT_MODEL : ELEVENLABS_DEFAULT_MODEL}</span>
           </div>
         )}
 
