@@ -540,7 +540,8 @@ export function startAiChatEngine(): void {
   viewerReceivedSinceLastGen = 0
   pendingCandidates.value = []
   aiChatViewerCount.value = 0
-  recentOutgoingTexts.clear()
+  // A dispatched send can still echo after a restart.
+  pruneRecentOutgoing()
   // Reset so a restart recovers an engine left wedged by a stalled in-flight call.
   inflight = false
   clearScheduled()
