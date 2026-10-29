@@ -1,5 +1,6 @@
 import type { SttEngine, SttEngineEvent, SttEngineEventHandler } from './types'
 
+import { STT_STOP_TIMEOUT_MS } from '../const'
 import { type PcmCapture, startPcmCapture } from './pcm-capture'
 
 interface TranslationSocketControls {
@@ -19,11 +20,12 @@ export interface TranslationSocketConfig {
 }
 
 const CONNECT_TIMEOUT_MS = 15_000
-const DRAIN_TIMEOUT_MS = 9_000
+const DRAIN_TIMEOUT_MS = STT_STOP_TIMEOUT_MS - 1000
 const MAX_BUFFERED_BYTES = 2 * 1024 * 1024
 
 /** Capture and drain a translation session without dropping its final text. */
 export function createTranslationSocket(config: TranslationSocketConfig, onEvent: SttEngineEventHandler): SttEngine {
+  const decoder = new TextDecoder()
   const controller = new AbortController()
   let socket: WebSocket | null = null
   let capture: PcmCapture | null = null
@@ -123,7 +125,7 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
           if (settled) return
           let value: unknown
           try {
-            const raw = event.data instanceof ArrayBuffer ? new TextDecoder().decode(event.data) : event.data
+            const raw = event.data instanceof ArrayBuffer ? decoder.decode(event.data) : event.data
             if (typeof raw !== 'string') return
             value = JSON.parse(raw)
           } catch {

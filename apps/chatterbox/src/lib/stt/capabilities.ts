@@ -1,4 +1,4 @@
-import type { SttProvider } from './types'
+import type { SttProvider, SttTranslationApi } from './types'
 
 import { ELEVENLABS_TRANSLATION_MODE, OPENAI_TRANSLATION_MODEL } from '../const'
 
@@ -14,7 +14,7 @@ const TARGETS = ['en', 'zh', 'ja', 'ko'] as const
 export function translationCapabilities(
   provider: SttProvider,
   model: string,
-  batchApi: 'openai' | 'whisper-cpp' = 'openai'
+  batchApi: SttTranslationApi = 'openai'
 ): TranslationCapabilities {
   const id = model.trim().replace(/^models\//, '')
   if (provider === 'soniox' && /^stt-rt-/.test(id)) return { mode: 'optional', targets: TARGETS }

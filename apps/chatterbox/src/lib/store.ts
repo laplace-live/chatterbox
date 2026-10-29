@@ -3,7 +3,7 @@ import { computed, effect, signal } from '@preact/signals'
 import type { BilibiliEmoticonPackage, FavoriteEmote } from '../types'
 import type { LlmModel } from './llm'
 import type { SonioxModel } from './soniox-models'
-import type { SttModelOption, SttProvider } from './stt/types'
+import type { SttModelOption, SttProvider, SttTranslationApi } from './stt/types'
 
 import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import {
@@ -304,7 +304,7 @@ export const openaiSttBaseUrl = gmSignal('openaiSttBaseUrl', OPENAI_STT_DEFAULT_
 export const openaiSttApiKey = gmSignal('openaiSttApiKey', '')
 export const openaiSttModel = gmSignal('openaiSttModel', OPENAI_STT_DEFAULT_MODEL)
 export const openaiSttLanguage = gmSignal('openaiSttLanguage', 'zh')
-export const openaiSttApi = gmSignal<'openai' | 'whisper-cpp'>('openaiSttApi', 'openai')
+export const openaiSttApi = gmSignal<SttTranslationApi>('openaiSttApi', 'openai')
 export const openaiSttTranslationEnabled = gmSignal('openaiSttTranslationEnabled', false)
 
 // --- Shared output / capture (every provider) ---

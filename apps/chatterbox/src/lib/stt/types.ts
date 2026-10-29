@@ -5,6 +5,7 @@
  */
 
 export type SttProvider = 'soniox' | 'elevenlabs' | 'deepgram' | 'gladia' | 'gemini' | 'openai' | 'openai-compat'
+export type SttTranslationApi = 'openai' | 'whisper-cpp'
 
 /** A selectable STT model; `id` is the value sent to the provider (e.g. Deepgram `canonical_name`). */
 export interface SttModelOption {
@@ -55,7 +56,7 @@ export interface SttSessionParams {
   /** Present only when the selected model/API supports translation. */
   translation?: { targetLanguage: string; voiceId?: string; authorizationToken?: string }
   /** Explicit backend contract for Whisper translation requests. */
-  translationApi?: 'openai' | 'whisper-cpp'
+  translationApi?: SttTranslationApi
   /** Resolved microphone device id; `''` = system default. */
   audioDeviceId: string
   /** API root: required by `openai-compat`; optional for Gemini and OpenAI. */

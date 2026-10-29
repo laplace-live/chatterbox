@@ -4,6 +4,8 @@
  * blocked three ways over: mixed content, CORS, and Private Network Access.
  */
 
+import type { SttTranslationApi } from './types'
+
 import { gmFetch, ManagerAbortError } from '../gm-fetch'
 import { readStringField } from './normalize'
 import { encodeWav } from './wav'
@@ -24,7 +26,7 @@ export interface TranscribeRequest {
   /** Whisper translation supports English output only. */
   translation?: { targetLanguage: string }
   /** whisper.cpp uses an inference flag instead of `/audio/translations`. */
-  translationApi?: 'openai' | 'whisper-cpp'
+  translationApi?: SttTranslationApi
 }
 
 export type TranscribeResult = { ok: true; text: string } | { ok: false; unreachable: boolean; message: string }
@@ -57,9 +59,12 @@ export function transcribeSegment(req: TranscribeRequest): TranscribeHandle {
   form.append('model', req.model)
   form.append('response_format', 'json')
   form.append('temperature', '0')
-  if (req.translationApi === 'whisper-cpp') form.append('language', req.language || 'auto')
-  else if (req.language && !translateWithOpenAi) form.append('language', req.language)
-  if (req.translationApi === 'whisper-cpp') form.append('translate', req.translation ? 'true' : 'false')
+  if (req.translationApi === 'whisper-cpp') {
+    form.append('language', req.language || 'auto')
+    form.append('translate', req.translation ? 'true' : 'false')
+  } else if (req.language && !translateWithOpenAi) {
+    form.append('language', req.language)
+  }
 
   // No Content-Type header: the boundary is generated with the body, so setting it by hand corrupts the request.
   const headers: Record<string, string> = {}

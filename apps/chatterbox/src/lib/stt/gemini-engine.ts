@@ -8,7 +8,7 @@ import { GEMINI_DEFAULT_MODEL, STT_STOP_TIMEOUT_MS } from '../const'
 import { int16ToBase64 } from './audio'
 import { translationCapabilities } from './capabilities'
 import { buildGeminiLiveUrl } from './gemini-url'
-import { parseGeminiLiveMessage, parseGeminiTranslationMessage } from './normalize'
+import { parseGeminiLiveMessage, parseGeminiTranslationMessage, readField } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
 
 // Google's documented chunk size (~100 ms); the shared 256 ms default adds latency.
@@ -245,9 +245,8 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     } catch {
       return
     }
-    const message = parseGeminiLiveMessage(raw)
-    if (message.setupComplete) handleReady(conn)
-    if (message.goAway) rotate(conn)
+    if (readField(raw, 'setupComplete') !== undefined) handleReady(conn)
+    if (readField(raw, 'goAway') !== undefined) rotate(conn)
 
     if (translating) {
       const result = parseGeminiTranslationMessage(raw)
@@ -285,6 +284,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       return
     }
 
+    const message = parseGeminiLiveMessage(raw)
     const chunks: SttChunk[] = []
     if (message.final !== undefined) {
       conn.interim = ''

@@ -189,7 +189,6 @@ export function SttTab() {
 
   // One accumulator suffices: translation mode is fixed per session, so reduceChunks picks the right stream.
   const acc = useRef('')
-  const sourceAcc = useRef('')
   const sendBuffer = useRef('')
   const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFlushing = useRef(false)
@@ -259,7 +258,6 @@ export function SttTab() {
     nonFinalText.value = ''
     sourceFinalText.value = ''
     sourceNonFinalText.value = ''
-    sourceAcc.current = ''
     clearStopWatchdog()
     if (flushTimeout.current) {
       clearTimeout(flushTimeout.current)
@@ -337,8 +335,7 @@ export function SttTab() {
     const original =
       translationModeRef.current && sessionHasSource.current ? reduceChunks(chunks, false) : { newFinal, nonFinal }
     if (translationModeRef.current && sessionHasSource.current && chunks.some(chunk => chunk.kind === 'original')) {
-      sourceAcc.current = (sourceAcc.current + original.newFinal).slice(-500)
-      sourceFinalText.value = sourceAcc.current
+      sourceFinalText.value = (sourceFinalText.peek() + original.newFinal).slice(-500)
       sourceNonFinalText.value = original.nonFinal
     }
     if (original.newFinal) sttTranscriptBuffer.value += original.newFinal
@@ -445,7 +442,7 @@ export function SttTab() {
     capabilities.mode === 'required' || (capabilities.mode === 'optional' && !!translationSettings?.enabled?.value)
   const languageSettings = provider !== 'soniox' && provider !== 'openai' ? LANGUAGE_SETTINGS[provider] : undefined
 
-  const buildParams = (): SttSessionParams => ({
+  const params: SttSessionParams = {
     apiKey: isElevenTranslation ? '' : activeApiKey,
     audioDeviceId: effectiveDeviceId,
     model,
@@ -469,11 +466,11 @@ export function SttTab() {
           },
         }
       : {}),
-  })
+  }
 
   const recording = useSttRecording({
     provider,
-    params: buildParams(),
+    params,
     onTranscript: handleTranscript,
     onEndpoint: handleEndpoint,
     onError: handleError,
@@ -540,7 +537,6 @@ export function SttTab() {
       finalText.value = ''
       nonFinalText.value = ''
       acc.current = ''
-      sourceAcc.current = ''
       sourceFinalText.value = ''
       sourceNonFinalText.value = ''
       state.value = 'starting'
@@ -867,18 +863,15 @@ export function SttTab() {
           {isSoniox ? (
             <div class={ROW_CLASS}>
               <span>语言提示：</span>
-              {['zh', 'en', 'ja', 'ko'].map(lang => {
-                const labels: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어' }
-                return (
-                  <Checkbox
-                    key={lang}
-                    id={`stt-lang-${lang}`}
-                    checked={hints.includes(lang)}
-                    onChange={e => updateLangHints(lang, e.currentTarget.checked)}
-                    label={labels[lang]}
-                  />
-                )
-              })}
+              {['zh', 'en', 'ja', 'ko'].map(lang => (
+                <Checkbox
+                  key={lang}
+                  id={`stt-lang-${lang}`}
+                  checked={hints.includes(lang)}
+                  onChange={e => updateLangHints(lang, e.currentTarget.checked)}
+                  label={TARGET_LABELS[lang]}
+                />
+              ))}
             </div>
           ) : languageSettings && (capabilities.mode !== 'required' || isElevenTranslation) ? (
             <div class={ROW_CLASS}>
