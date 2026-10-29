@@ -8,12 +8,15 @@ import { int16ToBase64 } from './audio'
 let onFrame: PcmCaptureOptions['onFrame'] = () => {}
 let frameSamples: number | undefined
 let captureStops = 0
+// Holds mic startup open until resolved, like a pending permission prompt.
+let captureGate: Promise<void> | null = null
 
 mock.module('./pcm-capture', () => ({
   PCM_SAMPLE_RATE: 16000,
   startPcmCapture: async (opts: PcmCaptureOptions) => {
     onFrame = opts.onFrame
     frameSamples = opts.frameSamples
+    if (captureGate) await captureGate
     return {
       stop: () => {
         captureStops++
@@ -124,6 +127,7 @@ beforeEach(() => {
   captureStops = 0
   frameSamples = undefined
   onFrame = () => {}
+  captureGate = null
   setGlobalWebSocket(FakeSocket)
 })
 
@@ -189,20 +193,23 @@ describe('createGeminiEngine', () => {
     ])
   })
 
-  test('goAway between utterances swaps at the next final and replays the audio captured meanwhile', async () => {
+  test('goAway between utterances swaps after the next final and replays the audio captured meanwhile', async () => {
+    jest.useFakeTimers()
     const { events } = start()
     const [first] = sockets
     await ready(first)
     first.receive({ goAway: { timeLeft: '50s' } })
     // Not a pause: speech too new for an interim may already be on the socket.
     first.receive({ serverContent: {} })
-    expect(sockets).toHaveLength(1)
+    expect(first.sent.some(m => m.realtimeInput?.audioStreamEnd)).toBe(false)
     first.receive(final('新的一句。'))
+    expect(first.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+    onFrame(frame(1))
+    jest.advanceTimersByTime(1000)
     expect(first.closed).toBe(1)
 
     const second = sockets[1]
     expect(second.url).toBe(LIVE_URL)
-    onFrame(frame(1))
     onFrame(frame(2))
     await ready(second)
     onFrame(frame(3))
@@ -210,7 +217,8 @@ describe('createGeminiEngine', () => {
     expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
   })
 
-  test('goAway mid-utterance keeps streaming and swaps at the next pause', async () => {
+  test('goAway mid-utterance keeps streaming until its final, then ends the stream before swapping', async () => {
+    jest.useFakeTimers()
     const { events } = start()
     const [first] = sockets
     await ready(first)
@@ -218,18 +226,59 @@ describe('createGeminiEngine', () => {
     first.receive({ goAway: {} })
     onFrame(frame(1))
     expect(first.audio).toEqual([...LEAD_IN, b64(1)])
-    expect(sockets).toHaveLength(1)
+    expect(first.sent.some(m => m.realtimeInput?.audioStreamEnd)).toBe(false)
 
     first.receive(final('我觉得可以。'))
     expect(events.slice(-2)).toEqual([
       { type: 'transcript', chunks: [{ text: '我觉得可以。', isFinal: true, kind: 'original' }] },
       { type: 'endpoint' },
     ])
-    expect(first.closed).toBe(1)
-    expect(first.sent.some(m => m.realtimeInput?.audioStreamEnd)).toBe(false)
+    expect(first.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
     onFrame(frame(2))
+    jest.advanceTimersByTime(1000)
+    expect(first.closed).toBe(1)
     await ready(sockets[1])
     expect(sockets[1].audio).toEqual([...LEAD_IN, b64(2)])
+  })
+
+  test('a text-less final still ends the utterance, clearing the interim', async () => {
+    const { events } = start()
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive(interim('嗯'))
+    ws.receive({ serverContent: { inputTranscription: {} } })
+    expect(events.slice(-2)).toEqual([{ type: 'transcript', chunks: [] }, { type: 'endpoint' }])
+  })
+
+  test('audio captured while the server closes the socket is replayed after the reconnect', async () => {
+    jest.useFakeTimers()
+    start()
+    const [first] = sockets
+    await ready(first)
+    jest.advanceTimersByTime(60_000)
+    first.readyState = 2 // CLOSING: onclose hasn't fired yet
+    onFrame(frame(1))
+    first.drop(1011)
+    await ready(sockets[1])
+    expect(first.audio).toEqual(LEAD_IN)
+    expect(sockets[1].audio).toEqual([...LEAD_IN, b64(1)])
+  })
+
+  test('speech that resumed while the pause final was in flight is finalized before the swap', async () => {
+    jest.useFakeTimers()
+    const { events } = start()
+    const [first] = sockets
+    await ready(first)
+    first.receive(interim('我觉得'))
+    first.receive({ goAway: {} })
+    first.receive(final('我觉得可以。'))
+    first.receive(final('大家'))
+    expect(events.slice(-2)).toEqual([
+      { type: 'transcript', chunks: [{ text: '大家', isFinal: true, kind: 'original' }] },
+      { type: 'endpoint' },
+    ])
+    expect(first.closed).toBe(1)
+    expect(sockets).toHaveLength(2)
   })
 
   test('without a pause in 20 s, ends the stream and swaps once the final lands', async () => {
@@ -506,6 +555,69 @@ describe('createGeminiEngine', () => {
     ws.receive(final('最后一句。'))
     expect(events.at(-1)).toEqual({ type: 'finished' })
     expect(sockets).toHaveLength(1)
+  })
+
+  test('stop during a forced swap with audio queued finishes on the replacement', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start()
+    const [first] = sockets
+    await ready(first)
+    first.receive(interim('最后'))
+    first.receive({ goAway: {} })
+    jest.advanceTimersByTime(20_000)
+    onFrame(frame(1))
+    await engine.stop()
+    first.receive(final('最后一句。'))
+
+    const second = sockets[1]
+    await ready(second)
+    expect(second.audio).toEqual([...LEAD_IN, b64(1)])
+    expect(second.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+    second.receive(final('还有一句。'))
+    expect(events.slice(-4)).toEqual([
+      { type: 'transcript', chunks: [{ text: '还有一句。', isFinal: true, kind: 'original' }] },
+      { type: 'endpoint' },
+      { type: 'state', state: 'stopped' },
+      { type: 'finished' },
+    ])
+  })
+
+  test('a stop stuck on a slow reconnect finishes before the tab would force-cancel it', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start()
+    const [first] = sockets
+    await ready(first)
+    jest.advanceTimersByTime(60_000)
+    first.drop(1011)
+    onFrame(frame(1))
+    await engine.stop()
+    jest.advanceTimersByTime(7999)
+    expect(events.at(-1)).toEqual({ type: 'state', state: 'stopping' })
+    jest.advanceTimersByTime(1)
+    expect(events.slice(-2)).toEqual([{ type: 'state', state: 'stopped' }, { type: 'finished' }])
+    expect(sockets[1].closed).toBe(1)
+  })
+
+  test('stop or cancel while the mic is still starting releases it when it arrives', async () => {
+    jest.useFakeTimers()
+    let release = () => {}
+    captureGate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const stopped = start()
+    await ready(sockets[0])
+    await stopped.engine.stop()
+    jest.advanceTimersByTime(1000)
+    expect(stopped.events.at(-1)).toEqual({ type: 'finished' })
+    const cancelled = start()
+    await ready(sockets[1])
+    cancelled.engine.cancel()
+    const counts = [stopped.events.length, cancelled.events.length]
+
+    release()
+    await tick()
+    expect(captureStops).toBe(2)
+    expect([stopped.events.length, cancelled.events.length]).toEqual(counts)
   })
 
   test('cancel releases everything and goes quiet', async () => {

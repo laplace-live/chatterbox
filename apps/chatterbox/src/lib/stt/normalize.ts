@@ -100,10 +100,10 @@ export function parseGladiaResult(value: unknown): { transcript: string; isFinal
 const CJK_CHAR = String.raw`[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\u30fc\uff00-\uffef]`
 const CJK_GAP = new RegExp(String.raw`(?<=${CJK_CHAR})\s+(?=${CJK_CHAR})`, 'gu')
 
-/** Drop the spaces Gemini sometimes emits between Chinese/Japanese characters (`今 天 我 们`), and lead Latin-script text with a space so consecutive utterances don't glue. */
+/** Drop the spaces Gemini sometimes emits between Chinese/Japanese characters (`今 天 我 们`), and lead space-separated scripts (Latin, Hangul) with a space so consecutive utterances don't glue. */
 export function tidyGeminiText(text: string): string {
   const tidy = text.replace(CJK_GAP, '')
-  return /^[\p{Script=Latin}\d]/u.test(tidy) ? ` ${tidy}` : tidy
+  return /^[\p{Script=Latin}\p{Script=Hangul}\d]/u.test(tidy) ? ` ${tidy}` : tidy
 }
 
 /** The parts of a Gemini Live server message the transcription engine acts on; texts pass through {@link tidyGeminiText}. */

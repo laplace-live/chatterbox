@@ -8,6 +8,8 @@ const GOOGLE_HOST = new URL(GEMINI_API_BASE).hostname
 const CF_GATEWAY_HOST = 'gateway.ai.cloudflare.com'
 // `/v1/{account_id}/{gateway}`, then whatever provider route was copied along (e.g. `/google-ai-studio/v1beta/openai`).
 const CF_GATEWAY_PATH = /^\/v1\/[^/]+\/[^/]+/
+// Browsers block `ws://` from an HTTPS page except to loopback, so a remote plain-HTTP root could only leak the key.
+const LOOPBACK_HOST = /^(?:(?:.+\.)?localhost|127(?:\.\d{1,3}){3}|\[::1\])$/
 
 /** Parse the API root onto the `scheme` family, keeping its TLS; `gateway` is set for a Cloudflare AI Gateway root. */
 function resolveRoot(baseUrl: string, scheme: 'http' | 'ws'): { url: URL; gateway: string | undefined } {
@@ -19,6 +21,7 @@ function resolveRoot(baseUrl: string, scheme: 'http' | 'ws'): { url: URL; gatewa
   }
   if (!/^(https?|wss?):$/.test(url.protocol)) throw new Error('接口地址须以 https:// 或 http:// 开头')
   const secure = url.protocol === 'https:' || url.protocol === 'wss:'
+  if (!secure && !LOOPBACK_HOST.test(url.hostname)) throw new Error('非本机接口地址须使用 https://')
   url.protocol = secure ? `${scheme}s:` : `${scheme}:`
   url.hash = ''
   const gateway = url.hostname === CF_GATEWAY_HOST ? CF_GATEWAY_PATH.exec(url.pathname)?.[0] : undefined

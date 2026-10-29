@@ -196,14 +196,18 @@ describe('tidyGeminiText', () => {
 
   test('keeps spaces next to Latin text and between Korean words', () => {
     expect(tidyGeminiText('我觉得 OK 的')).toBe('我觉得 OK 的')
-    expect(tidyGeminiText('안녕하세요 여러분')).toBe('안녕하세요 여러분')
+    expect(tidyGeminiText('안녕하세요 여러분')).toBe(' 안녕하세요 여러분')
   })
 
-  test('leads Latin-script text with a space so consecutive finals stay apart', () => {
+  test('leads Latin and Hangul text with a space so consecutive finals stay apart', () => {
     expect(tidyGeminiText('Hello everyone, welcome to the stream.')).toBe(' Hello everyone, welcome to the stream.')
     expect(tidyGeminiText('3 个人')).toBe(' 3 个人')
     expect(tidyGeminiText('欢迎')).toBe('欢迎')
     expect(tidyGeminiText('')).toBe('')
+    // Finals are appended as-is by the tab, so check the joined result.
+    expect(['안녕하세요', '여러분'].map(tidyGeminiText).join('')).toBe(' 안녕하세요 여러분')
+    expect(['Hello there.', 'How are you?'].map(tidyGeminiText).join('')).toBe(' Hello there. How are you?')
+    expect(['大家好。', '今天玩游戏。'].map(tidyGeminiText).join('')).toBe('大家好。今天玩游戏。')
   })
 })
 

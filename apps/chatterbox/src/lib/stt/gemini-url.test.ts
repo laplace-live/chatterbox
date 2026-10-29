@@ -33,6 +33,17 @@ describe('buildGeminiLiveUrl', () => {
     )
   })
 
+  test('allows plain HTTP only for loopback roots', () => {
+    const path = '/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=k1'
+    expect(buildGeminiLiveUrl('http://localhost:8787', 'k1')).toBe(`ws://localhost:8787${path}`)
+    expect(buildGeminiLiveUrl('http://gemini.localhost', 'k1')).toBe(`ws://gemini.localhost${path}`)
+    expect(buildGeminiLiveUrl('http://[::1]:8787', 'k1')).toBe(`ws://[::1]:8787${path}`)
+    for (const remote of ['http://proxy.example.com', 'http://192.168.1.10:8787', 'ws://example.com/gemini']) {
+      expect(() => buildGeminiLiveUrl(remote, 'k1')).toThrow('非本机接口地址须使用 https://')
+      expect(() => buildGeminiModelsUrl(remote)).toThrow('非本机接口地址须使用 https://')
+    }
+  })
+
   test('encodes the key', () => {
     expect(buildGeminiLiveUrl('', 'a b&c')).toBe(`${LIVE}?key=a+b%26c`)
   })

@@ -5,7 +5,7 @@
 
 import type { SttChunk, SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
-import { GEMINI_DEFAULT_MODEL } from '../const'
+import { GEMINI_DEFAULT_MODEL, STT_STOP_TIMEOUT_MS } from '../const'
 import { int16ToBase64 } from './audio'
 import { buildGeminiLiveUrl } from './gemini-url'
 import { parseGeminiLiveMessage } from './normalize'
@@ -29,6 +29,8 @@ const QUIET_GRACE_MS = 1000
 const MIN_RETRY_LIFETIME_MS = 30_000
 // Audio held through a drain plus the longest setup; a replacement slower than that fails on its setup timeout instead.
 const MAX_BACKLOG_FRAMES = Math.ceil((FINAL_GRACE_MS + SETUP_TIMEOUT_MS) / FRAME_MS)
+// A stop waiting on a reconnect or a final still finishes before the tab force-cancels it.
+const STOP_DEADLINE_MS = STT_STOP_TIMEOUT_MS - 2000
 
 interface LiveConnection {
   socket: WebSocket
@@ -74,6 +76,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   let drainTimer: ReturnType<typeof setTimeout> | null = null
   // Set while a `goAway` swap waits for a pause; audio keeps flowing to the old connection.
   let breakTimer: ReturnType<typeof setTimeout> | null = null
+  let stopTimer: ReturnType<typeof setTimeout> | null = null
 
   const send = (conn: LiveConnection, message: object): void => {
     if (conn.socket.readyState === WebSocket.OPEN) conn.socket.send(JSON.stringify(message))
@@ -137,6 +140,8 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const teardown = (): void => {
     cancelDrain()
     cancelBreakWait()
+    if (stopTimer) clearTimeout(stopTimer)
+    stopTimer = null
     capture?.stop()
     capture = null
     backlog.length = 0
@@ -162,7 +167,8 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const onFrame = (frame: Int16Array<ArrayBuffer>): void => {
     if (paused || settled) return
     const conn = current
-    if (conn && conn.readyAt > 0 && !afterDrain) {
+    // A socket the server is closing can't take audio; buffer it for the reconnect.
+    if (conn && conn.readyAt > 0 && !afterDrain && conn.socket.readyState === WebSocket.OPEN) {
       sendAudio(conn, frame)
       return
     }
@@ -232,15 +238,18 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       conn.interim = message.interim
       chunks.push({ text: message.interim, isFinal: false, kind: 'original' })
     }
-    if (chunks.length > 0) onEvent({ type: 'transcript', chunks })
-    if (message.final) onEvent({ type: 'endpoint' })
+    // A final ends the utterance even without text, so the stale interim still clears.
+    if (chunks.length > 0 || message.final !== undefined) onEvent({ type: 'transcript', chunks })
+    if (message.final !== undefined) onEvent({ type: 'endpoint' })
     // Only a final that leaves nothing open is a pause: speech too new for an interim may already be on the socket.
     if (message.final === undefined || conn.interim) return
-    if (breakTimer) {
+    if (afterDrain) {
+      completeDrain()
+    } else if (breakTimer) {
       cancelBreakWait()
-      swap(conn)
+      // The next utterance may have started while this final was in flight; end its stream before retiring it.
+      drain(conn, () => swap(conn))
     }
-    if (afterDrain) completeDrain()
   }
 
   const handleClose = (conn: LiveConnection, event: CloseEvent): void => {
@@ -305,6 +314,10 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     onEvent({ type: 'state', state: 'stopping' })
     capture?.stop()
     capture = null
+    stopTimer = setTimeout(() => {
+      if (current) commitInterim(current)
+      finish()
+    }, STOP_DEADLINE_MS)
     const conn = current
     // A replacement still setting up gets the buffered audio first (`handleReady`), then drains.
     if (conn && conn.readyAt === 0 && backlog.length > 0) return
@@ -312,9 +325,9 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       finish()
       return
     }
-    // A swap is already waiting on this connection's final: finish there instead of reconnecting.
+    // A swap is already draining this connection: audio queued for the replacement rides the swap, else finish here.
     if (afterDrain) {
-      afterDrain = finish
+      if (backlog.length === 0) afterDrain = finish
       return
     }
     drain(conn, finish)
