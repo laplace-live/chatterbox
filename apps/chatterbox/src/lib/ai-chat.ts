@@ -85,8 +85,8 @@ const conversationHistory: { transcript: string; chat: string; unsent?: boolean 
 
 let viewerReceivedSinceLastGen = 0
 
-/** Recent outgoing texts (text → latest send's mark, stamped at enqueue); drops our own echo from `.chat-items`. */
-const recentOutgoingTexts = new Map<string, { at: number }>()
+/** Independent per-send marks, stamped at dispatch, to filter our own echoes. */
+const recentOutgoingSends = new Set<{ text: string; at: number }>()
 
 const OUTGOING_TTL_MS = 30_000
 const OUTGOING_CAP = 64
@@ -121,31 +121,34 @@ const LLM_CALL_TIMEOUT_MS = 45_000
 
 function pruneRecentOutgoing(): void {
   const now = Date.now()
-  for (const [text, mark] of recentOutgoingTexts) {
-    if (now - mark.at > OUTGOING_TTL_MS) recentOutgoingTexts.delete(text)
+  for (const mark of recentOutgoingSends) {
+    if (now - mark.at > OUTGOING_TTL_MS) recentOutgoingSends.delete(mark)
   }
 }
 
-/** Marks `text` as our own send; the returned undo removes only this mark, never a newer send's for the same text. */
+/** Marks `text` as our own send; undo removes only this send's mark. */
 function markOutgoing(text: string): () => void {
   const trimmed = text.trim()
   if (!trimmed) return () => {}
   pruneRecentOutgoing()
-  const mark = { at: Date.now() }
-  recentOutgoingTexts.set(trimmed, mark)
-  // Map iteration is insertion order, so the first key is the oldest.
-  if (recentOutgoingTexts.size > OUTGOING_CAP) {
-    const oldest = recentOutgoingTexts.keys().next().value
-    if (oldest !== undefined) recentOutgoingTexts.delete(oldest)
+  const mark = { text: trimmed, at: Date.now() }
+  recentOutgoingSends.add(mark)
+  if (recentOutgoingSends.size > OUTGOING_CAP) {
+    const oldest = recentOutgoingSends.values().next().value
+    if (oldest !== undefined) recentOutgoingSends.delete(oldest)
   }
   return () => {
-    if (recentOutgoingTexts.get(trimmed) === mark) recentOutgoingTexts.delete(trimmed)
+    recentOutgoingSends.delete(mark)
   }
 }
 
 function isLikelySelfEcho(text: string): boolean {
   pruneRecentOutgoing()
-  return recentOutgoingTexts.has(text.trim())
+  const trimmed = text.trim()
+  for (const mark of recentOutgoingSends) {
+    if (mark.text === trimmed) return true
+  }
+  return false
 }
 
 /**
@@ -330,18 +333,22 @@ function sessionGuard(): () => boolean {
 async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Promise<boolean> {
   try {
     const roomId = await ensureRoomId()
-    // A torn-down session must not mark or queue: a restart may already have marked the same text.
+    // A torn-down session must not queue a send.
     if (!isCurrent()) return false
     const csrfToken = getCsrfToken()
     if (!csrfToken) {
       appendLog('❌ [AI 融入] 未找到登录信息，请先登录 Bilibili')
       return false
     }
-    // Record BEFORE the send so the echo can find the entry when it broadcasts back.
-    const unmark = markOutgoing(message)
-    const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', isCurrent)
+    let unmark: (() => void) | undefined
+    const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', () => {
+      if (!isCurrent()) return false
+      // Mark at dispatch so cancelled queue entries never suppress viewer chat.
+      unmark = markOutgoing(message)
+      return true
+    })
     // Cancelled or rejected sends never post; an unknown outcome keeps the mark in case it did.
-    if (result.cancelled || result.rejected) unmark()
+    if (result.cancelled || result.rejected) unmark?.()
     appendLog(result, 'AI 融入', message)
     return result.success
   } catch (err) {
@@ -540,7 +547,8 @@ export function startAiChatEngine(): void {
   viewerReceivedSinceLastGen = 0
   pendingCandidates.value = []
   aiChatViewerCount.value = 0
-  recentOutgoingTexts.clear()
+  // A dispatched send can still echo after a restart.
+  pruneRecentOutgoing()
   // Reset so a restart recovers an engine left wedged by a stalled in-flight call.
   inflight = false
   clearScheduled()
