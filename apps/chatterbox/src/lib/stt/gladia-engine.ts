@@ -9,6 +9,7 @@ import { parseGladiaResult, readField, readStringField } from './normalize'
 import { type PcmCapture, startPcmCapture } from './pcm-capture'
 
 const STOP_GRACE_MS = STT_STOP_TIMEOUT_MS - 2000
+const STARTUP_TIMEOUT_MS = 15_000
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
 
@@ -20,6 +21,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   let opened = false
   let ws: WebSocket | null = null
   let capture: PcmCapture | null = null
+  let startupTimer: ReturnType<typeof setTimeout> | null = null
   let stopTimer: ReturnType<typeof setTimeout> | null = null
   const controller = new AbortController()
   const translatedIds = new Set<string>()
@@ -32,6 +34,8 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   const cleanup = (): void => {
     stopCapture()
     controller.abort()
+    if (startupTimer) clearTimeout(startupTimer)
+    startupTimer = null
     if (stopTimer) clearTimeout(stopTimer)
     stopTimer = null
     try {
@@ -111,6 +115,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   const start = (): void => {
     if (started || settled) return
     started = true
+    startupTimer = setTimeout(() => fail(new Error('Gladia 连接超时')), STARTUP_TIMEOUT_MS)
     void (async () => {
       try {
         const url = await initGladiaSession({
@@ -125,6 +130,8 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
         const socket = new WebSocket(url)
         ws = socket
         socket.onopen = () => {
+          if (startupTimer) clearTimeout(startupTimer)
+          startupTimer = null
           opened = true
           if (settled) {
             socket.close()

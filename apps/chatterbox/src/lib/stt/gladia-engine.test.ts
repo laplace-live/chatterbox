@@ -17,8 +17,9 @@ beforeAll(async () => {
       [entry]: `export { createGladiaEngine } from './gladia-engine'; export { captureState } from './__gladia-test-capture__'`,
       [captureModule]: `
         export const PCM_SAMPLE_RATE = 16000
-        export const captureState = { stops: 0, onFrame: () => {}, gate: null }
+        export const captureState = { starts: 0, stops: 0, onFrame: () => {}, gate: null }
         export async function startPcmCapture(opts) {
+          captureState.starts++
           captureState.onFrame = opts.onFrame
           if (captureState.gate) await captureState.gate
           return { stop() { captureState.stops++ } }
@@ -41,7 +42,7 @@ beforeAll(async () => {
 async function load() {
   return import(`data:text/javascript;base64,${Buffer.from(`${bundle}\n//${++loads}`).toString('base64')}`) as Promise<
     typeof import('./gladia-engine') & {
-      captureState: { stops: number; onFrame: PcmCaptureOptions['onFrame']; gate: Promise<void> | null }
+      captureState: { starts: number; stops: number; onFrame: PcmCaptureOptions['onFrame']; gate: Promise<void> | null }
     }
   >
 }
@@ -241,4 +242,78 @@ test('an abnormal close while draining reports missing final output', async () =
   sockets[0].drop(1006)
   expect(events.at(-1)).toMatchObject({ type: 'error', error: { message: 'Gladia 连接意外关闭' } })
   expect(events.some(e => e.type === 'finished')).toBe(false)
+})
+
+test('startup timeout aborts a stalled session request and ignores its late response', async () => {
+  jest.useFakeTimers()
+  let release: (value: Response) => void = () => {}
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    request = init
+    return new Promise<Response>(resolve => {
+      release = resolve
+    })
+  }) as typeof fetch
+  const { events, capture } = await start()
+  jest.advanceTimersByTime(14999)
+  expect(events).toEqual([])
+  jest.advanceTimersByTime(1)
+  expect(events).toEqual([{ type: 'error', error: new Error('Gladia 连接超时') }])
+  expect(request?.signal?.aborted).toBe(true)
+  release(Response.json({ url: 'wss://test.invalid/late' }))
+  await tick()
+  expect(sockets).toHaveLength(0)
+  expect(capture.starts).toBe(0)
+  expect(events).toHaveLength(1)
+})
+
+test('session creation and WebSocket opening share one startup deadline', async () => {
+  jest.useFakeTimers()
+  let release: (value: Response) => void = () => {}
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    request = init
+    return new Promise<Response>(resolve => {
+      release = resolve
+    })
+  }) as typeof fetch
+  const { events, capture } = await start()
+  jest.advanceTimersByTime(10000)
+  release(Response.json({ url: 'wss://test.invalid/session' }))
+  await tick()
+  const socket = sockets[0]
+  jest.advanceTimersByTime(4999)
+  expect(socket.closed).toBe(0)
+  jest.advanceTimersByTime(1)
+  expect(events).toEqual([{ type: 'error', error: new Error('Gladia 连接超时') }])
+  expect(socket.closed).toBe(1)
+  expect(request?.signal?.aborted).toBe(true)
+  socket.open()
+  socket.receive(transcript('late'))
+  await tick()
+  expect(capture.starts).toBe(0)
+  expect(events).toHaveLength(1)
+})
+
+test('a successful WebSocket opening clears the startup deadline', async () => {
+  jest.useFakeTimers()
+  const { engine, events, capture } = await start()
+  jest.advanceTimersByTime(14999)
+  sockets[0].open()
+  await tick()
+  jest.advanceTimersByTime(15000)
+  expect(capture.starts).toBe(1)
+  expect(events).toEqual([{ type: 'state', state: 'running' }, { type: 'connected' }])
+  expect(sockets[0].closed).toBe(0)
+  engine.cancel()
+})
+
+test('cancel while the WebSocket opens prevents late capture or timeout errors', async () => {
+  jest.useFakeTimers()
+  const { engine, events, capture } = await start()
+  engine.cancel()
+  expect(request?.signal?.aborted).toBe(true)
+  sockets[0].open()
+  jest.advanceTimersByTime(30000)
+  await tick()
+  expect(capture.starts).toBe(0)
+  expect(events).toEqual([])
 })
