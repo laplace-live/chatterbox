@@ -797,6 +797,53 @@ describe('Gemini Live Translate', () => {
     engine.cancel()
   })
 
+  test('stop gives an in-progress translation drain a fresh quiet period and deadline', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(24000)
+    ws.receive({ serverContent: { outputTranscription: { text: 'Finishing the old stream' } } })
+    jest.advanceTimersByTime(3000)
+    await engine.stop()
+    jest.advanceTimersByTime(1000)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(events.some(e => e.type === 'finished')).toBe(false)
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(3999)
+    expect(ws.closed).toBe(0)
+    jest.advanceTimersByTime(1)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(sockets).toHaveLength(1)
+  })
+
+  test('stop refreshes a rotation drain while preserving queued audio for its replacement', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [first] = sockets
+    await ready(first)
+    first.receive({ goAway: { timeLeft: '50s' } })
+    jest.advanceTimersByTime(24000)
+    first.receive({ serverContent: { outputTranscription: { text: 'Old stream' } } })
+    onFrame(frame(2))
+    jest.advanceTimersByTime(3000)
+    await engine.stop()
+    jest.advanceTimersByTime(1000)
+    expect(errorMessage(events)).toBeUndefined()
+    expect(first.closed).toBe(0)
+    first.receive({ serverContent: { outputTranscription: { text: ' tail' }, generationComplete: true } })
+    expect(sockets).toHaveLength(2)
+    const second = sockets[1]
+    await ready(second)
+    expect(second.audio).toEqual([...LEAD_IN, b64(2)])
+    expect(second.sent.at(-1)).toEqual({ realtimeInput: { audioStreamEnd: true } })
+    second.receive({ serverContent: { outputTranscription: { text: 'Queued speech' }, generationComplete: true } })
+    expect(events.at(-1)).toEqual({ type: 'finished' })
+    expect(errorMessage(events)).toBeUndefined()
+    expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
+  })
+
   test('trailing unused audio does not keep a text-only stop alive', async () => {
     jest.useFakeTimers()
     const { engine, events } = start(translationParams)

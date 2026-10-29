@@ -400,6 +400,11 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     }
     // A swap is already draining this connection: audio queued for the replacement rides the swap, else finish here.
     if (afterDrain) {
+      if (translating) {
+        drainDeadline = Date.now() + STOP_DEADLINE_MS
+        if (drainTimer) clearTimeout(drainTimer)
+        drainTimer = setTimeout(() => expireDrain(conn), TRANSLATION_GRACE_MS)
+      }
       if (backlog.length === 0) afterDrain = finish
       return
     }
