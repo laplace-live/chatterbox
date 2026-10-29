@@ -1,53 +1,56 @@
-/**
- * Gladia realtime `SttEngine` — raw WebSocket. Needs a one-shot HTTP init
- * (`gladia-session.ts`) for a per-session WS URL; audio rides as base64 in JSON
- * `audio_chunk` messages. Transcription-only: every chunk is 'original';
- * `finalize` is a no-op since silence endpointing auto-commits.
- */
+/** Gladia live transcription and translation share one WebSocket session. */
 
 import type { SttEngine, SttEngineEventHandler, SttSessionParams } from './types'
 
-import { GLADIA_DEFAULT_MODEL } from '../const'
+import { GLADIA_DEFAULT_MODEL, STT_STOP_TIMEOUT_MS } from '../const'
 import { int16ToBase64 } from './audio'
 import { initGladiaSession } from './gladia-session'
-import { parseGladiaResult } from './normalize'
+import { parseGladiaResult, readField, readStringField } from './normalize'
 import { type PcmCapture, startPcmCapture } from './pcm-capture'
 
-// Force-close if Gladia's own close never arrives after `stop_recording`.
-const STOP_GRACE_MS = 2000
+const STOP_GRACE_MS = STT_STOP_TIMEOUT_MS - 2000
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
 
 export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineEventHandler): SttEngine {
-  let aborted = false
   let settled = false
+  let stopping = false
+  let started = false
   let paused = false
   let opened = false
   let ws: WebSocket | null = null
   let capture: PcmCapture | null = null
+  let stopTimer: ReturnType<typeof setTimeout> | null = null
+  const controller = new AbortController()
+  const translatedIds = new Set<string>()
 
   const stopCapture = (): void => {
     capture?.stop()
     capture = null
   }
 
+  const cleanup = (): void => {
+    stopCapture()
+    controller.abort()
+    if (stopTimer) clearTimeout(stopTimer)
+    stopTimer = null
+    try {
+      ws?.close()
+    } catch {}
+  }
+
   const finish = (): void => {
     if (settled) return
     settled = true
-    stopCapture()
+    cleanup()
     onEvent({ type: 'state', state: 'stopped' })
     onEvent({ type: 'finished' })
   }
 
   const fail = (err: unknown): void => {
-    if (settled || aborted) return
+    if (settled) return
     settled = true
-    stopCapture()
-    try {
-      ws?.close()
-    } catch {
-      // closing a socket that never opened can throw
-    }
+    cleanup()
     onEvent({ type: 'error', error: toError(err) })
   }
 
@@ -55,11 +58,11 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
     const cap = await startPcmCapture({
       deviceId: params.audioDeviceId,
       onFrame: frame => {
-        if (paused || !ws || ws.readyState !== WebSocket.OPEN) return
+        if (settled || stopping || paused || !ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify({ type: 'audio_chunk', data: { chunk: int16ToBase64(frame) } }))
       },
     })
-    if (aborted || settled) {
+    if (settled || stopping) {
       cap.stop()
       return
     }
@@ -67,53 +70,79 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const handleMessage = (raw: string): void => {
+    if (settled) return
     let message: unknown
     try {
       message = JSON.parse(raw)
     } catch {
       return
     }
+    const type = readStringField(message, 'type')
+    const error = readField(message, 'error')
+    if (error != null || type === 'error') {
+      fail(new Error(readStringField(error, 'message') ?? readStringField(message, 'message') ?? 'Gladia 处理失败'))
+      return
+    }
+    if (type === 'end_session') {
+      finish()
+      return
+    }
+    if (type === 'translation') {
+      if (!params.translation) return
+      const data = readField(message, 'data')
+      const translated = readField(data, 'translated_utterance')
+      const text = readStringField(translated, 'text')
+      const language = readStringField(translated, 'language') ?? readStringField(data, 'target_language')
+      if (text === undefined || (language && language !== params.translation.targetLanguage)) return
+      const id = readStringField(data, 'utterance_id')
+      if (id && translatedIds.has(id)) return
+      if (id) translatedIds.add(id)
+      const segment = text && !/\s$/.test(text) ? `${text} ` : text
+      onEvent({ type: 'transcript', chunks: [{ text: segment, isFinal: true, kind: 'translation' }] })
+      onEvent({ type: 'endpoint' })
+      return
+    }
     const result = parseGladiaResult(message)
     if (!result) return
     onEvent({ type: 'transcript', chunks: [{ text: result.transcript, isFinal: result.isFinal, kind: 'original' }] })
-    if (result.isFinal) onEvent({ type: 'endpoint' })
+    if (result.isFinal && !params.translation) onEvent({ type: 'endpoint' })
   }
 
   const start = (): void => {
+    if (started || settled) return
+    started = true
     void (async () => {
       try {
         const url = await initGladiaSession({
           apiKey: params.apiKey,
           model: params.model || GLADIA_DEFAULT_MODEL,
           languages: params.languageHints,
+          translation: params.translation,
+          signal: controller.signal,
         })
-        if (aborted || settled) return
+        if (settled) return
 
         const socket = new WebSocket(url)
         ws = socket
-
         socket.onopen = () => {
           opened = true
-          if (aborted || settled) {
+          if (settled) {
             socket.close()
             return
           }
           onEvent({ type: 'state', state: 'running' })
           onEvent({ type: 'connected' })
-          void beginAudio().catch(err => fail(err))
+          void beginAudio().catch(fail)
         }
         socket.onmessage = event => {
           if (typeof event.data === 'string') handleMessage(event.data)
         }
         socket.onerror = () => fail(new Error('WebSocket 连接错误'))
-        socket.onclose = () => {
-          if (aborted || settled) return
-          // Never opened ⇒ session URL rejected (expired/invalid token).
-          if (!opened) {
-            fail(new Error('连接失败，请检查 Gladia API Key 或网络'))
-            return
-          }
-          finish()
+        socket.onclose = event => {
+          if (settled) return
+          if (!opened) fail(new Error('连接失败，请检查 Gladia API Key 或网络'))
+          else if (event.code === 1000) finish()
+          else fail(new Error('Gladia 连接意外关闭'))
         }
       } catch (err) {
         fail(err)
@@ -122,27 +151,28 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const stop = async (): Promise<void> => {
+    if (settled || stopping) return
+    stopping = true
     onEvent({ type: 'state', state: 'stopping' })
     stopCapture()
-    // Flush Gladia's last transcript, then let it close the socket.
+    if (!opened) {
+      finish()
+      return
+    }
     try {
       ws?.send(JSON.stringify({ type: 'stop_recording' }))
-    } catch {}
-    const socket = ws
-    setTimeout(() => {
-      try {
-        socket?.close()
-      } catch {}
-    }, STOP_GRACE_MS)
+    } catch (err) {
+      fail(err)
+      return
+    }
+    // Translation can arrive after end_recording; only end_session closes the stream.
+    stopTimer = setTimeout(() => fail(new Error('等待 Gladia 最终结果超时')), STOP_GRACE_MS)
   }
 
   const cancel = (): void => {
-    aborted = true
+    if (settled) return
     settled = true
-    stopCapture()
-    try {
-      ws?.close()
-    } catch {}
+    cleanup()
   }
 
   const pause = (): void => {

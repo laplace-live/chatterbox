@@ -2,6 +2,8 @@
 
 import type { SttChunk, SttModelOption } from './types'
 
+import { translationCapabilities } from './capabilities'
+
 /** Structural subset of Soniox tokens; `RealtimeResult` is assignable, avoids coupling to `@soniox/client`. */
 export interface SonioxTokenLike {
   text: string
@@ -130,6 +132,25 @@ export function parseGeminiLiveMessage(value: unknown): GeminiLiveMessage {
   }
 }
 
+/** Live Translate emits immutable text deltas rather than STT's whole-utterance hypotheses. */
+export function parseGeminiTranslationMessage(value: unknown): {
+  original?: string
+  translation?: string
+  complete: boolean
+  hasAudio: boolean
+  error?: string
+} {
+  const content = readField(value, 'serverContent')
+  const parts = readField(readField(content, 'modelTurn'), 'parts')
+  return {
+    original: readStringField(readField(content, 'inputTranscription'), 'text'),
+    translation: readStringField(readField(content, 'outputTranscription'), 'text'),
+    complete: readField(content, 'generationComplete') === true || readField(content, 'turnComplete') === true,
+    hasAudio: Array.isArray(parts) && parts.some(part => readStringField(readField(part, 'inlineData'), 'data')),
+    error: readStringField(readField(value, 'error'), 'message'),
+  }
+}
+
 /** Picker options from what `pick` returns per entry (`undefined` skips it): first id wins, `name` only if it differs, sorted by id. */
 function toModelOptions(
   list: unknown,
@@ -151,7 +172,7 @@ function toModelOptions(
   return models
 }
 
-/** Parse Gemini's `GET /v1beta/models` response into picker options: Live transcription models only, ids without `models/`, sorted + de-duped. */
+/** Parse Gemini's Live transcription and translation models into sorted, de-duplicated picker options. */
 export function parseGeminiModels(value: unknown): SttModelOption[] {
   return toModelOptions(readField(value, 'models'), entry => {
     const methods = readField(entry, 'supportedGenerationMethods')
@@ -159,8 +180,10 @@ export function parseGeminiModels(value: unknown): SttModelOption[] {
     const id = readStringField(entry, 'name')
       ?.trim()
       .replace(/^models\//, '')
-    // The other Live models are voice agents and translators: they answer the speaker instead of transcribing.
-    return id?.includes('transcribe') ? { id, name: readStringField(entry, 'displayName') } : undefined
+    // Conversational Live models answer the speaker rather than transcribing or interpreting.
+    return id && (id.includes('transcribe') || translationCapabilities('gemini', id).mode === 'required')
+      ? { id, name: readStringField(entry, 'displayName') }
+      : undefined
   })
 }
 

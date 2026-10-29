@@ -22,11 +22,14 @@ import type {
   SttSessionParams,
 } from './stt/types'
 
+import { ELEVENLABS_TRANSLATION_MODE } from './const'
 import { createDeepgramEngine } from './stt/deepgram-engine'
 import { createElevenLabsEngine } from './stt/elevenlabs-engine'
+import { createElevenLabsTranslationEngine } from './stt/elevenlabs-translation-engine'
 import { createGeminiEngine } from './stt/gemini-engine'
 import { createGladiaEngine } from './stt/gladia-engine'
 import { createOpenAiCompatEngine } from './stt/openai-compat-engine'
+import { createOpenAiTranslationEngine } from './stt/openai-translation-engine'
 import { createSonioxEngine } from './stt/soniox-engine'
 
 export interface UseSttRecordingConfig {
@@ -62,10 +65,14 @@ const TERMINAL_STATES = new Set<SttRecordingState>(['idle', 'stopped', 'canceled
 
 const ENGINE_FACTORIES: Record<SttProvider, SttEngineFactory> = {
   soniox: createSonioxEngine,
-  elevenlabs: createElevenLabsEngine,
+  elevenlabs: (params, onEvent) =>
+    params.model === ELEVENLABS_TRANSLATION_MODE
+      ? createElevenLabsTranslationEngine(params, onEvent)
+      : createElevenLabsEngine(params, onEvent),
   deepgram: createDeepgramEngine,
   gladia: createGladiaEngine,
   gemini: createGeminiEngine,
+  openai: createOpenAiTranslationEngine,
   'openai-compat': createOpenAiCompatEngine,
 }
 

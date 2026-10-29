@@ -11,6 +11,7 @@ import {
   parseDeepgramResult,
   parseGeminiLiveMessage,
   parseGeminiModels,
+  parseGeminiTranslationMessage,
   parseGladiaResult,
   readStringField,
   reduceChunks,
@@ -259,7 +260,7 @@ describe('parseGeminiModels', () => {
     supportedGenerationMethods: methods,
   })
 
-  test('keeps only Live transcription models, ids without the models/ prefix, sorted', () => {
+  test('keeps Live transcription and translation models while excluding conversational agents', () => {
     const models = parseGeminiModels({
       models: [
         model('gemini-3.8-live', ['bidiGenerateContent'], 'Gemini 3.8 Live'),
@@ -271,6 +272,7 @@ describe('parseGeminiModels', () => {
       ],
     })
     expect(models).toEqual([
+      { id: 'gemini-3.5-live-translate-preview' },
       { id: 'gemini-3.5-transcribe-live', name: 'Gemini 3.5 Transcribe Live' },
       { id: 'gemini-4-transcribe-live' },
     ])
@@ -281,6 +283,34 @@ describe('parseGeminiModels', () => {
     expect(parseGeminiModels({ models: 'nope' })).toEqual([])
     expect(parseGeminiModels({ models: [{ name: 'models/x-transcribe' }, null] })).toEqual([])
     expect(parseGeminiModels(null)).toEqual([])
+  })
+})
+
+describe('parseGeminiTranslationMessage', () => {
+  test('keeps text deltas verbatim, including split words and whitespace', () => {
+    expect(
+      parseGeminiTranslationMessage({
+        serverContent: { inputTranscription: { text: 'Hel' }, outputTranscription: { text: '世界 ' } },
+      })
+    ).toEqual({ original: 'Hel', translation: '世界 ', complete: false, hasAudio: false, error: undefined })
+  })
+
+  test('recognizes output completion independently of source transcription', () => {
+    expect(parseGeminiTranslationMessage({ serverContent: { inputTranscription: { text: 'Done.' } } }).complete).toBe(
+      false
+    )
+    expect(parseGeminiTranslationMessage({ serverContent: { generationComplete: true } }).complete).toBe(true)
+    expect(parseGeminiTranslationMessage({ serverContent: { turnComplete: true } }).complete).toBe(true)
+  })
+
+  test('recognizes audio output and errors without trusting malformed frames', () => {
+    expect(
+      parseGeminiTranslationMessage({ serverContent: { modelTurn: { parts: [{ inlineData: { data: 'AAAA' } }] } } })
+        .hasAudio
+    ).toBe(true)
+    expect(parseGeminiTranslationMessage({ error: { message: 'Quota exceeded' } }).error).toBe('Quota exceeded')
+    expect(parseGeminiTranslationMessage({ serverContent: { modelTurn: { parts: [null, {}] } } }).hasAudio).toBe(false)
+    expect(parseGeminiTranslationMessage(null).complete).toBe(false)
   })
 })
 

@@ -13,7 +13,7 @@ export const SOURCE_LABELS: Record<ActionSource, string> = {
   meme: '烂梗',
   blend: '自动融入',
   ai: 'AI 融入',
-  stt: '同传',
+  stt: '转录',
 }
 
 // All synced across tabs: one account's tabs must agree, or a stale tab keeps claiming master or copies with old settings.

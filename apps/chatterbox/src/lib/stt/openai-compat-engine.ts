@@ -76,6 +76,8 @@ export function createOpenAiCompatEngine(params: SttSessionParams, onEvent: SttE
         language: params.languageHints[0] ?? '',
         samples: segment,
         sampleRate: PCM_SAMPLE_RATE,
+        translation: params.translation,
+        translationApi: params.translationApi,
       })
       inflightAbort = request.abort
       const result = await request.promise
@@ -86,7 +88,16 @@ export function createOpenAiCompatEngine(params: SttSessionParams, onEvent: SttE
         // Collapse whisper.cpp's '\n' joins, but keep Whisper's leading space so consecutive English finals don't glue in the buffer.
         const text = result.text.replace(/\s+/g, ' ').trimEnd()
         if (text && !isWhisperHallucination(text)) {
-          onEvent({ type: 'transcript', chunks: [{ text, isFinal: true, kind: 'original' }] })
+          onEvent({
+            type: 'transcript',
+            chunks: [
+              {
+                text: params.translation ? `${text} ` : text,
+                isFinal: true,
+                kind: params.translation ? 'translation' : 'original',
+              },
+            ],
+          })
           onEvent({ type: 'endpoint' })
         }
       } else if (result.unreachable) {
@@ -124,6 +135,10 @@ export function createOpenAiCompatEngine(params: SttSessionParams, onEvent: SttE
   })
 
   const start = (): void => {
+    if (params.translation && params.translation.targetLanguage !== 'en') {
+      fail(new Error('Whisper 仅支持翻译为英语'))
+      return
+    }
     if (!baseUrl) {
       fail(new Error('未配置服务地址'))
       return

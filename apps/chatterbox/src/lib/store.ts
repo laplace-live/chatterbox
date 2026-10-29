@@ -9,6 +9,7 @@ import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import {
   DEEPGRAM_DEFAULT_MODEL,
   DEFAULT_INVISIBLE_CHAR,
+  ELEVENLABS_DEFAULT_MODEL,
   GEMINI_DEFAULT_MODEL,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
@@ -248,7 +249,7 @@ export const aiChatViewerWindow = gmSignal('aiChatViewerWindow', 50)
 export const aiChatViewerInterval = gmSignal('aiChatViewerInterval', 10)
 export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
 
-// STT (同传) settings. `sttProvider` picks the active realtime provider; each keeps its own api key + model, while output/capture settings are shared under provider-neutral `stt*` keys.
+// Speech-to-text settings: provider-specific credentials and models, shared capture and output.
 export const sttProvider = gmSignal<SttProvider>('sttProvider', 'soniox')
 
 // --- Soniox (provider-specific) ---
@@ -257,14 +258,16 @@ export const sonioxApiKey = gmSignal('sonioxApiKey', '')
 export const sonioxModel = gmSignal('sonioxModel', SONIOX_DEFAULT_MODEL)
 export const sonioxModels = gmSignal<SonioxModel[]>('sonioxModels', [])
 export const sonioxLanguageHints = gmSignal<string[]>('sonioxLanguageHints', ['zh'])
-// Realtime translation is Soniox-only (Scribe is transcription-only); the tab hides this section for other providers.
 export const sonioxTranslationEnabled = gmSignal('sonioxTranslationEnabled', false)
 export const sonioxTranslationTarget = gmSignal('sonioxTranslationTarget', 'en')
 
 // --- ElevenLabs (provider-specific) ---
 export const elevenLabsApiKey = gmSignal('elevenLabsApiKey', '')
-// No model setting: only one realtime Scribe model, no list API, so the id is hardcoded (`ELEVENLABS_DEFAULT_MODEL`). Single ISO-639-1/3 code or '' for auto-detect (not a multi-hint list like Soniox).
 export const elevenLabsLanguageCode = gmSignal('elevenLabsLanguageCode', '')
+export const elevenLabsMode = gmSignal('elevenLabsMode', ELEVENLABS_DEFAULT_MODEL)
+export const elevenLabsTranslationTarget = gmSignal('elevenLabsTranslationTarget', 'en')
+export const elevenLabsTranslationVoiceId = gmSignal('elevenLabsTranslationVoiceId', '')
+export const elevenLabsTranslationToken = gmSignal('elevenLabsTranslationToken', '')
 
 // --- Deepgram (provider-specific) ---
 export const deepgramApiKey = gmSignal('deepgramApiKey', '')
@@ -276,18 +279,24 @@ export const deepgramLanguage = gmSignal('deepgramLanguage', 'multi')
 
 // --- Gladia (provider-specific) ---
 export const gladiaApiKey = gmSignal('gladiaApiKey', '')
-// One model family (`solaria-1`), no list endpoint, so no model signal (like ElevenLabs). Single language code ('' = auto-detect with code-switching).
+// Fixed Solaria model; an empty language enables automatic detection with code-switching.
 export const gladiaLanguage = gmSignal('gladiaLanguage', '')
+export const gladiaTranslationEnabled = gmSignal('gladiaTranslationEnabled', false)
+export const gladiaTranslationTarget = gmSignal('gladiaTranslationTarget', 'en')
 
 // --- Gemini Live (provider-specific) ---
 export const geminiApiKey = gmSignal('geminiApiKey', '')
 // '' = Google directly; otherwise a Cloudflare AI Gateway or reverse-proxy root, for networks that can't reach Google.
 export const geminiBaseUrl = gmSignal('geminiBaseUrl', '')
-// Typed freely; `geminiModels` caches the transcription models from /v1beta/models as a picker shortcut.
+// Typed freely; `geminiModels` caches compatible Live models as a picker shortcut.
 export const geminiModel = gmSignal('geminiModel', GEMINI_DEFAULT_MODEL)
 export const geminiModels = gmSignal<SttModelOption[]>('geminiModels', [])
 // One BCP-47 code ('' = auto-detect with code-switching).
 export const geminiLanguage = gmSignal('geminiLanguage', '')
+export const geminiTranslationTarget = gmSignal('geminiTranslationTarget', 'en')
+
+export const openaiTranslationApiKey = gmSignal('openaiTranslationApiKey', '')
+export const openaiTranslationTarget = gmSignal('openaiTranslationTarget', 'en')
 
 // --- OpenAI-compatible batch STT (provider-specific) ---
 // Not realtime: audio is cut on silence and uploaded per segment. `openaiSttApiKey` stays empty for local servers; the start gate requires the base URL instead.
@@ -295,6 +304,8 @@ export const openaiSttBaseUrl = gmSignal('openaiSttBaseUrl', OPENAI_STT_DEFAULT_
 export const openaiSttApiKey = gmSignal('openaiSttApiKey', '')
 export const openaiSttModel = gmSignal('openaiSttModel', OPENAI_STT_DEFAULT_MODEL)
 export const openaiSttLanguage = gmSignal('openaiSttLanguage', 'zh')
+export const openaiSttApi = gmSignal<'openai' | 'whisper-cpp'>('openaiSttApi', 'openai')
+export const openaiSttTranslationEnabled = gmSignal('openaiSttTranslationEnabled', false)
 
 // --- Shared output / capture (every provider) ---
 // Migrate the formerly Soniox-prefixed keys to neutral `stt*` keys.
