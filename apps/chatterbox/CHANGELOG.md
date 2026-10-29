@@ -1,5 +1,11 @@
 # laplace-chatterbox
 
+## 4.7.1
+
+### Patch Changes
+
+- 74c61e4: Keep independent AI chat echo markers from dispatch through engine restarts, so queued sends do not suppress viewer messages and cancelling one send does not expose another send's delayed echo.
+
 ## 4.7.0
 
 ### Minor Changes
