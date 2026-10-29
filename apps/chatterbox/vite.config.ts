@@ -37,6 +37,8 @@ export default defineConfig({
         // prompt, so built-in defaults and local hosts are listed (a held decision request would hit its 8 s timeout); `*` covers user-typed ones.
         connect: [
           'api.deepgram.com',
+          'generativelanguage.googleapis.com',
+          'gateway.ai.cloudflare.com',
           'api.typesafe.ai',
           'openrouter.ai',
           'api.openai.com',

@@ -9,6 +9,7 @@ import { GM_deleteValue, GM_getValue, GM_setValue } from '$'
 import {
   DEEPGRAM_DEFAULT_MODEL,
   DEFAULT_INVISIBLE_CHAR,
+  GEMINI_DEFAULT_MODEL,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
   SONIOX_DEFAULT_MODEL,
@@ -277,6 +278,16 @@ export const deepgramLanguage = gmSignal('deepgramLanguage', 'multi')
 export const gladiaApiKey = gmSignal('gladiaApiKey', '')
 // One model family (`solaria-1`), no list endpoint, so no model signal (like ElevenLabs). Single language code ('' = auto-detect with code-switching).
 export const gladiaLanguage = gmSignal('gladiaLanguage', '')
+
+// --- Gemini Live (provider-specific) ---
+export const geminiApiKey = gmSignal('geminiApiKey', '')
+// '' = Google directly; otherwise a Cloudflare AI Gateway or reverse-proxy root, for networks that can't reach Google.
+export const geminiBaseUrl = gmSignal('geminiBaseUrl', '')
+// Typed freely; `geminiModels` caches the transcription models from /v1beta/models as a picker shortcut.
+export const geminiModel = gmSignal('geminiModel', GEMINI_DEFAULT_MODEL)
+export const geminiModels = gmSignal<SttModelOption[]>('geminiModels', [])
+// One BCP-47 code ('' = auto-detect with code-switching).
+export const geminiLanguage = gmSignal('geminiLanguage', '')
 
 // --- OpenAI-compatible batch STT (provider-specific) ---
 // Not realtime: audio is cut on silence and uploaded per segment. `openaiSttApiKey` stays empty for local servers; the start gate requires the base URL instead.

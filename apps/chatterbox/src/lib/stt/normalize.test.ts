@@ -9,10 +9,13 @@ import {
   isWhisperHallucination,
   parseDeepgramModels,
   parseDeepgramResult,
+  parseGeminiLiveMessage,
+  parseGeminiModels,
   parseGladiaResult,
   readStringField,
   reduceChunks,
   sonioxResultToChunks,
+  tidyGeminiText,
 } from './normalize'
 
 // Pure mappers: the seam that lets one STT consumer handle both providers.
@@ -180,6 +183,104 @@ describe('parseGladiaResult', () => {
     expect(parseGladiaResult({ type: 'transcript', data: { is_final: true } })).toBeNull()
     expect(parseGladiaResult({ type: 'transcript' })).toBeNull()
     expect(parseGladiaResult(null)).toBeNull()
+  })
+})
+
+describe('tidyGeminiText', () => {
+  // Spaced-out strings below are verbatim gemini-3.5-transcribe-live output.
+  test('removes spaces between Chinese/Japanese characters and punctuation', () => {
+    expect(tidyGeminiText('今 天 我 们 来 玩 一 个 新 游 戏 。')).toBe('今天我们来玩一个新游戏。')
+    expect(tidyGeminiText('感谢老板 送的')).toBe('感谢老板送的')
+    expect(tidyGeminiText('今日は 良い 天気 です')).toBe('今日は良い天気です')
+  })
+
+  test('keeps spaces next to Latin text and between Korean words', () => {
+    expect(tidyGeminiText('我觉得 OK 的')).toBe('我觉得 OK 的')
+    expect(tidyGeminiText('안녕하세요 여러분')).toBe(' 안녕하세요 여러분')
+  })
+
+  test('leads Latin and Hangul text with a space so consecutive finals stay apart', () => {
+    expect(tidyGeminiText('Hello everyone, welcome to the stream.')).toBe(' Hello everyone, welcome to the stream.')
+    expect(tidyGeminiText('3 个人')).toBe(' 3 个人')
+    expect(tidyGeminiText('欢迎')).toBe('欢迎')
+    expect(tidyGeminiText('')).toBe('')
+    // Finals are appended as-is by the tab, so check the joined result.
+    expect(['안녕하세요', '여러분'].map(tidyGeminiText).join('')).toBe(' 안녕하세요 여러분')
+    expect(['Hello there.', 'How are you?'].map(tidyGeminiText).join('')).toBe(' Hello there. How are you?')
+    expect(['大家好。', '今天玩游戏。'].map(tidyGeminiText).join('')).toBe('大家好。今天玩游戏。')
+  })
+})
+
+describe('parseGeminiLiveMessage', () => {
+  const none = { setupComplete: false, goAway: false, final: undefined, interim: undefined }
+
+  test('reads interim and final transcriptions', () => {
+    expect(parseGeminiLiveMessage({ serverContent: { interimInputTranscription: { text: '你好' } } })).toEqual({
+      ...none,
+      interim: '你好',
+    })
+    expect(parseGeminiLiveMessage({ serverContent: { inputTranscription: { text: '你好世界。' } } })).toEqual({
+      ...none,
+      final: '你好世界。',
+    })
+  })
+
+  test('tidies both texts', () => {
+    expect(
+      parseGeminiLiveMessage({ serverContent: { inputTranscription: { text: '今 天 我 们 来 玩 。' } } }).final
+    ).toBe('今天我们来玩。')
+    expect(parseGeminiLiveMessage({ serverContent: { interimInputTranscription: { text: 'Hello' } } }).interim).toBe(
+      ' Hello'
+    )
+  })
+
+  test('a text-less final still marks the utterance as finished', () => {
+    expect(parseGeminiLiveMessage({ serverContent: { inputTranscription: {} } }).final).toBe('')
+  })
+
+  test('reads setupComplete and goAway markers', () => {
+    expect(parseGeminiLiveMessage({ setupComplete: {} })).toEqual({ ...none, setupComplete: true })
+    expect(parseGeminiLiveMessage({ goAway: { timeLeft: '50s' } })).toEqual({ ...none, goAway: true })
+  })
+
+  test('ignores unrelated and malformed messages', () => {
+    expect(parseGeminiLiveMessage({ usageMetadata: { totalTokenCount: 3 } })).toEqual(none)
+    expect(
+      parseGeminiLiveMessage({ serverContent: { inputTranscription: 'x', interimInputTranscription: 1 } })
+    ).toEqual(none)
+    expect(parseGeminiLiveMessage(null)).toEqual(none)
+  })
+})
+
+describe('parseGeminiModels', () => {
+  const model = (name: string, methods: string[], displayName?: string) => ({
+    name: `models/${name}`,
+    displayName,
+    supportedGenerationMethods: methods,
+  })
+
+  test('keeps only Live transcription models, ids without the models/ prefix, sorted', () => {
+    const models = parseGeminiModels({
+      models: [
+        model('gemini-3.8-live', ['bidiGenerateContent'], 'Gemini 3.8 Live'),
+        model('gemini-3.5-transcribe-live', ['bidiGenerateContent'], 'Gemini 3.5 Transcribe Live'),
+        model('gemini-3.5-transcribe', ['generateContent', 'countTokens'], 'Gemini 3.5 Transcribe'),
+        model('gemini-3.5-live-translate-preview', ['bidiGenerateContent']),
+        model('gemini-4-transcribe-live', ['bidiGenerateContent']),
+        model('gemini-3.5-transcribe-live', ['bidiGenerateContent']),
+      ],
+    })
+    expect(models).toEqual([
+      { id: 'gemini-3.5-transcribe-live', name: 'Gemini 3.5 Transcribe Live' },
+      { id: 'gemini-4-transcribe-live' },
+    ])
+  })
+
+  test('returns [] for a missing/non-array models list or malformed entries', () => {
+    expect(parseGeminiModels({})).toEqual([])
+    expect(parseGeminiModels({ models: 'nope' })).toEqual([])
+    expect(parseGeminiModels({ models: [{ name: 'models/x-transcribe' }, null] })).toEqual([])
+    expect(parseGeminiModels(null)).toEqual([])
   })
 })
 

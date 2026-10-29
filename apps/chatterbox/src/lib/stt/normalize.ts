@@ -96,25 +96,81 @@ export function parseGladiaResult(value: unknown): { transcript: string; isFinal
   return { transcript, isFinal: readField(data, 'is_final') === true }
 }
 
-/** Parse Deepgram's `GET /v1/models` response into picker options; keeps only `streaming: true`, ids from `canonical_name` (fallback `name`), sorted + de-duped. */
-export function parseDeepgramModels(value: unknown): SttModelOption[] {
-  const stt = readField(value, 'stt')
-  if (!Array.isArray(stt)) return []
+// Han, kana and CJK/fullwidth punctuation; Hangul is left out since Korean spaces separate words.
+const CJK_CHAR = String.raw`[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\u30fc\uff00-\uffef]`
+const CJK_GAP = new RegExp(String.raw`(?<=${CJK_CHAR})\s+(?=${CJK_CHAR})`, 'gu')
+
+/** Drop the spaces Gemini sometimes emits between Chinese/Japanese characters (`今 天 我 们`), and lead space-separated scripts (Latin, Hangul) with a space so consecutive utterances don't glue. */
+export function tidyGeminiText(text: string): string {
+  const tidy = text.replace(CJK_GAP, '')
+  return /^[\p{Script=Latin}\p{Script=Hangul}\d]/u.test(tidy) ? ` ${tidy}` : tidy
+}
+
+/** The parts of a Gemini Live server message the transcription engine acts on; texts pass through {@link tidyGeminiText}. */
+export interface GeminiLiveMessage {
+  setupComplete: boolean
+  goAway: boolean
+  /** `inputTranscription`: authoritative text of a finished utterance; '' if the server sent none. */
+  final?: string
+  /** `interimInputTranscription`: the whole running hypothesis for the utterance in progress, not a delta. */
+  interim?: string
+}
+
+/** Parse a Gemini Live server message; unrelated or malformed messages parse to all-empty. */
+export function parseGeminiLiveMessage(value: unknown): GeminiLiveMessage {
+  const content = readField(value, 'serverContent')
+  const input = readField(content, 'inputTranscription')
+  const interim = readStringField(readField(content, 'interimInputTranscription'), 'text')
+  return {
+    setupComplete: readField(value, 'setupComplete') !== undefined,
+    goAway: readField(value, 'goAway') !== undefined,
+    final:
+      typeof input === 'object' && input !== null ? tidyGeminiText(readStringField(input, 'text') ?? '') : undefined,
+    interim: interim === undefined ? undefined : tidyGeminiText(interim),
+  }
+}
+
+/** Picker options from what `pick` returns per entry (`undefined` skips it): first id wins, `name` only if it differs, sorted by id. */
+function toModelOptions(
+  list: unknown,
+  pick: (entry: unknown) => { id?: string; name?: string } | undefined
+): SttModelOption[] {
+  if (!Array.isArray(list)) return []
   const models: SttModelOption[] = []
   const seen = new Set<string>()
-  for (const raw of stt) {
-    const entry: unknown = raw
-    if (readField(entry, 'streaming') !== true) continue
-    const id = (readStringField(entry, 'canonical_name') ?? readStringField(entry, 'name'))?.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    const model: SttModelOption = { id }
-    const name = readStringField(entry, 'name')?.trim()
-    if (name && name !== id) model.name = name
+  for (const entry of list) {
+    const picked = pick(entry)
+    if (!picked?.id || seen.has(picked.id)) continue
+    seen.add(picked.id)
+    const model: SttModelOption = { id: picked.id }
+    const name = picked.name?.trim()
+    if (name && name !== picked.id) model.name = name
     models.push(model)
   }
   models.sort((a, b) => a.id.localeCompare(b.id))
   return models
+}
+
+/** Parse Gemini's `GET /v1beta/models` response into picker options: Live transcription models only, ids without `models/`, sorted + de-duped. */
+export function parseGeminiModels(value: unknown): SttModelOption[] {
+  return toModelOptions(readField(value, 'models'), entry => {
+    const methods = readField(entry, 'supportedGenerationMethods')
+    if (!Array.isArray(methods) || !methods.includes('bidiGenerateContent')) return undefined
+    const id = readStringField(entry, 'name')
+      ?.trim()
+      .replace(/^models\//, '')
+    // The other Live models are voice agents and translators: they answer the speaker instead of transcribing.
+    return id?.includes('transcribe') ? { id, name: readStringField(entry, 'displayName') } : undefined
+  })
+}
+
+/** Parse Deepgram's `GET /v1/models` response into picker options; keeps only `streaming: true`, ids from `canonical_name` (fallback `name`), sorted + de-duped. */
+export function parseDeepgramModels(value: unknown): SttModelOption[] {
+  return toModelOptions(readField(value, 'stt'), entry => {
+    if (readField(entry, 'streaming') !== true) return undefined
+    const name = readStringField(entry, 'name')
+    return { id: (readStringField(entry, 'canonical_name') ?? name)?.trim(), name }
+  })
 }
 
 /**

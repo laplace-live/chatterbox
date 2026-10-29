@@ -1,13 +1,15 @@
-import { useSignal } from '@preact/signals'
+import { type Signal, useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
-import type { SttChunk, SttProvider, SttSessionParams } from '../lib/stt/types'
+import type { SttChunk, SttModelOption, SttProvider, SttSessionParams } from '../lib/stt/types'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
 import {
   DEEPGRAM_DEFAULT_MODEL,
   ELEVENLABS_DEFAULT_MODEL,
+  GEMINI_API_BASE,
+  GEMINI_DEFAULT_MODEL,
   GLADIA_DEFAULT_MODEL,
   OPENAI_STT_DEFAULT_BASE_URL,
   OPENAI_STT_DEFAULT_MODEL,
@@ -26,6 +28,11 @@ import {
   deepgramModels,
   elevenLabsApiKey,
   elevenLabsLanguageCode,
+  geminiApiKey,
+  geminiBaseUrl,
+  geminiLanguage,
+  geminiModel,
+  geminiModels,
   gladiaApiKey,
   gladiaLanguage,
   openaiSttApiKey,
@@ -48,6 +55,7 @@ import {
   sttWrapBrackets,
 } from '../lib/store'
 import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
+import { fetchGeminiModels } from '../lib/stt/gemini-models'
 import { reduceChunks } from '../lib/stt/normalize'
 import { useSttRecording } from '../lib/use-stt-recording'
 import { isHttpUrl, splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
@@ -71,28 +79,71 @@ const PROVIDER_META: Record<SttProvider, { label: string; signupUrl: string }> =
   elevenlabs: { label: 'ElevenLabs', signupUrl: 'https://elevenlabs.io/' },
   deepgram: { label: 'Deepgram', signupUrl: 'https://deepgram.com/' },
   gladia: { label: 'Gladia', signupUrl: 'https://gladia.io/' },
+  gemini: { label: 'Google AI Studio', signupUrl: 'https://aistudio.google.com/apikey' },
   'openai-compat': { label: '本地 / OpenAI 兼容', signupUrl: WHISPER_CPP_URL },
 }
 
 /** `PROVIDER_META` is keyed by every provider, so membership is the validity test. */
 const isSttProvider = (value: string): value is SttProvider => value in PROVIDER_META
 
+const API_KEY_SIGNALS: Record<SttProvider, Signal<string>> = {
+  soniox: sonioxApiKey,
+  elevenlabs: elevenLabsApiKey,
+  deepgram: deepgramApiKey,
+  gladia: gladiaApiKey,
+  gemini: geminiApiKey,
+  'openai-compat': openaiSttApiKey,
+}
+
+type LanguageOption = { value: string; label: string }
+
 // Single-value language pickers; Soniox uses multi-hint checkboxes instead.
-// Shared by ElevenLabs / Gladia / openai-compat ('' = auto-detect); Deepgram alone differs ('multi').
-const AUTO_DETECT_LANGUAGES: Array<{ value: string; label: string }> = [
+// '' = auto-detect, except Deepgram ('multi'); Gemini needs full BCP-47 tags.
+const AUTO_DETECT_LANGUAGES: LanguageOption[] = [
   { value: '', label: '自动检测' },
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
-const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
+const DEEPGRAM_LANGUAGES: LanguageOption[] = [
   { value: 'multi', label: '多语种' },
   { value: 'en', label: 'English' },
   { value: 'zh', label: '中文' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
 ]
+const GEMINI_LANGUAGES: LanguageOption[] = [
+  { value: '', label: '自动检测' },
+  { value: 'cmn-Hans-CN', label: '中文' },
+  { value: 'en-US', label: 'English' },
+  { value: 'ja-JP', label: '日本語' },
+  { value: 'ko-KR', label: '한국어' },
+]
+
+const LANGUAGE_SETTINGS: Record<
+  Exclude<SttProvider, 'soniox'>,
+  { signal: Signal<string>; options: LanguageOption[] }
+> = {
+  elevenlabs: { signal: elevenLabsLanguageCode, options: AUTO_DETECT_LANGUAGES },
+  deepgram: { signal: deepgramLanguage, options: DEEPGRAM_LANGUAGES },
+  gladia: { signal: gladiaLanguage, options: AUTO_DETECT_LANGUAGES },
+  gemini: { signal: geminiLanguage, options: GEMINI_LANGUAGES },
+  'openai-compat': { signal: openaiSttLanguage, options: AUTO_DETECT_LANGUAGES },
+}
+
+type ModelPicker = {
+  model: Signal<string>
+  models: Signal<SttModelOption[]>
+  fetch: (apiKey: string) => Promise<SttModelOption[]>
+}
+
+/** Providers with a model-list endpoint; the others have a fixed or free-text model. */
+const MODEL_PICKERS: Partial<Record<SttProvider, ModelPicker>> = {
+  soniox: { model: sonioxModel, models: sonioxModels, fetch: fetchSonioxModels },
+  deepgram: { model: deepgramModel, models: deepgramModels, fetch: fetchDeepgramModels },
+  gemini: { model: geminiModel, models: geminiModels, fetch: key => fetchGeminiModels(key, geminiBaseUrl.value) },
+}
 
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
@@ -102,7 +153,6 @@ export function SttTab() {
   const finalText = useSignal('')
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
-  // Model-list fetch status; only Soniox and Deepgram have a fetchable list.
   const modelFetching = useSignal(false)
   const modelFetchStatus = useSignal('')
   const modelFetchStatusColor = useSignal('#666')
@@ -315,16 +365,9 @@ export function SttTab() {
   const isSoniox = provider === 'soniox'
   // Batch provider: no realtime socket, no interim transcripts, key optional.
   const isOpenAiCompat = provider === 'openai-compat'
-  const apiKeySignal =
-    provider === 'soniox'
-      ? sonioxApiKey
-      : provider === 'elevenlabs'
-        ? elevenLabsApiKey
-        : provider === 'deepgram'
-          ? deepgramApiKey
-          : provider === 'openai-compat'
-            ? openaiSttApiKey
-            : gladiaApiKey
+  const isGemini = provider === 'gemini'
+  const apiKeySignal = API_KEY_SIGNALS[provider]
+  const modelPicker = MODEL_PICKERS[provider]
   const activeApiKey = apiKeySignal.value.trim()
   const activeBaseUrl = openaiSttBaseUrl.value.trim()
 
@@ -360,6 +403,14 @@ export function SttTab() {
         languageHints: gladiaLanguage.value ? [gladiaLanguage.value] : [],
       }
     }
+    if (provider === 'gemini') {
+      return {
+        ...base,
+        model: geminiModel.value.trim() || GEMINI_DEFAULT_MODEL,
+        languageHints: geminiLanguage.value ? [geminiLanguage.value] : [],
+        baseUrl: geminiBaseUrl.value.trim(),
+      }
+    }
     if (provider === 'openai-compat') {
       return {
         ...base,
@@ -386,28 +437,29 @@ export function SttTab() {
     onConnected: handleConnected,
   })
 
-  // Fetch the model list; only Soniox (fetch+CORS) and Deepgram (GM_xmlhttpRequest) expose one.
   const refreshModels = async () => {
-    if (modelFetching.value) return
+    if (!modelPicker || modelFetching.value) return
+    const key = apiKeySignal.value
+    const baseUrl = geminiBaseUrl.value
+    // A custom Gemini host's @connect prompt can hold the request while the key or address is edited; drop that outcome.
+    const stale = () => isGemini && (apiKeySignal.value !== key || geminiBaseUrl.value !== baseUrl)
     modelFetching.value = true
     modelFetchStatus.value = '正在获取模型列表…'
     modelFetchStatusColor.value = '#666'
     try {
-      let count = 0
-      if (provider === 'soniox') {
-        const models = await fetchSonioxModels(apiKeySignal.value)
-        sonioxModels.value = models
-        count = models.length
-      } else if (provider === 'deepgram') {
-        const models = await fetchDeepgramModels(apiKeySignal.value)
-        deepgramModels.value = models
-        count = models.length
-      } else {
+      const models = await modelPicker.fetch(key)
+      if (stale()) {
+        modelFetchStatus.value = ''
         return
       }
-      modelFetchStatus.value = `已获取 ${count} 个实时模型`
+      modelPicker.models.value = models
+      modelFetchStatus.value = `已获取 ${models.length} 个实时模型`
       modelFetchStatusColor.value = '#36a185'
     } catch (err) {
+      if (stale()) {
+        modelFetchStatus.value = ''
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
       modelFetchStatus.value = `获取失败：${msg}`
       modelFetchStatusColor.value = '#f44'
@@ -484,10 +536,7 @@ export function SttTab() {
   const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
-  // Model picker resolution for the fetch-list providers (Soniox / Deepgram).
-  const usesModelFetch = provider === 'soniox' || provider === 'deepgram'
-  const modelSignal = provider === 'deepgram' ? deepgramModel : sonioxModel
-  const modelOptions = (provider === 'deepgram' ? deepgramModels.value : sonioxModels.value).map(m => ({
+  const modelOptions = (modelPicker?.models.value ?? []).map(m => ({
     value: m.id,
     label: m.id,
     searchText: [m.id, m.name].filter(Boolean).join(' '),
@@ -538,6 +587,20 @@ export function SttTab() {
             />
           </div>
         )}
+        {isGemini && (
+          <div class={ROW_CLASS}>
+            <Label htmlFor='geminiBaseUrl'>接口地址</Label>
+            <Input
+              id='geminiBaseUrl'
+              className='min-w-37.5 flex-1'
+              placeholder={GEMINI_API_BASE}
+              value={geminiBaseUrl.value}
+              onInput={e => {
+                geminiBaseUrl.value = e.currentTarget.value
+              }}
+            />
+          </div>
+        )}
         <div class={ROW_CLASS}>
           <Input
             type={apiKeyVisible.value ? 'text' : 'password'}
@@ -574,7 +637,14 @@ export function SttTab() {
               <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
                 {PROVIDER_META[provider].label}
               </a>{' '}
-              注册账号并获取 API Key
+              {isGemini ? (
+                <>
+                  获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
+                  <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>，需关闭网关的身份验证）或反向代理地址
+                </>
+              ) : (
+                '注册账号并获取 API Key'
+              )}
             </>
           )}
         </div>
@@ -612,23 +682,39 @@ export function SttTab() {
           </Button>
         </div>
 
-        {usesModelFetch ? (
+        {modelPicker ? (
           <>
+            {isGemini && (
+              <div class={ROW_CLASS}>
+                <Label htmlFor='geminiModel'>模型</Label>
+                {/* Free text: the list below holds only transcription models, and new ones work without a script update. */}
+                <Input
+                  id='geminiModel'
+                  className='min-w-37.5 flex-1'
+                  placeholder={GEMINI_DEFAULT_MODEL}
+                  value={geminiModel.value}
+                  onInput={e => {
+                    geminiModel.value = e.currentTarget.value
+                  }}
+                />
+              </div>
+            )}
             <div class={ROW_CLASS}>
-              <Label htmlFor='sttModel'>模型</Label>
+              {!isGemini && <Label htmlFor='sttModel'>模型</Label>}
               <Combobox
                 id='sttModel'
                 className='min-w-37.5 flex-1'
-                value={modelSignal.value}
+                value={modelPicker.model.value}
                 options={modelOptions}
                 onChange={v => {
-                  modelSignal.value = v
+                  modelPicker.model.value = v
                 }}
-                placeholder='选择模型'
+                placeholder={isGemini ? '从模型列表选择' : '选择模型'}
                 searchPlaceholder='输入关键词过滤模型…'
                 emptyText='未找到匹配模型'
-                unloadedText='请点击「刷新」获取模型列表'
-                missingLabel={v => `${v}（已保存，不在当前列表中）`}
+                unloadedText={isGemini ? '可直接填写模型 ID，或点击「刷新」获取列表' : '请点击「刷新」获取模型列表'}
+                // Only once a list is loaded; before that `unloadedText` explains the empty picker.
+                missingLabel={modelOptions.length > 0 ? v => `${v}（已保存，不在当前列表中）` : undefined}
               />
               <Button
                 variant='outline'
@@ -689,23 +775,12 @@ export function SttTab() {
             <NativeSelect
               id='sttLanguage'
               className='min-w-25 pr-5'
-              value={
-                provider === 'deepgram'
-                  ? deepgramLanguage.value
-                  : provider === 'gladia'
-                    ? gladiaLanguage.value
-                    : provider === 'openai-compat'
-                      ? openaiSttLanguage.value
-                      : elevenLabsLanguageCode.value
-              }
+              value={LANGUAGE_SETTINGS[provider].signal.value}
               onChange={e => {
-                if (provider === 'deepgram') deepgramLanguage.value = e.currentTarget.value
-                else if (provider === 'gladia') gladiaLanguage.value = e.currentTarget.value
-                else if (provider === 'openai-compat') openaiSttLanguage.value = e.currentTarget.value
-                else elevenLabsLanguageCode.value = e.currentTarget.value
+                LANGUAGE_SETTINGS[provider].signal.value = e.currentTarget.value
               }}
             >
-              {(provider === 'deepgram' ? DEEPGRAM_LANGUAGES : AUTO_DETECT_LANGUAGES).map(l => (
+              {LANGUAGE_SETTINGS[provider].options.map(l => (
                 <option key={l.value || 'auto'} value={l.value}>
                   {l.label}
                 </option>
