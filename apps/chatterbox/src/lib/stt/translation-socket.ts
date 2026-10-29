@@ -88,7 +88,6 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
   const beginCapture = () => {
     if (settled || stopping || ready) return
     ready = true
-    clearTimeout(timer)
     void startPcmCapture({
       deviceId: config.deviceId,
       sampleRate: config.sampleRate,
@@ -103,6 +102,7 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
           return
         }
         capture = value
+        clearTimeout(timer)
         onEvent({ type: 'state', state: 'running' })
         onEvent({ type: 'connected' })
       })

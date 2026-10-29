@@ -637,99 +637,104 @@ export function SttTab() {
           </div>
           {isOpenAiCompat && <div class='text-ga6'>分段转录，延迟约 1–4 秒，无实时预览</div>}
         </div>
+      </fieldset>
 
-        <Separator />
+      <Separator />
 
-        <div class={'my-2'}>
-          <div class={HEADING_CLASS}>{PROVIDER_META[provider].label} API 设置</div>
-          {isOpenAiCompat && (
-            <div class={ROW_CLASS}>
-              <Label htmlFor='openaiSttBaseUrl'>服务地址</Label>
-              <Input
-                id='openaiSttBaseUrl'
-                className='min-w-37.5 flex-1'
-                placeholder={OPENAI_STT_DEFAULT_BASE_URL}
-                value={openaiSttBaseUrl.value}
-                onInput={e => {
-                  openaiSttBaseUrl.value = e.currentTarget.value
-                }}
-              />
-            </div>
-          )}
-          {isGemini && (
-            <div class={ROW_CLASS}>
-              <Label htmlFor='geminiBaseUrl'>接口地址</Label>
-              <Input
-                id='geminiBaseUrl'
-                className='min-w-37.5 flex-1'
-                placeholder={GEMINI_API_BASE}
-                value={geminiBaseUrl.value}
-                onInput={e => {
-                  geminiBaseUrl.value = e.currentTarget.value
-                }}
-              />
-            </div>
-          )}
+      <div class={'my-2'}>
+        <div class={HEADING_CLASS}>{PROVIDER_META[provider].label} API 设置</div>
+        {isOpenAiCompat && (
           <div class={ROW_CLASS}>
+            <Label htmlFor='openaiSttBaseUrl'>服务地址</Label>
             <Input
-              type={apiKeyVisible.value ? 'text' : 'password'}
-              placeholder={
-                isOpenAiCompat
-                  ? 'API Key（本地服务可留空）'
-                  : isElevenTranslation
-                    ? 'ElevenLabs Authorization Token'
-                    : `输入 ${PROVIDER_META[provider].label} API Key`
-              }
+              id='openaiSttBaseUrl'
+              disabled={state.value !== 'stopped'}
               className='min-w-37.5 flex-1'
-              value={apiKeySignal.value}
+              placeholder={OPENAI_STT_DEFAULT_BASE_URL}
+              value={openaiSttBaseUrl.value}
               onInput={e => {
-                apiKeySignal.value = e.currentTarget.value
+                openaiSttBaseUrl.value = e.currentTarget.value
               }}
             />
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => {
-                apiKeyVisible.value = !apiKeyVisible.value
+          </div>
+        )}
+        {isGemini && (
+          <div class={ROW_CLASS}>
+            <Label htmlFor='geminiBaseUrl'>接口地址</Label>
+            <Input
+              id='geminiBaseUrl'
+              disabled={state.value !== 'stopped'}
+              className='min-w-37.5 flex-1'
+              placeholder={GEMINI_API_BASE}
+              value={geminiBaseUrl.value}
+              onInput={e => {
+                geminiBaseUrl.value = e.currentTarget.value
               }}
-            >
-              {apiKeyVisible.value ? '隐藏' : '显示'}
-            </Button>
+            />
           </div>
-          <div class='my-2 text-ga6'>
-            {isOpenAiCompat ? (
-              <>
-                指向任意 OpenAI 兼容的语音识别服务。本地部署可参考{' '}
-                <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
-                  whisper.cpp
-                </a>
-                ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
-                <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
-              </>
-            ) : isElevenTranslation ? (
-              <>填写企业 Realtime Translation 的 Authorization Token；Scribe API Key 不适用于此处。</>
-            ) : (
-              <>
-                前往{' '}
-                <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
-                  {PROVIDER_META[provider].label}
-                </a>{' '}
-                {isGemini ? (
-                  <>
-                    获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
-                    <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>
-                    ，需关闭网关的身份验证）或反向代理地址
-                  </>
-                ) : (
-                  '注册账号并获取 API Key'
-                )}
-              </>
-            )}
-          </div>
+        )}
+        <div class={ROW_CLASS}>
+          <Input
+            type={apiKeyVisible.value ? 'text' : 'password'}
+            disabled={state.value !== 'stopped'}
+            placeholder={
+              isOpenAiCompat
+                ? 'API Key（本地服务可留空）'
+                : isElevenTranslation
+                  ? 'ElevenLabs Authorization Token'
+                  : `输入 ${PROVIDER_META[provider].label} API Key`
+            }
+            className='min-w-37.5 flex-1'
+            value={apiKeySignal.value}
+            onInput={e => {
+              apiKeySignal.value = e.currentTarget.value
+            }}
+          />
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              apiKeyVisible.value = !apiKeyVisible.value
+            }}
+          >
+            {apiKeyVisible.value ? '隐藏' : '显示'}
+          </Button>
         </div>
+        <div class='my-2 text-ga6'>
+          {isOpenAiCompat ? (
+            <>
+              指向任意 OpenAI 兼容的语音识别服务。本地部署可参考{' '}
+              <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
+                whisper.cpp
+              </a>
+              ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
+              <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
+            </>
+          ) : isElevenTranslation ? (
+            <>填写企业 Realtime Translation 的 Authorization Token；Scribe API Key 不适用于此处。</>
+          ) : (
+            <>
+              前往{' '}
+              <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
+                {PROVIDER_META[provider].label}
+              </a>{' '}
+              {isGemini ? (
+                <>
+                  获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
+                  <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>
+                  ，需关闭网关的身份验证）或反向代理地址
+                </>
+              ) : (
+                '注册账号并获取 API Key'
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
-        <Separator />
+      <Separator />
 
+      <fieldset disabled={state.value !== 'stopped'} class='m-0 min-w-0 border-0 p-0'>
         <div class={'my-2'}>
           <div class={HEADING_CLASS}>语音识别设置</div>
           <div class={ROW_CLASS}>

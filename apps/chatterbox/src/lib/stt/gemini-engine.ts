@@ -10,6 +10,7 @@ import { translationCapabilities } from './capabilities'
 import { buildGeminiLiveUrl } from './gemini-url'
 import { parseGeminiLiveMessage, parseGeminiTranslationMessage, readField } from './normalize'
 import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
+import { createTranslationText } from './translation-text'
 
 // Google's documented chunk size (~100 ms); the shared 256 ms default adds latency.
 const FRAME_SAMPLES = 1600
@@ -41,7 +42,6 @@ interface LiveConnection {
   readyAt: number
   /** Latest interim hypothesis that no final has replaced yet; '' between utterances. */
   interim: string
-  translationPending: boolean
   setupTimer: ReturnType<typeof setTimeout>
 }
 
@@ -57,6 +57,7 @@ function describeClose(event: CloseEvent, conn: LiveConnection): string {
 
 export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineEventHandler): SttEngine {
   const decoder = new TextDecoder()
+  const translationText = createTranslationText(onEvent)
   const backlog: Int16Array<ArrayBuffer>[] = []
   const model = (params.model.trim() || GEMINI_DEFAULT_MODEL).replace(/^models\//, '')
   const translating = translationCapabilities('gemini', model).mode === 'required'
@@ -158,6 +159,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const teardown = (): void => {
+    translationText.cancel()
     cancelDrain()
     cancelBreakWait()
     if (stopTimer) clearTimeout(stopTimer)
@@ -171,6 +173,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
 
   const finish = (): void => {
     if (settled) return
+    translationText.flush()
     settled = true
     teardown()
     onEvent({ type: 'state', state: 'stopped' })
@@ -223,6 +226,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const swap = (conn: LiveConnection): void => {
+    translationText.flush()
     retire(conn)
     connect()
   }
@@ -254,20 +258,11 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
         fail(new Error(result.error))
         return
       }
-      const chunks: SttChunk[] = []
-      if (result.original) chunks.push({ text: result.original, isFinal: true, kind: 'original' })
-      if (result.translation) {
-        chunks.push({ text: result.translation, isFinal: true, kind: 'translation' })
-        conn.translationPending = true
+      if (result.original) {
+        onEvent({ type: 'transcript', chunks: [{ text: result.original, isFinal: true, kind: 'original' }] })
       }
-      if (chunks.length > 0) onEvent({ type: 'transcript', chunks })
-      if (
-        conn.translationPending &&
-        (result.complete || (result.translation && /[.!?。！？][\s"'”’）)]*$/u.test(result.translation)))
-      ) {
-        conn.translationPending = false
-        onEvent({ type: 'endpoint' })
-      }
+      if (result.translation) translationText.push(result.translation)
+      if (result.complete) translationText.flush()
       if (result.complete) {
         if (afterDrain) completeDrain()
         else if (breakTimer) {
@@ -324,6 +319,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       return
     }
     // Dropped mid-session (e.g. the cap hit without a `goAway`): keep what it heard, reconnect while capture fills the backlog.
+    translationText.flush()
     commitInterim(conn)
     cancelDrain()
     cancelBreakWait()
@@ -339,7 +335,6 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
         opened: false,
         readyAt: 0,
         interim: '',
-        translationPending: false,
         setupTimer: setTimeout(() => {
           if (conn === current) fail(new Error('连接超时：服务器未响应'))
         }, SETUP_TIMEOUT_MS),

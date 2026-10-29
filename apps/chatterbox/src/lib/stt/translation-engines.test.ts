@@ -185,15 +185,48 @@ describe('OpenAI live translation', () => {
     socket.receive({ type: 'session.output_transcript.delta', delta: '好。' })
     socket.receive({ type: 'session.closed' })
     await done
-    expect(chunks(events)).toEqual([
+    expect(chunks(events).filter(chunk => chunk.isFinal)).toEqual([
       { text: 'Hello ', isFinal: true, kind: 'original' },
-      { text: '你', isFinal: true, kind: 'translation' },
-      { text: '好。', isFinal: true, kind: 'translation' },
+      { text: '你好。', isFinal: true, kind: 'translation' },
     ])
     expect(events.filter(e => e.type === 'endpoint')).toHaveLength(1)
     expect(events.filter(e => e.type === 'finished')).toHaveLength(1)
     expect(errors(events)).toEqual([])
     expect(socket.closed).toBe(1)
+  })
+
+  test.each([
+    ['3.', '14'],
+    ['example.', 'com'],
+  ])('does not flush a period inside split translated tokens: %s%s', async (first, rest) => {
+    const { engine, socket, events } = await ready('openai')
+    jest.useFakeTimers()
+    socket.receive({ type: 'session.output_transcript.delta', delta: first })
+    jest.advanceTimersByTime(400)
+    expect(events.filter(event => event.type === 'endpoint')).toHaveLength(0)
+    socket.receive({ type: 'session.output_transcript.delta', delta: rest })
+    expect(events.filter(event => event.type === 'endpoint')).toHaveLength(0)
+    expect(chunks(events).at(-1)).toEqual({ text: first + rest, isFinal: false, kind: 'translation' })
+    const stopped = engine.stop()
+    socket.receive({ type: 'session.closed' })
+    await stopped
+    expect(
+      chunks(events)
+        .filter(chunk => chunk.kind === 'translation' && chunk.isFinal)
+        .map(chunk => chunk.text)
+        .join('')
+    ).toBe(first + rest)
+  })
+
+  test('cancellation discards an unconfirmed translated tail without a late idle flush', async () => {
+    const { engine, socket, events } = await ready('openai')
+    jest.useFakeTimers()
+    socket.receive({ type: 'session.output_transcript.delta', delta: 'unfinished' })
+    engine.cancel()
+    const count = events.length
+    jest.advanceTimersByTime(10000)
+    expect(events).toHaveLength(count)
+    expect(events.some(event => event.type === 'endpoint')).toBe(false)
   })
 
   test('cancels credential requests without creating a socket', async () => {
@@ -367,4 +400,51 @@ describe('translation lifecycle', () => {
     expect(errors(events)).toEqual(['同传服务连接超时'])
     expect(harness.captureState.options).toBeNull()
   })
+})
+
+describe('microphone startup deadline', () => {
+  test.each(['openai', 'elevenlabs'] as const)(
+    '%s bounds pending permission and releases a late microphone',
+    async provider => {
+      jest.useFakeTimers()
+      const { harness, events } = await start(provider)
+      let release: () => void = () => {}
+      harness.captureState.gate = new Promise(resolve => {
+        release = resolve
+      })
+      if (provider === 'openai') {
+        harness.requests[0].respond(200, JSON.stringify({ value: 'ephemeral-token' }))
+        await tick()
+      }
+      const socket = sockets[0]
+      socket.open()
+      jest.advanceTimersByTime(10000)
+      socket.receive(provider === 'openai' ? { type: 'session.created' } : { message_type: 'session_started' })
+      jest.advanceTimersByTime(4999)
+      expect(errors(events)).toEqual([])
+      expect(events.some(e => e.type === 'connected')).toBe(false)
+      jest.advanceTimersByTime(1)
+      expect(errors(events)).toEqual(['同传服务连接超时'])
+      expect(socket.closed).toBe(1)
+      release()
+      await tick()
+      expect(harness.captureState.stops).toBe(1)
+      expect(events.some(e => e.type === 'connected')).toBe(false)
+      harness.captureState.options?.onFrame(new Int16Array(1600))
+      expect(socket.sent).toEqual([])
+    }
+  )
+
+  test.each(['openai', 'elevenlabs'] as const)(
+    '%s clears the startup deadline after microphone acquisition',
+    async provider => {
+      jest.useFakeTimers()
+      const { engine, socket, events } = await ready(provider)
+      jest.advanceTimersByTime(30000)
+      expect(errors(events)).toEqual([])
+      expect(events.filter(e => e.type === 'connected')).toHaveLength(1)
+      expect(socket.closed).toBe(0)
+      engine.cancel()
+    }
+  )
 })

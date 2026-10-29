@@ -672,24 +672,63 @@ describe('Gemini Live Translate', () => {
     engine.cancel()
   })
 
-  test('keeps original and translated deltas separate without inserting spaces into split words', async () => {
+  test('keeps original and translated text separate without inserting spaces into split words', async () => {
     const { engine, events } = start(translationParams)
     const [ws] = sockets
     await ready(ws)
     ws.receive({ serverContent: { inputTranscription: { text: 'Hello' }, outputTranscription: { text: 'Bon' } } })
     ws.receive({ serverContent: { outputTranscription: { text: 'jour le monde.' } } }, true)
     expect(events.slice(2)).toEqual([
-      {
-        type: 'transcript',
-        chunks: [
-          { text: 'Hello', isFinal: true, kind: 'original' },
-          { text: 'Bon', isFinal: true, kind: 'translation' },
-        ],
-      },
-      { type: 'transcript', chunks: [{ text: 'jour le monde.', isFinal: true, kind: 'translation' }] },
+      { type: 'transcript', chunks: [{ text: 'Hello', isFinal: true, kind: 'original' }] },
+      { type: 'transcript', chunks: [{ text: 'Bon', isFinal: false, kind: 'translation' }] },
+      { type: 'transcript', chunks: [{ text: 'Bonjour le monde.', isFinal: false, kind: 'translation' }] },
+    ])
+    ws.receive({ serverContent: { generationComplete: true } })
+    expect(events.slice(-2)).toEqual([
+      { type: 'transcript', chunks: [{ text: 'Bonjour le monde.', isFinal: true, kind: 'translation' }] },
       { type: 'endpoint' },
     ])
     engine.cancel()
+  })
+
+  test.each([
+    ['3.', '14'],
+    ['example.', 'com'],
+  ])('does not flush a period inside split translated tokens: %s%s', async (first, rest) => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { outputTranscription: { text: first } } })
+    jest.advanceTimersByTime(400)
+    expect(events.filter(event => event.type === 'endpoint')).toHaveLength(0)
+    ws.receive({ serverContent: { outputTranscription: { text: rest } } })
+    expect(events.filter(event => event.type === 'endpoint')).toHaveLength(0)
+    expect(events.filter(event => event.type === 'transcript').at(-1)).toEqual({
+      type: 'transcript',
+      chunks: [{ text: first + rest, isFinal: false, kind: 'translation' }],
+    })
+    ws.receive({ serverContent: { generationComplete: true } })
+    const text = events
+      .flatMap(event => (event.type === 'transcript' ? event.chunks : []))
+      .filter(chunk => chunk.kind === 'translation' && chunk.isFinal)
+      .map(chunk => chunk.text)
+      .join('')
+    expect(text).toBe(first + rest)
+    engine.cancel()
+  })
+
+  test('cancellation discards an unconfirmed translated tail without a late idle flush', async () => {
+    jest.useFakeTimers()
+    const { engine, events } = start(translationParams)
+    const [ws] = sockets
+    await ready(ws)
+    ws.receive({ serverContent: { outputTranscription: { text: 'unfinished' } } })
+    engine.cancel()
+    const count = events.length
+    jest.advanceTimersByTime(10000)
+    expect(events).toHaveLength(count)
+    expect(events.some(event => event.type === 'endpoint')).toBe(false)
   })
 
   test('stop waits past source transcription for delayed translated output', async () => {
@@ -724,8 +763,8 @@ describe('Gemini Live Translate', () => {
     expect(errorMessage(events)).toBe('等待 Gemini 同传最终结果超时')
     expect(events.some(e => e.type === 'finished')).toBe(false)
     expect(events.filter(e => e.type === 'transcript')).toEqual([
-      { type: 'transcript', chunks: [{ text: '迟到的译文', isFinal: true, kind: 'translation' }] },
-      { type: 'transcript', chunks: [{ text: '还在输出', isFinal: true, kind: 'translation' }] },
+      { type: 'transcript', chunks: [{ text: '迟到的译文', isFinal: false, kind: 'translation' }] },
+      { type: 'transcript', chunks: [{ text: '迟到的译文还在输出', isFinal: false, kind: 'translation' }] },
     ])
     expect(ws.closed).toBe(1)
   })
@@ -882,6 +921,7 @@ describe('Gemini Live Translate', () => {
     expect(errorMessage(events)).toBeUndefined()
     expect(events.filter(e => e.type === 'transcript')).toEqual([
       { type: 'transcript', chunks: [{ text: 'Last words', isFinal: true, kind: 'original' }] },
+      { type: 'transcript', chunks: [{ text: '最后的译文', isFinal: false, kind: 'translation' }] },
       { type: 'transcript', chunks: [{ text: '最后的译文', isFinal: true, kind: 'translation' }] },
     ])
   })

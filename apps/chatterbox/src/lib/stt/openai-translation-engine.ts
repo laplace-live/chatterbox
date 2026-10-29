@@ -5,10 +5,12 @@ import { gmFetch } from '../gm-fetch'
 import { int16ToBase64 } from './audio'
 import { readField, readStringField } from './normalize'
 import { createTranslationSocket } from './translation-socket'
+import { createTranslationText } from './translation-text'
 
 /** OpenAI continuous translation, authenticated with a short-lived browser credential. */
 export function createOpenAiTranslationEngine(params: SttSessionParams, onEvent: SttEngineEventHandler): SttEngine {
-  return createTranslationSocket(
+  const translationText = createTranslationText(onEvent)
+  const engine = createTranslationSocket(
     {
       deviceId: params.audioDeviceId,
       sampleRate: 24000,
@@ -60,12 +62,11 @@ export function createOpenAiTranslationEngine(params: SttSessionParams, onEvent:
         if (type === 'session.output_transcript.delta' || type === 'session.input_transcript.delta') {
           const text = readStringField(message, 'delta')
           if (!text) return
-          const translated = type === 'session.output_transcript.delta'
-          controls.emit({
-            type: 'transcript',
-            chunks: [{ text, isFinal: true, kind: translated ? 'translation' : 'original' }],
-          })
-          if (translated && /[.!?。！？]\s*$/.test(text)) controls.emit({ type: 'endpoint' })
+          if (type === 'session.output_transcript.delta') {
+            translationText.push(text)
+          } else {
+            controls.emit({ type: 'transcript', chunks: [{ text, isFinal: true, kind: 'original' }] })
+          }
         }
         if (type === 'error') {
           controls.fail(
@@ -74,6 +75,17 @@ export function createOpenAiTranslationEngine(params: SttSessionParams, onEvent:
         }
       },
     },
-    onEvent
+    event => {
+      if (event.type === 'finished') translationText.flush()
+      else if (event.type === 'error') translationText.cancel()
+      onEvent(event)
+    }
   )
+  return {
+    ...engine,
+    cancel: () => {
+      translationText.cancel()
+      engine.cancel()
+    },
+  }
 }
