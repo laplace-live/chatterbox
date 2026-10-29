@@ -1,5 +1,12 @@
 # laplace-chatterbox
 
+## 4.7.0
+
+### Minor Changes
+
+- 73b5e61: feat: Google AI Studio as a 同传 speech-to-text provider over the Gemini Live API, using an AI Studio API key; the model defaults to `gemini-3.5-transcribe-live` and can be typed or picked from the account's model list, an optional API address routes it through a Cloudflare AI Gateway (with gateway authentication off) or a reverse proxy where Google is unreachable, and the Live API's ~10-minute connection limit is bridged by reconnecting at a pause mid-session
+- 2c03e47: Add model-aware simultaneous translation to the shared 同传 tab: Gladia live translation, Gemini Live Translate, ElevenLabs enterprise Realtime Translation, OpenAI Realtime Translation, and English translation through compatible Whisper backends. Preserve transcription-only modes and existing Soniox settings, distinguish original transcripts from translated output, and send the selected output as danmaku.
+
 ## 4.6.1
 
 ### Patch Changes
