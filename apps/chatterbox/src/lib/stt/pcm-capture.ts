@@ -1,5 +1,5 @@
 /**
- * Shared mic → PCM16 capture for raw-WebSocket STT engines (ElevenLabs, Deepgram).
+ * Shared mic → PCM16 capture for every STT engine but Soniox, whose SDK records on its own.
  * AudioContext pinned to 16 kHz so the browser resamples; AudioWorklet blob-loaded
  * (userscript has no separate asset for `addModule()`). Targeted Bilibili pages
  * enforce no `script-src` CSP that would block the blob module.
@@ -10,8 +10,7 @@ import { floatTo16 } from './audio'
 /** Sample rate the capture is pinned to; also what engines report to the server. */
 export const PCM_SAMPLE_RATE = 16000
 
-// Default frame: 4096 samples ≈ 256 ms at 16 kHz.
-const FRAME_SAMPLES = 4096
+const DEFAULT_FRAME_SAMPLES = 4096
 
 // AudioWorklet source (runs in AudioWorkletGlobalScope, not the DOM): batch mono
 // input into a fixed Float32 buffer, post each full frame (transferred, zero-copy).
@@ -79,7 +78,7 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
     const node = new AudioWorkletNode(context, 'pcm-tap', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
-      processorOptions: { frameSize: opts.frameSamples ?? FRAME_SAMPLES },
+      processorOptions: { frameSize: opts.frameSamples ?? DEFAULT_FRAME_SAMPLES },
     })
     node.port.onmessage = (event: MessageEvent<Float32Array>) => {
       opts.onFrame(floatTo16(event.data))

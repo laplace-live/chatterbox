@@ -34,7 +34,7 @@ interface LiveConnection {
   readyAt: number
   /** An interim hypothesis is out that no final has replaced yet. */
   speaking: boolean
-  setupTimer: ReturnType<typeof setTimeout> | null
+  setupTimer: ReturnType<typeof setTimeout>
 }
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
@@ -82,7 +82,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
 
   /** Detach and close a connection we're done with, so its late events are ignored. */
   const retire = (conn: LiveConnection): void => {
-    if (conn.setupTimer) clearTimeout(conn.setupTimer)
+    clearTimeout(conn.setupTimer)
     conn.socket.onopen = null
     conn.socket.onmessage = null
     conn.socket.onclose = null
@@ -121,12 +121,16 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     drainTimer = setTimeout(completeDrain, FINAL_GRACE_MS)
   }
 
-  const teardown = (): void => {
-    cancelDrain()
-    cancelBreakWait()
+  const stopAudio = (): void => {
     capture?.stop()
     capture = null
     backlog.length = 0
+  }
+
+  const teardown = (): void => {
+    cancelDrain()
+    cancelBreakWait()
+    stopAudio()
     if (current) retire(current)
     current = null
   }
@@ -168,8 +172,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
 
   const handleReady = (conn: LiveConnection): void => {
     if (conn.readyAt > 0) return
-    if (conn.setupTimer) clearTimeout(conn.setupTimer)
-    conn.setupTimer = null
+    clearTimeout(conn.setupTimer)
     conn.readyAt = Date.now()
     for (let i = 0; i < LEAD_IN_FRAMES; i++) sendAudio(conn, SILENT_FRAME)
     for (const frame of backlog.splice(0)) sendAudio(conn, frame)
@@ -247,11 +250,16 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     try {
       const socket = new WebSocket(url)
       socket.binaryType = 'arraybuffer'
-      const conn: LiveConnection = { socket, opened: false, readyAt: 0, speaking: false, setupTimer: null }
+      const conn: LiveConnection = {
+        socket,
+        opened: false,
+        readyAt: 0,
+        speaking: false,
+        setupTimer: setTimeout(() => {
+          if (conn === current) fail(new Error('连接超时：服务器未响应'))
+        }, SETUP_TIMEOUT_MS),
+      }
       current = conn
-      conn.setupTimer = setTimeout(() => {
-        if (conn === current) fail(new Error('连接超时：服务器未响应'))
-      }, SETUP_TIMEOUT_MS)
       socket.onopen = () => {
         conn.opened = true
         send(conn, setupMessage)
@@ -280,9 +288,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     stopping = true
     cancelBreakWait()
     onEvent({ type: 'state', state: 'stopping' })
-    capture?.stop()
-    capture = null
-    backlog.length = 0
+    stopAudio()
     const conn = current
     if (!conn || conn.readyAt === 0) {
       finish()

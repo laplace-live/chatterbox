@@ -25,7 +25,7 @@ export const DEEPGRAM_API_BASE = 'https://api.deepgram.com/v1'
 /** Gladia realtime STT. No fixed WS URL: `POST ${GLADIA_API_BASE}/live` (header `x-gladia-key`) returns a one-shot WS URL with an embedded session token. Init endpoint sends permissive CORS, so a plain `fetch` works — no `GM_xmlhttpRequest`. */
 export const GLADIA_API_BASE = 'https://api.gladia.io/v2'
 
-/** Gemini API root for the Live transcription WebSocket. Blocked in mainland China, so the tab also accepts a Cloudflare AI Gateway or reverse-proxy root. */
+/** Gemini API root for the Live WebSocket and the model list. Blocked in mainland China, so the tab also accepts a Cloudflare AI Gateway or reverse-proxy root. */
 export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com'
 
 /** OpenAI-compatible batch STT root; `/audio/transcriptions` is appended. whisper.cpp serves `/inference` and has no OpenAI alias, so it must be started with `--request-path /v1 --inference-path /audio/transcriptions` to match this default. Host is user-supplied, hence the wildcard `@connect`. */

@@ -1,7 +1,7 @@
 import { type Signal, useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
-import type { SttChunk, SttProvider, SttSessionParams } from '../lib/stt/types'
+import type { SttChunk, SttModelOption, SttProvider, SttSessionParams } from '../lib/stt/types'
 
 import { tryAiEvasion } from '../lib/ai-evasion'
 import { ensureRoomId, getCsrfToken } from '../lib/api'
@@ -132,6 +132,19 @@ const LANGUAGE_SETTINGS: Record<
   'openai-compat': { signal: openaiSttLanguage, options: AUTO_DETECT_LANGUAGES },
 }
 
+type ModelPicker = {
+  model: Signal<string>
+  models: Signal<SttModelOption[]>
+  fetch: (apiKey: string) => Promise<SttModelOption[]>
+}
+
+/** Providers with a model-list endpoint; the others have a fixed or free-text model. */
+const MODEL_PICKERS: Partial<Record<SttProvider, ModelPicker>> = {
+  soniox: { model: sonioxModel, models: sonioxModels, fetch: fetchSonioxModels },
+  deepgram: { model: deepgramModel, models: deepgramModels, fetch: fetchDeepgramModels },
+  gemini: { model: geminiModel, models: geminiModels, fetch: key => fetchGeminiModels(key, geminiBaseUrl.value) },
+}
+
 export function SttTab() {
   const apiKeyVisible = useSignal(false)
   const state = useSignal<'stopped' | 'starting' | 'running' | 'stopping'>('stopped')
@@ -140,7 +153,6 @@ export function SttTab() {
   const finalText = useSignal('')
   const nonFinalText = useSignal('')
   const audioDevices = useSignal<MediaDeviceInfo[]>([])
-  // Model-list fetch status; only Soniox and Deepgram have a fetchable list.
   const modelFetching = useSignal(false)
   const modelFetchStatus = useSignal('')
   const modelFetchStatusColor = useSignal('#666')
@@ -355,6 +367,7 @@ export function SttTab() {
   const isOpenAiCompat = provider === 'openai-compat'
   const isGemini = provider === 'gemini'
   const apiKeySignal = API_KEY_SIGNALS[provider]
+  const modelPicker = MODEL_PICKERS[provider]
   const activeApiKey = apiKeySignal.value.trim()
   const activeBaseUrl = openaiSttBaseUrl.value.trim()
 
@@ -424,38 +437,23 @@ export function SttTab() {
     onConnected: handleConnected,
   })
 
-  // Fetch the model list; Soniox (fetch+CORS), Deepgram and Gemini (GM_xmlhttpRequest) expose one.
   const refreshModels = async () => {
-    if (modelFetching.value) return
+    if (!modelPicker || modelFetching.value) return
     const key = apiKeySignal.value
     const baseUrl = geminiBaseUrl.value
     // A custom Gemini host's @connect prompt can hold the request while the key or address is edited; drop that outcome.
-    const stale = () => provider === 'gemini' && (apiKeySignal.value !== key || geminiBaseUrl.value !== baseUrl)
+    const stale = () => isGemini && (apiKeySignal.value !== key || geminiBaseUrl.value !== baseUrl)
     modelFetching.value = true
     modelFetchStatus.value = '正在获取模型列表…'
     modelFetchStatusColor.value = '#666'
     try {
-      let count = 0
-      if (provider === 'soniox') {
-        const models = await fetchSonioxModels(apiKeySignal.value)
-        sonioxModels.value = models
-        count = models.length
-      } else if (provider === 'deepgram') {
-        const models = await fetchDeepgramModels(apiKeySignal.value)
-        deepgramModels.value = models
-        count = models.length
-      } else if (provider === 'gemini') {
-        const models = await fetchGeminiModels(key, baseUrl)
-        if (stale()) {
-          modelFetchStatus.value = ''
-          return
-        }
-        geminiModels.value = models
-        count = models.length
-      } else {
+      const models = await modelPicker.fetch(key)
+      if (stale()) {
+        modelFetchStatus.value = ''
         return
       }
-      modelFetchStatus.value = `已获取 ${count} 个实时模型`
+      modelPicker.models.value = models
+      modelFetchStatus.value = `已获取 ${models.length} 个实时模型`
       modelFetchStatusColor.value = '#36a185'
     } catch (err) {
       if (stale()) {
@@ -538,11 +536,7 @@ export function SttTab() {
   const savedDeviceId = sttAudioDeviceId.value
   const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
-  // Model picker resolution for the fetch-list providers (Soniox / Deepgram / Gemini).
-  const usesModelFetch = provider === 'soniox' || provider === 'deepgram' || isGemini
-  const modelSignal = provider === 'deepgram' ? deepgramModel : isGemini ? geminiModel : sonioxModel
-  const modelList = provider === 'deepgram' ? deepgramModels : isGemini ? geminiModels : sonioxModels
-  const modelOptions = modelList.value.map(m => ({
+  const modelOptions = (modelPicker?.models.value ?? []).map(m => ({
     value: m.id,
     label: m.id,
     searchText: [m.id, m.name].filter(Boolean).join(' '),
@@ -637,22 +631,20 @@ export function SttTab() {
               ，无需 API Key；填写云端地址（如 Groq、OpenAI）时才需要。whisper-server 需以{' '}
               <code>--request-path /v1 --inference-path /audio/transcriptions</code> 参数启动以匹配默认地址
             </>
-          ) : isGemini ? (
-            <>
-              前往{' '}
-              <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
-                {PROVIDER_META[provider].label}
-              </a>{' '}
-              获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
-              <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>，需关闭网关的身份验证）或反向代理地址
-            </>
           ) : (
             <>
               前往{' '}
               <a href={PROVIDER_META[provider].signupUrl} target='_blank' class='text-link' rel='noopener'>
                 {PROVIDER_META[provider].label}
               </a>{' '}
-              注册账号并获取 API Key
+              {isGemini ? (
+                <>
+                  获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
+                  <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>，需关闭网关的身份验证）或反向代理地址
+                </>
+              ) : (
+                '注册账号并获取 API Key'
+              )}
             </>
           )}
         </div>
@@ -690,7 +682,7 @@ export function SttTab() {
           </Button>
         </div>
 
-        {usesModelFetch ? (
+        {modelPicker ? (
           <>
             {isGemini && (
               <div class={ROW_CLASS}>
@@ -712,10 +704,10 @@ export function SttTab() {
               <Combobox
                 id='sttModel'
                 className='min-w-37.5 flex-1'
-                value={modelSignal.value}
+                value={modelPicker.model.value}
                 options={modelOptions}
                 onChange={v => {
-                  modelSignal.value = v
+                  modelPicker.model.value = v
                 }}
                 placeholder={isGemini ? '从模型列表选择' : '选择模型'}
                 searchPlaceholder='输入关键词过滤模型…'

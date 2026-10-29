@@ -7,16 +7,10 @@ const MODELS_PATH = '/v1beta/models'
 const GOOGLE_HOST = new URL(GEMINI_API_BASE).hostname
 const CF_GATEWAY_HOST = 'gateway.ai.cloudflare.com'
 // `/v1/{account_id}/{gateway}`, then whatever provider route was copied along (e.g. `/google-ai-studio/v1beta/openai`).
-const CF_GATEWAY_PATH = /^\/v1\/([^/]+)\/([^/]+)/
+const CF_GATEWAY_PATH = /^\/v1\/[^/]+\/[^/]+/
 
-interface ApiRoot {
-  url: URL
-  secure: boolean
-  /** `/v1/{account_id}/{gateway}` for a Cloudflare AI Gateway root. */
-  gateway: string | null
-}
-
-function resolveRoot(baseUrl: string): ApiRoot {
+/** Parse the API root onto the `scheme` family, keeping its TLS; `gateway` is set for a Cloudflare AI Gateway root. */
+function resolveRoot(baseUrl: string, scheme: 'http' | 'ws'): { url: URL; gateway: string | undefined } {
   let url: URL
   try {
     url = new URL(baseUrl.trim() || GEMINI_API_BASE)
@@ -24,13 +18,11 @@ function resolveRoot(baseUrl: string): ApiRoot {
     throw new Error('接口地址无效')
   }
   if (!/^(https?|wss?):$/.test(url.protocol)) throw new Error('接口地址须以 https:// 或 http:// 开头')
+  const secure = url.protocol === 'https:' || url.protocol === 'wss:'
+  url.protocol = secure ? `${scheme}s:` : `${scheme}:`
   url.hash = ''
-  const match = url.hostname === CF_GATEWAY_HOST ? CF_GATEWAY_PATH.exec(url.pathname) : null
-  return {
-    url,
-    secure: url.protocol === 'https:' || url.protocol === 'wss:',
-    gateway: match ? `/v1/${match[1]}/${match[2]}` : null,
-  }
+  const gateway = url.hostname === CF_GATEWAY_HOST ? CF_GATEWAY_PATH.exec(url.pathname)?.[0] : undefined
+  return { url, gateway }
 }
 
 /** `path` under a proxy root; on Google's own host any pasted path is dropped. */
@@ -43,8 +35,7 @@ const apiPath = (url: URL, path: string): string =>
  * @throws {Error} when `baseUrl` isn't an http(s)/ws(s) URL.
  */
 export function buildGeminiLiveUrl(baseUrl: string, apiKey: string): string {
-  const { url, secure, gateway } = resolveRoot(baseUrl)
-  url.protocol = secure ? 'wss:' : 'ws:'
+  const { url, gateway } = resolveRoot(baseUrl, 'ws')
   if (gateway) {
     // AI Gateway's realtime route for Google AI Studio takes the key as `api_key`, not `key`.
     url.pathname = `${gateway}/google`
@@ -61,8 +52,7 @@ export function buildGeminiLiveUrl(baseUrl: string, apiKey: string): string {
  * @throws {Error} when `baseUrl` isn't an http(s)/ws(s) URL.
  */
 export function buildGeminiModelsUrl(baseUrl: string): string {
-  const { url, secure, gateway } = resolveRoot(baseUrl)
-  url.protocol = secure ? 'https:' : 'http:'
+  const { url, gateway } = resolveRoot(baseUrl, 'http')
   url.pathname = gateway ? `${gateway}/google-ai-studio${MODELS_PATH}` : apiPath(url, MODELS_PATH)
   // Google caps a page at 1000, far above the whole catalog, so one request lists everything.
   url.searchParams.set('pageSize', '1000')
