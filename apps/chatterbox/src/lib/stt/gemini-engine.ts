@@ -13,6 +13,7 @@ import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture
 
 // Google's documented chunk size (~100 ms); the shared 256 ms default adds latency.
 const FRAME_SAMPLES = 1600
+const FRAME_MS = (FRAME_SAMPLES / PCM_SAMPLE_RATE) * 1000
 const AUDIO_MIME_TYPE = `audio/pcm;rate=${PCM_SAMPLE_RATE}`
 // Speech in a stream's first second is dropped (live-tested: 1 s of silence first saves it, 0.5 s doesn't).
 const LEAD_IN_FRAMES = PCM_SAMPLE_RATE / FRAME_SAMPLES
@@ -20,20 +21,22 @@ const SILENT_FRAME = new Int16Array(FRAME_SAMPLES)
 const SETUP_TIMEOUT_MS = 15_000
 // `goAway` comes ~50 s ahead; wait this long for the utterance to end on its own before cutting it short.
 const NATURAL_BREAK_WAIT_MS = 20_000
-// How long a stop or swap waits for the final of an utterance cut short by `audioStreamEnd`.
+// How long a stop or forced swap waits for a final after `audioStreamEnd`; past it, the last interim stands in.
 const FINAL_GRACE_MS = 2000
+// The same wait with no interim out yet, for speech that started too recently to have one.
+const QUIET_GRACE_MS = 1000
 // Only a connection that served this long is reconnected after an unexpected close, so a persistent fault can't loop.
 const MIN_RETRY_LIFETIME_MS = 30_000
-// ~10 s of audio held while a replacement connection sets up; the oldest frames drop first.
-const MAX_BACKLOG_FRAMES = 100
+// Audio held through a drain plus the longest setup; a replacement slower than that fails on its setup timeout instead.
+const MAX_BACKLOG_FRAMES = Math.ceil((FINAL_GRACE_MS + SETUP_TIMEOUT_MS) / FRAME_MS)
 
 interface LiveConnection {
   socket: WebSocket
   opened: boolean
   /** `Date.now()` at `setupComplete`; 0 until then. */
   readyAt: number
-  /** An interim hypothesis is out that no final has replaced yet. */
-  speaking: boolean
+  /** Latest interim hypothesis that no final has replaced yet; '' between utterances. */
+  interim: string
   setupTimer: ReturnType<typeof setTimeout>
 }
 
@@ -110,27 +113,33 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     breakTimer = null
   }
 
-  /** End the open utterance with `audioStreamEnd`, then run `next` once its final lands or the grace period lapses. */
-  const drain = (conn: LiveConnection, next: () => void): void => {
-    if (!conn.speaking) {
-      next()
-      return
-    }
-    send(conn, { realtimeInput: { audioStreamEnd: true } })
-    afterDrain = next
-    drainTimer = setTimeout(completeDrain, FINAL_GRACE_MS)
+  /** Deliver a connection's open utterance as final once its own final can no longer arrive. */
+  const commitInterim = (conn: LiveConnection): void => {
+    if (!conn.interim) return
+    onEvent({ type: 'transcript', chunks: [{ text: conn.interim, isFinal: true, kind: 'original' }] })
+    onEvent({ type: 'endpoint' })
+    conn.interim = ''
   }
 
-  const stopAudio = (): void => {
-    capture?.stop()
-    capture = null
-    backlog.length = 0
+  /** End the stream with `audioStreamEnd`, then run `next` once a final lands or the grace period lapses. */
+  const drain = (conn: LiveConnection, next: () => void): void => {
+    send(conn, { realtimeInput: { audioStreamEnd: true } })
+    afterDrain = next
+    drainTimer = setTimeout(
+      () => {
+        commitInterim(conn)
+        completeDrain()
+      },
+      conn.interim ? FINAL_GRACE_MS : QUIET_GRACE_MS
+    )
   }
 
   const teardown = (): void => {
     cancelDrain()
     cancelBreakWait()
-    stopAudio()
+    capture?.stop()
+    capture = null
+    backlog.length = 0
     if (current) retire(current)
     current = null
   }
@@ -176,6 +185,10 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     conn.readyAt = Date.now()
     for (let i = 0; i < LEAD_IN_FRAMES; i++) sendAudio(conn, SILENT_FRAME)
     for (const frame of backlog.splice(0)) sendAudio(conn, frame)
+    if (stopping) {
+      drain(conn, finish)
+      return
+    }
     if (connected) return
     connected = true
     onEvent({ type: 'state', state: 'running' })
@@ -212,17 +225,17 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
 
     const chunks: SttChunk[] = []
     if (message.final !== undefined) {
-      conn.speaking = false
+      conn.interim = ''
       if (message.final) chunks.push({ text: message.final, isFinal: true, kind: 'original' })
     }
     if (message.interim) {
-      conn.speaking = true
+      conn.interim = message.interim
       chunks.push({ text: message.interim, isFinal: false, kind: 'original' })
     }
     if (chunks.length > 0) onEvent({ type: 'transcript', chunks })
     if (message.final) onEvent({ type: 'endpoint' })
-    // Between utterances (immediately, for a `goAway` that arrives in silence): run any pending swap or drain.
-    if (conn.speaking) return
+    // Only a final that leaves nothing open is a pause: speech too new for an interim may already be on the socket.
+    if (message.final === undefined || conn.interim) return
     if (breakTimer) {
       cancelBreakWait()
       swap(conn)
@@ -233,6 +246,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   const handleClose = (conn: LiveConnection, event: CloseEvent): void => {
     if (conn !== current || settled) return
     if (stopping) {
+      commitInterim(conn)
       finish()
       return
     }
@@ -240,7 +254,8 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
       fail(new Error(describeClose(event, conn)))
       return
     }
-    // Dropped mid-session (e.g. the cap hit without a `goAway`): reconnect while capture fills the backlog.
+    // Dropped mid-session (e.g. the cap hit without a `goAway`): keep what it heard, reconnect while capture fills the backlog.
+    commitInterim(conn)
     cancelDrain()
     cancelBreakWait()
     connect()
@@ -254,7 +269,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
         socket,
         opened: false,
         readyAt: 0,
-        speaking: false,
+        interim: '',
         setupTimer: setTimeout(() => {
           if (conn === current) fail(new Error('连接超时：服务器未响应'))
         }, SETUP_TIMEOUT_MS),
@@ -288,8 +303,11 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     stopping = true
     cancelBreakWait()
     onEvent({ type: 'state', state: 'stopping' })
-    stopAudio()
+    capture?.stop()
+    capture = null
     const conn = current
+    // A replacement still setting up gets the buffered audio first (`handleReady`), then drains.
+    if (conn && conn.readyAt === 0 && backlog.length > 0) return
     if (!conn || conn.readyAt === 0) {
       finish()
       return

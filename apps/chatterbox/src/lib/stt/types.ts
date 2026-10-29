@@ -14,7 +14,7 @@ export interface SttModelOption {
 
 /**
  * Recording lifecycle state: superset of Soniox's own `RecordingState` plus
- * `running` (synthetic, emitted by the ElevenLabs engine on socket open). Local
+ * `running` (synthetic, emitted by the raw-WebSocket engines once audio can stream). Local
  * union so no provider package leaks into the shared contract.
  */
 export type SttRecordingState =
