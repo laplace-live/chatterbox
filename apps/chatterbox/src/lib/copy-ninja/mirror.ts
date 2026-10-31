@@ -6,8 +6,8 @@ import { describeLlmGap, polishWithLlm } from '../llm-tasks'
 import { appendLog } from '../log'
 import { applyReplacements } from '../replacement'
 import { enqueueDanmaku, SendPriority } from '../send-queue'
-import { cachedRoomId, maxLength } from '../store'
-import { abortableSleep, formatDanmakuError, processMessages } from '../utils'
+import { cachedRoomId, danmakuMaxUnits } from '../store'
+import { abortableSleep, formatDanmakuError, processDanmakuMessages } from '../utils'
 import { pickDelayMs, planCopy, shouldFollow } from './decisions'
 import {
   copyNinjaDelayMaxSec,
@@ -171,7 +171,7 @@ async function copyAction({ msg: { eventId, action }, plannedAt, report, rewrite
     text = rewritten.text
     appendLog(`✨ ${label} 感知忍術：${action.text} → ${text}`)
   }
-  const segments = isEmoticonUnique(text) ? [text] : processMessages(text, maxLength.value)
+  const segments = isEmoticonUnique(text) ? [text] : processDanmakuMessages(text, danmakuMaxUnits.value)
   const stillWanted = () => !signal.aborted && !copyNinjaPaused.value && Date.now() - plannedAt <= STALE_MS
   for (const segment of segments) {
     const result = await enqueueDanmaku(segment, action.roomId, csrfToken, SendPriority.COPY, 'copy', stillWanted)

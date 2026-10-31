@@ -3,21 +3,25 @@ import { appendLog } from '../lib/log'
 import { cancelLoop } from '../lib/loop'
 import {
   activeTemplateIndex,
+  autoSendMaxLength,
   autoSendPanelOpen,
   autoSendYolo,
   cachedRoomId,
+  danmakuMaxChars,
+  danmakuMaxUnits,
+  effectiveAutoSendMaxUnits,
   llmActivePromptAutoSend,
   llmPromptsAutoSend,
-  maxLength,
   msgSendInterval,
   msgTemplates,
   persistSendState,
   randomChar,
   randomColor,
   randomInterval,
+  roomDanmakuChars,
   sendMsg,
 } from '../lib/store'
-import { getGraphemes, processMessages, trimText } from '../lib/utils'
+import { getGraphemes, processDanmakuMessages, trimText } from '../lib/utils'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -37,7 +41,7 @@ export function AutoSendControls() {
   const templates = msgTemplates.value
   const idx = activeTemplateIndex.value
   const currentTemplate = templates[idx] ?? ''
-  const msgCount = processMessages(currentTemplate, maxLength.value).length
+  const msgCount = processDanmakuMessages(currentTemplate, effectiveAutoSendMaxUnits.value).length
 
   const toggleSend = () => {
     if (!sendMsg.value) {
@@ -170,12 +174,20 @@ export function AutoSendControls() {
               <Input
                 type='number'
                 min='1'
+                max={roomDanmakuChars.value ?? undefined}
                 autocomplete='off'
                 className='w-16'
-                value={maxLength.value}
+                placeholder={String(danmakuMaxChars.value)}
+                title={`留空自动使用当前直播间上限（${danmakuMaxChars.value} 字 / ${danmakuMaxUnits.value} 半角字符）`}
+                value={autoSendMaxLength.value ?? ''}
                 onInput={e => {
-                  const v = parseInt(e.currentTarget.value, 10) || 1
-                  maxLength.value = Math.max(1, v)
+                  const raw = e.currentTarget.value.trim()
+                  if (!raw) {
+                    autoSendMaxLength.value = null
+                    return
+                  }
+                  const v = Number.parseInt(raw, 10)
+                  if (Number.isFinite(v)) autoSendMaxLength.value = Math.max(1, v)
                 }}
               />
               字自动分段

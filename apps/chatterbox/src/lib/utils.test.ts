@@ -10,11 +10,14 @@ import {
   extractOpusPubDate,
   formatCodePoints,
   formatDanmakuError,
+  getDanmakuUnits,
   insertRandomChar,
   isHttpUrl,
   parseCustomChar,
+  processDanmakuMessages,
   processMessages,
   resolveInvisibleChar,
+  trimDanmakuByUnits,
 } from './utils'
 
 /** Derives the BV id from bilibili video URLs; `undefined` for non-BV paths (legacy `av`, case-sensitive prefix). */
@@ -341,5 +344,42 @@ describe('insertRandomChar', () => {
     // A fully-bracketed string leaves only the two outer slots; avoiding one still yields the other.
     const { index } = insertRandomChar('[ab]', '~', 0)
     expect(index).toBe(4)
+  })
+})
+
+/** Matches Bilibili's `utilDanmuLength`: printable ASCII = 1, BMP non-ASCII = 2, astral surrogate pair = 4. */
+describe('getDanmakuUnits & trimDanmakuByUnits', () => {
+  test('weights ASCII, CJK, invisible chars, and emojis identically to Bilibili utilDanmuLength', () => {
+    expect(getDanmakuUnits('a ~')).toBe(3)
+    expect(getDanmakuUnits('你好')).toBe(4)
+    expect(getDanmakuUnits('【】')).toBe(4)
+    expect(getDanmakuUnits('\u200B')).toBe(2)
+    expect(getDanmakuUnits('😀')).toBe(4)
+    expect(getDanmakuUnits('👍🏽')).toBe(8)
+  })
+
+  test('fits 40 CJK chars or 80 ASCII chars or 20 emojis into 80 units and splits past 80', () => {
+    expect(trimDanmakuByUnits('好'.repeat(40), 80)).toEqual(['好'.repeat(40)])
+    expect(trimDanmakuByUnits('好'.repeat(41), 80)).toEqual(['好'.repeat(40), '好'])
+    expect(trimDanmakuByUnits('a'.repeat(80), 80)).toEqual(['a'.repeat(80)])
+    expect(trimDanmakuByUnits('a'.repeat(81), 80)).toEqual(['a'.repeat(80), 'a'])
+    expect(trimDanmakuByUnits(`${'a'.repeat(79)}好`, 80)).toEqual(['a'.repeat(79), '好'])
+    expect(trimDanmakuByUnits('😀'.repeat(20), 80)).toEqual(['😀'.repeat(20)])
+    expect(trimDanmakuByUnits('😀'.repeat(21), 80)).toEqual(['😀'.repeat(20), '😀'])
+  })
+
+  test('keeps multi-codepoint grapheme clusters intact unless a single cluster exceeds maxUnits', () => {
+    // 10 * 8 = 80 units; 11th skin-tone emoji moves whole to chunk 2.
+    expect(trimDanmakuByUnits('👍🏽'.repeat(11), 80)).toEqual(['👍🏽'.repeat(10), '👍🏽'])
+    // Oversized ZWJ cluster (22 units) falls back to code-point cuts when maxUnits = 10.
+    const chunks = trimDanmakuByUnits('👨‍👩‍👧‍👦', 10)
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) expect(getDanmakuUnits(chunk)).toBeLessThanOrEqual(10)
+  })
+
+  test('processDanmakuMessages accounts for inserted invisible char (2 units) before splitting', () => {
+    const out = processDanmakuMessages('好'.repeat(40), 80, '\u200B')
+    expect(out).toHaveLength(2)
+    for (const seg of out) expect(getDanmakuUnits(seg)).toBeLessThanOrEqual(80)
   })
 })

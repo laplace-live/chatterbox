@@ -43,6 +43,57 @@ export function trimText(text: string, maxLength: number): string[] {
 }
 
 /**
+ * Bilibili's `utilDanmuLength` weight: printable ASCII (`0x20..0x7E`) = 1, BMP non-ASCII = 2, astral surrogate pair = 4.
+ * Matched against `getInfoByUser`'s `data.property.danmu.length` (`80` = 40 CJK chars / 80 ASCII chars / 20 emojis).
+ */
+export function getDanmakuUnits(text: string): number {
+  let units = 0
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0
+    units += cp >= 0x20 && cp <= 0x7e ? 1 : 2 * ch.length
+  }
+  return units
+}
+
+/**
+ * Splits `text` into chunks whose {@link getDanmakuUnits} stay within `maxUnits`, keeping grapheme clusters intact
+ * unless a single cluster itself exceeds `maxUnits` (fallen back to code-point cuts).
+ */
+export function trimDanmakuByUnits(text: string, maxUnits: number): string[] {
+  if (!text || maxUnits <= 0) return [text]
+  if (getDanmakuUnits(text) <= maxUnits) return [text]
+
+  const parts: string[] = []
+  let current: string[] = []
+  let currentUnits = 0
+
+  const pushPiece = (piece: string, units: number) => {
+    if (current.length > 0 && currentUnits + units > maxUnits) {
+      parts.push(current.join(''))
+      current = [piece]
+      currentUnits = units
+    } else {
+      current.push(piece)
+      currentUnits += units
+    }
+  }
+
+  for (const grapheme of getGraphemes(text)) {
+    const units = getDanmakuUnits(grapheme)
+    if (units <= maxUnits) {
+      pushPiece(grapheme, units)
+    } else {
+      for (const cp of grapheme) {
+        pushPiece(cp, getDanmakuUnits(cp))
+      }
+    }
+  }
+
+  if (current.length > 0) parts.push(current.join(''))
+  return parts
+}
+
+/**
  * Strips trailing punctuation (for live captions).
  */
 export function stripTrailingPunctuation(text: string): string {
@@ -391,6 +442,20 @@ export function processMessages(text: string, maxLength: number, randomChar?: st
         l = addRandomCharacter(l, randomChar)
       }
       return trimText(l, maxLength)
+    })
+    .filter(line => line?.trim())
+}
+
+/** Splits lines, optionally inserts `randomChar` into each, and chunks each line within `maxUnits` Bilibili half-width units. */
+export function processDanmakuMessages(text: string, maxUnits: number, randomChar?: string): string[] {
+  return text
+    .split('\n')
+    .flatMap(line => {
+      let l = line
+      if (randomChar && l?.trim()) {
+        l = addRandomCharacter(l, randomChar)
+      }
+      return trimDanmakuByUnits(l, maxUnits)
     })
     .filter(line => line?.trim())
 }

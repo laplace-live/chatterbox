@@ -1,6 +1,14 @@
 import type { DanmakuConfigResponse } from '../types'
 
-import { ensureRoomId, fetchEmoticons, getCsrfToken, getSpmPrefix, setDanmakuMode, setRandomDanmakuColor } from './api'
+import {
+  ensureRoomId,
+  fetchDanmakuMaxLength,
+  fetchEmoticons,
+  getCsrfToken,
+  getSpmPrefix,
+  setDanmakuMode,
+  setRandomDanmakuColor,
+} from './api'
 import { BASE_URL } from './const'
 import {
   formatLockedEmoticonReject,
@@ -18,17 +26,18 @@ import {
   autoSendYolo,
   availableDanmakuColors,
   cachedRoomId,
+  effectiveAutoSendMaxUnits,
   forceScrollDanmaku,
   invisibleChar,
-  maxLength,
   msgSendInterval,
   msgTemplates,
   randomChar,
   randomColor,
   randomInterval,
+  roomDanmakuUnits,
   sendMsg,
 } from './store'
-import { abortableSleep, processMessages, resolveSendDelayMs } from './utils'
+import { abortableSleep, processDanmakuMessages, resolveSendDelayMs } from './utils'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi'
 
 let currentAbort: AbortController | null = null
@@ -89,6 +98,14 @@ export async function loop(): Promise<void> {
         // non-critical
       }
 
+      if (roomDanmakuUnits.value === null && getCsrfToken()) {
+        try {
+          await fetchDanmakuMaxLength(roomId)
+        } catch {
+          // non-critical
+        }
+      }
+
       if (forceScrollDanmaku.value) {
         const initCsrfToken = getCsrfToken()
         if (initCsrfToken) {
@@ -146,7 +163,7 @@ export async function loop(): Promise<void> {
           if (isEmoticonUnique(line)) {
             tasks.push({ kind: 'direct', text: line })
           } else {
-            for (const chunk of processMessages(line, maxLength.value)) {
+            for (const chunk of processDanmakuMessages(line, effectiveAutoSendMaxUnits.value)) {
               tasks.push({ kind: 'polish', text: chunk })
             }
           }
@@ -157,7 +174,7 @@ export async function loop(): Promise<void> {
           if (isEmoticonUnique(line)) {
             tasks.push({ kind: 'direct', text: line })
           } else {
-            for (const chunk of processMessages(line, maxLength.value, randomCharToInsert)) {
+            for (const chunk of processDanmakuMessages(line, effectiveAutoSendMaxUnits.value, randomCharToInsert)) {
               tasks.push({ kind: 'direct', text: chunk })
             }
           }
@@ -191,8 +208,8 @@ export async function loop(): Promise<void> {
               continue
             }
             appendLog(`✨ 独轮车 AI 润色：${task.text} → ${polished}`)
-            // Re-process: output may exceed maxLength, and randomChar (suppressed on input) applies now.
-            sendItems = processMessages(polished, maxLength.value, randomCharToInsert)
+            // Re-process: output may exceed effectiveAutoSendMaxUnits, and randomChar (suppressed on input) applies now.
+            sendItems = processDanmakuMessages(polished, effectiveAutoSendMaxUnits.value, randomCharToInsert)
           } catch (err) {
             // AbortError = 停车 mid-polish; propagate as "round aborted" so the success log doesn't fire.
             if (err instanceof DOMException && err.name === 'AbortError') {
@@ -213,7 +230,7 @@ export async function loop(): Promise<void> {
           sendItems = [task.text]
         }
 
-        // Sub-items (2+ when polish overran maxLength) share one `[i+1/total]` label as one polish unit.
+        // Sub-items (2+ when polish overran effectiveAutoSendMaxUnits) share one `[i+1/total]` label as one polish unit.
         for (let j = 0; j < sendItems.length; j++) {
           if (signal.aborted) {
             completed = false

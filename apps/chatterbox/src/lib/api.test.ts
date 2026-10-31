@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 
 import * as constants from './const'
+import * as danmakuLimit from './danmaku-limit'
 import * as utils from './utils'
 
 const source = await Bun.file(new URL('./api.ts', import.meta.url)).text()
@@ -13,6 +14,7 @@ async function loadApi(body: unknown) {
   )
   const dependencies: Record<string, unknown> = {
     './const': constants,
+    './danmaku-limit': danmakuLimit,
     './emoticon': { isEmoticonUnique: () => false },
     './replacement': { buildReplacementMap: () => {} },
     './store': {},
@@ -77,4 +79,16 @@ test('an unreadable response fails without counting as a rejection', async () =>
   const result = await api.sendDanmaku('hi', 1, 'csrf')
   expect(result).toMatchObject({ success: false })
   expect(result.rejected).toBeUndefined()
+})
+
+test('fetchDanmakuMaxLength populates roomDanmakuUnits from getInfoByUser', async () => {
+  danmakuLimit.roomDanmakuUnits.value = null
+  try {
+    const { api, fetch } = await loadApi({ code: 0, data: { property: { danmu: { length: 80 } } } })
+    await api.fetchDanmakuMaxLength(12345)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(danmakuLimit.roomDanmakuUnits.peek()).toBe(80)
+  } finally {
+    danmakuLimit.roomDanmakuUnits.value = null
+  }
 })

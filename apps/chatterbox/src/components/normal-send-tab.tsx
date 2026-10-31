@@ -15,18 +15,18 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   aiEvasion,
+  danmakuMaxUnits,
   fasongText,
   invisibleChar,
   llmActivePromptNormalSend,
   llmPromptsNormalSend,
-  maxLength,
   normalSendPanelOpen,
   normalSendRoadRage,
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { insertRandomChar, processMessages } from '../lib/utils'
-import { wrapSegment, wrapSplitLen } from '../lib/wrap'
+import { insertRandomChar, processDanmakuMessages } from '../lib/utils'
+import { wrapSegment, wrapSplitUnits } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
@@ -124,11 +124,13 @@ export function NormalSendTab() {
         return
       }
 
-      // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper graphemes so each segment still fits maxLength.
+      // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper units so each segment still fits danmakuMaxUnits.
       const wrap = !isEmote && normalSendWrapBrackets.value
       const segments = isEmote
         ? [processedMessage]
-        : processMessages(processedMessage, wrapSplitLen(maxLength.value, wrap)).map(s => wrapSegment(s, wrap))
+        : processDanmakuMessages(processedMessage, wrapSplitUnits(danmakuMaxUnits.value, wrap)).map(s =>
+            wrapSegment(s, wrap)
+          )
       const total = segments.length
 
       for (let i = 0; i < total; i++) {

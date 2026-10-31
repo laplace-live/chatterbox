@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { BRACKET_RESERVE, wrapSegment, wrapSplitLen } from './wrap'
+import { BRACKET_RESERVE, BRACKET_UNIT_RESERVE, wrapSegment, wrapSplitLen, wrapSplitUnits } from './wrap'
 
 /** Split length must reserve the two 【】 graphemes so a wrapped segment still fits maxLen. */
 describe('wrapSplitLen', () => {
@@ -31,5 +31,12 @@ describe('wrapSegment', () => {
     const maxLen = 10
     const content = 'x'.repeat(wrapSplitLen(maxLen, true))
     expect([...wrapSegment(content, true)].length).toBeLessThanOrEqual(maxLen)
+  })
+
+  test('wrapSplitUnits reserves 4 half-width units for 【】 (76 units = 38 CJK or 76 ASCII)', () => {
+    expect(wrapSplitUnits(80, true)).toBe(80 - BRACKET_UNIT_RESERVE)
+    expect(wrapSplitUnits(80, true)).toBe(76)
+    expect(wrapSplitUnits(80, false)).toBe(80)
+    expect(wrapSplitUnits(2, true)).toBe(1)
   })
 })

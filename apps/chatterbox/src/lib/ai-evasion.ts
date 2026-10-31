@@ -2,8 +2,9 @@ import { BASE_URL } from './const'
 import { isEmoticonUnique } from './emoticon'
 import { appendLog } from './log'
 import { enqueueDanmaku, SendPriority, type SendSource } from './send-queue'
-import { aiEvasion, invisibleChar } from './store'
-import { getGraphemes } from './utils'
+import { aiEvasion, danmakuMaxUnits, invisibleChar } from './store'
+import { getDanmakuUnits, getGraphemes, trimDanmakuByUnits } from './utils'
+import { BRACKET_CLOSE, BRACKET_OPEN, wrapSegment, wrapSplitUnits } from './wrap'
 
 interface DetectionResult {
   hasSensitiveContent?: boolean
@@ -46,6 +47,22 @@ export function replaceSensitiveWords(text: string, sensitiveWords: string[]): s
   return result
 }
 
+/** Splits an evaded message only when inserted invisible chars pushed it past `maxUnits`, preserving outer 【】 wrappers. */
+export function splitEvadedMessage(evadedMessage: string, maxUnits: number): string[] {
+  if (maxUnits <= 0 || getDanmakuUnits(evadedMessage) <= maxUnits) return [evadedMessage]
+  if (
+    evadedMessage.startsWith(BRACKET_OPEN) &&
+    evadedMessage.endsWith(BRACKET_CLOSE) &&
+    evadedMessage.length > BRACKET_OPEN.length + BRACKET_CLOSE.length
+  ) {
+    const inner = evadedMessage.slice(BRACKET_OPEN.length, -BRACKET_CLOSE.length)
+    if (!inner.includes(BRACKET_CLOSE)) {
+      return trimDanmakuByUnits(inner, wrapSplitUnits(maxUnits, true)).map(s => wrapSegment(s, true))
+    }
+  }
+  return trimDanmakuByUnits(evadedMessage, maxUnits)
+}
+
 export interface TryAiEvasionResult {
   success: boolean
   evadedMessage?: string
@@ -74,15 +91,18 @@ export async function tryAiEvasion(
     appendLog(`🤖 ${logPrefix}检测到敏感词：${detection.sensitiveWords.join(', ')}，正在尝试规避…`)
 
     const evadedMessage = replaceSensitiveWords(message, detection.sensitiveWords)
-    const retryResult = await enqueueDanmaku(evadedMessage, roomId, csrfToken, SendPriority.MANUAL, source)
-
-    if (retryResult.success) {
-      appendLog(`✅ ${logPrefix}AI规避成功: ${evadedMessage}`)
-      return { success: true, evadedMessage }
+    const chunks = splitEvadedMessage(evadedMessage, danmakuMaxUnits.value)
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      const suffix = chunks.length > 1 ? ` [${i + 1}/${chunks.length}]` : ''
+      const retryResult = await enqueueDanmaku(chunk, roomId, csrfToken, SendPriority.MANUAL, source)
+      if (!retryResult.success) {
+        appendLog(`❌ ${logPrefix}AI规避失败${suffix}: ${chunk}，原因：${retryResult.error}`)
+        return { success: false, evadedMessage, error: retryResult.error }
+      }
+      appendLog(`✅ ${logPrefix}AI规避成功${suffix}: ${chunk}`)
     }
-
-    appendLog(`❌ ${logPrefix}AI规避失败: ${evadedMessage}，原因：${retryResult.error}`)
-    return { success: false, evadedMessage, error: retryResult.error }
+    return { success: true, evadedMessage }
   }
 
   appendLog(`⚠️ ${logPrefix}无法检测到敏感词，请手动检查`)

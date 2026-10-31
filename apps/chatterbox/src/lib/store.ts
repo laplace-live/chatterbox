@@ -15,14 +15,28 @@ import {
   OPENAI_STT_DEFAULT_MODEL,
   SONIOX_DEFAULT_MODEL,
 } from './const'
+import {
+  danmakuMaxChars,
+  danmakuMaxUnits,
+  resolveAutoSendMaxUnits,
+  roomDanmakuChars,
+  roomDanmakuUnits,
+} from './danmaku-limit'
 import { gmSignal, migrateGmKey } from './gm-signal'
 import { appendLog } from './log'
 import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT, DEFAULT_KANCHI_PROMPT } from './prompts'
 import { resolveInvisibleChar } from './utils'
 
+export { danmakuMaxChars, danmakuMaxUnits, roomDanmakuChars, roomDanmakuUnits }
+
 // GM-persisted settings
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
-export const maxLength = gmSignal('maxLength', 38)
+/** Optional 独轮车 split-length override in full-width Chinese characters ("字"); `null` = follow the room's detected cap. */
+export const autoSendMaxLength = gmSignal<number | null>('autoSendMaxLength', null)
+/** Effective 独轮车 split budget in Bilibili half-width units: `autoSendMaxLength * 2` when set, else `danmakuMaxUnits`. */
+export const effectiveAutoSendMaxUnits = computed(() =>
+  resolveAutoSendMaxUnits(autoSendMaxLength.value, roomDanmakuUnits.value)
+)
 export const randomColor = gmSignal('randomColor', false)
 export const randomInterval = gmSignal('randomInterval', false)
 export const randomChar = gmSignal('randomChar', false)
@@ -32,7 +46,7 @@ export const invisibleCharPreset = gmSignal<string>('invisibleCharPreset', DEFAU
 export const invisibleCharCustom = gmSignal('invisibleCharCustom', '')
 /** Resolved char for `randomChar` / `aiEvasion`; always non-empty. */
 export const invisibleChar = computed(() => resolveInvisibleChar(invisibleCharPreset.value, invisibleCharCustom.value))
-// Wrap each 常规发送 segment in full-width 【】. Split length reserves the two wrapper graphemes (see `wrapSplitLen`) so a wrapped segment still fits `maxLength`.
+// Wrap each 常规发送 segment in full-width 【】. Split budget reserves 4 half-width units (see `wrapSplitUnits`) so a wrapped segment still fits `danmakuMaxUnits`.
 export const normalSendWrapBrackets = gmSignal('normalSendWrapBrackets', false)
 // 路怒模式 for 常规发送: when re-sending the exact same text, inject `invisibleChar` at a fresh position (see `NormalSendTab`) so B站's duplicate filter doesn't drop the repeat.
 export const normalSendRoadRage = gmSignal('normalSendRoadRage', false)

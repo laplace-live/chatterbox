@@ -72,10 +72,19 @@ export const INVISIBLE_CHAR_PRESETS = [
 /** `invisibleCharPreset` value that selects the user-typed `invisibleCharCustom` instead of a preset. */
 export const INVISIBLE_CHAR_CUSTOM = 'custom'
 
+/** Half-width units per full-width Chinese character ("字") under Bilibili's `utilDanmuLength`. */
+export const DANMAKU_UNITS_PER_CHAR = 2
+
+/** Fallback `data.property.danmu.length` unit cap (`80` half-width units = 40 CJK chars / 80 ASCII chars). */
+export const DEFAULT_DANMAKU_MAX_UNITS = 80
+
 /** API endpoint URLs used by the script. */
 export const BASE_URL = {
   /** Fetches room basic info. GET, param: id (room ID). */
   BILIBILI_ROOM_INIT: 'https://api.live.bilibili.com/room/v1/Room/room_init',
+
+  /** Viewer's room-specific info (`data.property.danmu.length`, `data.forbid_live`). GET, param: room_id. */
+  BILIBILI_GET_INFO_BY_USER: 'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByUser',
 
   /** Logged-in user info (`data.uname`, `data.mid`). GET with credentials. */
   BILIBILI_NAV: 'https://api.bilibili.com/x/web-interface/nav',

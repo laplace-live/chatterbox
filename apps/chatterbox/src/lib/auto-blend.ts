@@ -32,12 +32,12 @@ import {
   autoBlendUserBlacklist,
   autoBlendWindowSec,
   autoBlendYolo,
+  danmakuMaxUnits,
   invisibleChar,
-  maxLength,
   randomChar,
   randomColor,
 } from './store'
-import { addRandomCharacter, trimText } from './utils'
+import { addRandomCharacter, trimDanmakuByUnits } from './utils'
 
 interface Counter {
   uniqueUids: Set<string>
@@ -382,7 +382,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
 
     let toSend = replaced
     if (!isEmote && randomChar.value) toSend = addRandomCharacter(toSend, invisibleChar.value)
-    if (!isEmote) toSend = trimText(toSend, maxLength.value)[0] ?? toSend
+    if (!isEmote) toSend = trimDanmakuByUnits(toSend, danmakuMaxUnits.value)[0] ?? toSend
 
     if (!isEmote && randomColor.value) {
       await setRandomDanmakuColor(roomId, csrfToken)
