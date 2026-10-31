@@ -126,6 +126,11 @@ export function NormalSendTab() {
     const wasOriginalEmote = isEmoticonUnique(originalMessage)
     let processedMessage = wasOriginalEmote ? originalMessage : applyReplacements(originalMessage)
     const trimmedProcessed = processedMessage.trim()
+    if (!trimmedProcessed) {
+      appendLog(`⚠️ 消息替换后为空，未发送：${originalMessage}`)
+      fasongText.value = ''
+      return
+    }
     if (!wasOriginalEmote && isLockedEmoticon(trimmedProcessed)) {
       appendLog(formatLockedEmoticonReject(trimmedProcessed, '手动表情'))
       fasongText.value = ''

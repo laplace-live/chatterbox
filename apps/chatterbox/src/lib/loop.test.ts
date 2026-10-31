@@ -233,6 +233,25 @@ describe('loop replacement & unit-cap ordering', () => {
     expect(harness.sent).toEqual(['第一句', '好'.repeat(20), '好'.repeat(20)])
   })
 
+  test('re-splits remaining sub-items when effectiveAutoSendMaxUnits drops between sub-item sends', async () => {
+    let sleepCount = 0
+    const harness = await createLoopHarness({
+      template: '原始文案',
+      maxUnits: 40,
+      yolo: true,
+      polishFn: async () => '好'.repeat(35),
+      onSleepFn: async () => {
+        sleepCount += 1
+        if (sleepCount === 1) {
+          harness.store.effectiveAutoSendMaxUnits.value = 20
+        }
+      },
+    })
+
+    await expect(harness.loop()).rejects.toBeInstanceOf(StopLoop)
+    expect(harness.sent).toEqual(['好'.repeat(20), '好'.repeat(10), '好'.repeat(5)])
+  })
+
   test('keeps emote IDs produced by replacement aliases intact without randomChar or splitting', async () => {
     const { loop, sent } = await createLoopHarness({
       template: '赞',

@@ -293,25 +293,10 @@ export async function loop(): Promise<void> {
             continue
           }
         } else {
-          const liveMaxUnits = effectiveAutoSendMaxUnits.value
-          const { text, replacedFrom } = task.item
-          if (
-            liveMaxUnits > 0 &&
-            !isEmoticonUnique(text) &&
-            !isUnavailableEmoticon(text) &&
-            getDanmakuUnits(text) > liveMaxUnits
-          ) {
-            const resplit = trimDanmakuByUnits(text, liveMaxUnits).filter(c => c.trim().length > 0)
-            sendItems = resplit.map(chunk => ({
-              text: chunk,
-              replacedFrom: resplit.length === 1 ? replacedFrom : undefined,
-            }))
-          } else {
-            sendItems = [task.item]
-          }
+          sendItems = [task.item]
         }
 
-        // Sub-items (2+ when polish overran effectiveAutoSendMaxUnits) share one `[i+1/total]` label as one polish unit.
+        // Sub-items (2+ when polish or mid-round cap drop splits a task) share one `[i+1/total]` label.
         for (let j = 0; j < sendItems.length; j++) {
           if (signal.aborted) {
             completed = false
@@ -319,7 +304,24 @@ export async function loop(): Promise<void> {
           }
           if (!sendMsg.value) break outer
 
-          const { text: message, replacedFrom } = sendItems[j]
+          let item = sendItems[j]
+          const liveMaxUnits = effectiveAutoSendMaxUnits.value
+          if (
+            liveMaxUnits > 0 &&
+            !isEmoticonUnique(item.text) &&
+            !isUnavailableEmoticon(item.text) &&
+            getDanmakuUnits(item.text) > liveMaxUnits
+          ) {
+            const resplit = trimDanmakuByUnits(item.text, liveMaxUnits).filter(c => c.trim().length > 0)
+            if (resplit.length === 0) continue
+            const nextItems = resplit.map(chunk => ({
+              text: chunk,
+              replacedFrom: resplit.length === 1 ? item.replacedFrom : undefined,
+            }))
+            sendItems.splice(j, 1, ...nextItems)
+            item = nextItems[0]
+          }
+          const { text: message, replacedFrom } = item
 
           // Skip locked emotes client-side rather than let Bilibili reject them; still sleep to keep cadence.
           if (isLockedEmoticon(message)) {
