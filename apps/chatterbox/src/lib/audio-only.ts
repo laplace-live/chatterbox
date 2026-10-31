@@ -24,7 +24,13 @@ import { MPEGTS_CDN_URL } from './const'
 import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
 import { isTabHidden } from './page-visibility'
-import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR, resolveLivePlayer } from './player-dom'
+import {
+  AUDIO_EL_ID,
+  getPlayerVideo,
+  isNativePlayerStreaming,
+  PLAYER_CONTAINER_SELECTOR,
+  resolveLivePlayer,
+} from './player-dom'
 import { audioOnlyActive, audioOnlyMode, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost, isRecord } from './utils'
 
@@ -37,9 +43,10 @@ declare global {
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
-// Exported for id-lookup from `lib/auto-seek.ts`: the element is recreated
-// across refresh/disengage cycles, so a live reference would go stale.
-export const AUDIO_EL_ID = 'lc-audio-only-stream'
+
+// Re-exported for importers that historically read it from this module
+// (e.g. `lib/auto-seek.ts`); the constant now lives in `player-dom.ts`.
+export { AUDIO_EL_ID }
 
 // Stream URLs are signed with ~1h expiry; refresh well before that closes.
 const STREAM_REFRESH_MS = 50 * 60 * 1000

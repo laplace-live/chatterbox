@@ -9,9 +9,26 @@ export const PLAYER_VIDEO_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} video`
 /** The player's top-left watermark overlay: B站 logo plus the viewer's UID. */
 export const PLAYER_WATERMARK_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} .web-player-icon-roomStatus`
 
+/** Audio-only mode's hidden `<audio>`; recreated across refresh / disengage cycles. */
+export const AUDIO_EL_ID = 'lc-audio-only-stream'
+
 /** The native player's `<video>` element, or `null` when not mounted. */
 export function getPlayerVideo(): HTMLVideoElement | null {
   return document.querySelector<HTMLVideoElement>(PLAYER_VIDEO_SELECTOR)
+}
+
+/**
+ * Media elements eligible for `captureStream()` page-audio capture, in priority
+ * order: the audio-only `<audio>` (when mounted), then the native player's
+ * `<video>`. Missing / mismatched elements are dropped from the list.
+ */
+export function getCaptureMediaCandidates(): HTMLMediaElement[] {
+  const candidates: HTMLMediaElement[] = []
+  const audioOnly = document.getElementById(AUDIO_EL_ID)
+  if (audioOnly instanceof HTMLAudioElement) candidates.push(audioOnly)
+  const video = getPlayerVideo()
+  if (video instanceof HTMLVideoElement) candidates.push(video)
+  return candidates
 }
 
 /**
