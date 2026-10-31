@@ -40,6 +40,8 @@ import {
 import { abortableSleep, processDanmakuMessages, resolveSendDelayMs } from './utils'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi'
 
+const CAP_LOOKUP_RETRY_MS = 30_000
+
 let currentAbort: AbortController | null = null
 
 export function cancelLoop(): void {
@@ -111,15 +113,30 @@ export async function loop(): Promise<void> {
     }
   }
 
-  let fallbackAttemptedRoomId: number | null = null
+  let capLookupRoomId: number | null = null
+  let capLookupInFlight = false
+  let capLookupRetryAfter = 0
   const csrfToken = getCsrfToken()
 
   while (true) {
     const activeRoomId = cachedRoomId.value
     if (activeRoomId !== null) roomId = activeRoomId
-    if (roomDanmakuUnits.value === null && fallbackAttemptedRoomId !== roomId && csrfToken) {
-      fallbackAttemptedRoomId = roomId
-      void fetchDanmakuMaxLength(roomId).catch(() => {})
+    if (capLookupRoomId !== roomId) {
+      capLookupRoomId = roomId
+      capLookupInFlight = false
+      capLookupRetryAfter = 0
+    }
+    if (roomDanmakuUnits.value === null && !capLookupInFlight && Date.now() >= capLookupRetryAfter && getCsrfToken()) {
+      const lookupRoomId = roomId
+      capLookupInFlight = true
+      void fetchDanmakuMaxLength(lookupRoomId)
+        .catch(() => {})
+        .finally(() => {
+          if (capLookupRoomId === lookupRoomId) {
+            capLookupInFlight = false
+            capLookupRetryAfter = Date.now() + CAP_LOOKUP_RETRY_MS
+          }
+        })
     }
 
     if (sendMsg.value) {

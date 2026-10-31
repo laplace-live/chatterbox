@@ -13,12 +13,14 @@ async function createLoopHarness(opts: {
   template: string
   maxUnits?: number
   roomUnits?: number | null
+  stopAfterRounds?: number
   randomChar?: boolean
   invisibleChar?: string
   yolo?: boolean
   replacements?: Record<string, string>
   polishFn?: (text: string) => Promise<string>
   fetchMaxLengthFn?: (roomId: number) => Promise<void>
+  onSleepFn?: () => Promise<void>
 }) {
   const sent: string[] = []
   const logs: string[] = []
@@ -71,7 +73,7 @@ async function createLoopHarness(opts: {
       appendLog: (...args: unknown[]) => {
         const text = args.map(String).join(' ')
         logs.push(text)
-        if (text.includes('第 1 轮发送完成')) {
+        if (text.includes(`第 ${opts.stopAfterRounds ?? 1} 轮发送完成`)) {
           throw new StopLoop()
         }
       },
@@ -95,7 +97,10 @@ async function createLoopHarness(opts: {
     './store': store,
     './utils': {
       ...utils,
-      abortableSleep: async () => true,
+      abortableSleep: async () => {
+        if (opts.onSleepFn) await opts.onSleepFn()
+        return true
+      },
     },
     './wbi': {
       cachedWbiKeys: null,
@@ -173,6 +178,37 @@ describe('loop replacement & unit-cap ordering', () => {
       expect(sent).toEqual(['你好世界'])
     } finally {
       releaseLookup?.()
+    }
+  })
+
+  test('retries a failed room-cap lookup within the same loop run only after bounded backoff', async () => {
+    const realDateNow = Date.now
+    let now = 1_000_000
+    Date.now = () => now
+    let sleepCount = 0
+    try {
+      const { loop, fetchMaxLengthCalls, store } = await createLoopHarness({
+        template: '你好',
+        maxUnits: 80,
+        roomUnits: null,
+        stopAfterRounds: 3,
+        fetchMaxLengthFn: async () => {
+          if (fetchMaxLengthCalls.length === 1) throw new Error('HTTP 502')
+          store.roomDanmakuUnits.value = 60
+        },
+        onSleepFn: async () => {
+          sleepCount += 1
+          await Promise.resolve()
+          if (sleepCount === 1) now += 5_000
+          if (sleepCount === 2) now += 30_000
+        },
+      })
+
+      await expect(loop()).rejects.toBeInstanceOf(StopLoop)
+      expect(fetchMaxLengthCalls).toEqual([456117, 456117])
+      expect(store.roomDanmakuUnits.value).toBe(60)
+    } finally {
+      Date.now = realDateNow
     }
   })
 
