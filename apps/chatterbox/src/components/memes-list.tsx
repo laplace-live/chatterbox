@@ -7,8 +7,8 @@ import { BASE_URL } from '../lib/const'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
-import { cachedStreamerUid, maxLength, memesEnabled, memesPanelOpen, msgSendInterval } from '../lib/store'
-import { buildMemeContributeUrl, processMessages } from '../lib/utils'
+import { cachedStreamerUid, danmakuMaxUnits, memesEnabled, memesPanelOpen, msgSendInterval } from '../lib/store'
+import { buildMemeContributeUrl, processDanmakuMessages } from '../lib/utils'
 import { AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -88,7 +88,7 @@ function MemeItem({
       }
       const processed = applyReplacements(meme.content)
       const wasReplaced = meme.content !== processed
-      const segments = processMessages(processed, maxLength.value)
+      const segments = processDanmakuMessages(processed, danmakuMaxUnits.value)
       const total = segments.length
 
       for (let i = 0; i < total; i++) {

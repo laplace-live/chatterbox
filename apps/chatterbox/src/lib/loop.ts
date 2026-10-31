@@ -1,6 +1,14 @@
 import type { DanmakuConfigResponse } from '../types'
 
-import { ensureRoomId, fetchEmoticons, getCsrfToken, getSpmPrefix, setDanmakuMode, setRandomDanmakuColor } from './api'
+import {
+  ensureRoomId,
+  fetchDanmakuMaxLength,
+  fetchEmoticons,
+  getCsrfToken,
+  getSpmPrefix,
+  setDanmakuMode,
+  setRandomDanmakuColor,
+} from './api'
 import { BASE_URL } from './const'
 import {
   formatLockedEmoticonReject,
@@ -11,25 +19,34 @@ import {
 } from './emoticon'
 import { isLlmReady, polishWithLlm } from './llm-tasks'
 import { appendLog } from './log'
-import { applyReplacements, buildReplacementMap } from './replacement'
+import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
   activeTemplateIndex,
   autoSendYolo,
   availableDanmakuColors,
   cachedRoomId,
+  effectiveAutoSendMaxUnits,
   forceScrollDanmaku,
   invisibleChar,
-  maxLength,
   msgSendInterval,
   msgTemplates,
   randomChar,
   randomColor,
   randomInterval,
+  roomDanmakuUnits,
   sendMsg,
 } from './store'
-import { abortableSleep, processMessages, resolveSendDelayMs } from './utils'
+import {
+  abortableSleep,
+  getDanmakuUnits,
+  processDanmakuMessages,
+  resolveSendDelayMs,
+  trimDanmakuByUnits,
+} from './utils'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi'
+
+const CAP_LOOKUP_RETRY_MS = 30_000
 
 let currentAbort: AbortController | null = null
 
@@ -46,7 +63,6 @@ export async function loop(): Promise<void> {
   if (roomId === null) {
     try {
       roomId = await ensureRoomId()
-      buildReplacementMap()
 
       await waitForWbiKeys()
       if (cachedWbiKeys) {
@@ -103,9 +119,32 @@ export async function loop(): Promise<void> {
     }
   }
 
+  let capLookupRoomId: number | null = null
+  let capLookupInFlight = false
+  let capLookupRetryAfter = 0
   const csrfToken = getCsrfToken()
 
   while (true) {
+    const activeRoomId = cachedRoomId.value
+    if (activeRoomId !== null) roomId = activeRoomId
+    if (capLookupRoomId !== roomId) {
+      capLookupRoomId = roomId
+      capLookupInFlight = false
+      capLookupRetryAfter = 0
+    }
+    if (roomDanmakuUnits.value === null && !capLookupInFlight && Date.now() >= capLookupRetryAfter && getCsrfToken()) {
+      const lookupRoomId = roomId
+      capLookupInFlight = true
+      void fetchDanmakuMaxLength(lookupRoomId)
+        .catch(() => {})
+        .finally(() => {
+          if (capLookupRoomId === lookupRoomId) {
+            capLookupInFlight = false
+            capLookupRetryAfter = Date.now() + CAP_LOOKUP_RETRY_MS
+          }
+        })
+    }
+
     if (sendMsg.value) {
       currentAbort = new AbortController()
       const { signal } = currentAbort
@@ -130,8 +169,10 @@ export async function loop(): Promise<void> {
         .filter(l => l.length > 0)
 
       // Pre-built upfront so `[i+1/N]` has a stable denominator; only the polish CALLS are deferred (just-in-time, right before send).
-      type SendTask = { kind: 'direct'; text: string } | { kind: 'polish'; text: string }
+      type SendItem = { text: string; replacedFrom?: string }
+      type SendTask = { kind: 'direct'; item: SendItem } | { kind: 'polish'; text: string }
 
+      const maxUnits = effectiveAutoSendMaxUnits.value
       const tasks: SendTask[] = []
       if (autoSendYolo.value) {
         // Loud bail, not silent fallback to unpolished text: the user opted into polish. Checked once at round start to fail fast; per-segment failures below stay recoverable.
@@ -143,25 +184,44 @@ export async function loop(): Promise<void> {
         }
         // randomChar (dedup marker) suppressed on LLM input — the LLM would ignore or "fix" it; re-applied on output in the polish branch below.
         for (const line of rawLines) {
-          if (isEmoticonUnique(line)) {
-            tasks.push({ kind: 'direct', text: line })
+          if (isEmoticonUnique(line) || isUnavailableEmoticon(line)) {
+            tasks.push({ kind: 'direct', item: { text: line } })
           } else {
-            for (const chunk of processMessages(line, maxLength.value)) {
+            for (const chunk of processDanmakuMessages(line, maxUnits)) {
               tasks.push({ kind: 'polish', text: chunk })
             }
           }
         }
       } else {
-        // Non-YOLO: randomChar applied here at split time.
+        // Non-YOLO: replace before randomChar + unit splitting so expanded replacements never overrun maxUnits.
         for (const line of rawLines) {
-          if (isEmoticonUnique(line)) {
-            tasks.push({ kind: 'direct', text: line })
+          if (isEmoticonUnique(line) || isUnavailableEmoticon(line)) {
+            tasks.push({ kind: 'direct', item: { text: line } })
           } else {
-            for (const chunk of processMessages(line, maxLength.value, randomCharToInsert)) {
-              tasks.push({ kind: 'direct', text: chunk })
+            const replaced = applyReplacements(line)
+            const wasReplaced = replaced !== line
+            const trimmedReplaced = replaced.trim()
+            if (isEmoticonUnique(trimmedReplaced) || isUnavailableEmoticon(trimmedReplaced)) {
+              tasks.push({
+                kind: 'direct',
+                item: { text: trimmedReplaced, replacedFrom: wasReplaced ? line : undefined },
+              })
+            } else {
+              const chunks = processDanmakuMessages(replaced, maxUnits, randomCharToInsert)
+              const replacedFrom = wasReplaced && chunks.length === 1 ? line : undefined
+              for (const text of chunks) {
+                tasks.push({ kind: 'direct', item: { text, replacedFrom } })
+              }
             }
           }
         }
+      }
+
+      if (tasks.length === 0) {
+        appendLog('⚠️ 当前模板替换后为空，已自动停止运行')
+        sendMsg.value = false
+        currentAbort = null
+        continue
       }
 
       const total = tasks.length
@@ -175,12 +235,13 @@ export async function loop(): Promise<void> {
         if (!sendMsg.value) break
 
         const task = tasks[i]
-        let sendItems: string[]
+        let sendItems: SendItem[]
 
         if (task.kind === 'polish') {
           try {
             const polished = await polishWithLlm('autoSend', task.text, { signal })
-            if (!polished.trim()) {
+            const trimmedPolished = polished.trim()
+            if (!trimmedPolished) {
               // Empty polish = refusal; sleep first so a streak doesn't spin past the configured cadence.
               appendLog(`⚠️ 独轮车 AI 返回为空，跳过本段：${task.text}`)
               const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
@@ -191,8 +252,30 @@ export async function loop(): Promise<void> {
               continue
             }
             appendLog(`✨ 独轮车 AI 润色：${task.text} → ${polished}`)
-            // Re-process: output may exceed maxLength, and randomChar (suppressed on input) applies now.
-            sendItems = processMessages(polished, maxLength.value, randomCharToInsert)
+            if (isEmoticonUnique(trimmedPolished) || isUnavailableEmoticon(trimmedPolished)) {
+              sendItems = [{ text: trimmedPolished }]
+            } else {
+              const replaced = applyReplacements(polished)
+              const wasReplaced = replaced !== polished
+              const trimmedReplaced = replaced.trim()
+              if (isEmoticonUnique(trimmedReplaced) || isUnavailableEmoticon(trimmedReplaced)) {
+                sendItems = [{ text: trimmedReplaced, replacedFrom: wasReplaced ? polished : undefined }]
+              } else {
+                // Re-process: replaced polish output may exceed effectiveAutoSendMaxUnits, and randomChar applies now.
+                const chunks = processDanmakuMessages(replaced, effectiveAutoSendMaxUnits.value, randomCharToInsert)
+                if (chunks.length === 0) {
+                  appendLog(`⚠️ 独轮车替换后为空，跳过本段：${polished}`)
+                  const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
+                  if (!ok) {
+                    completed = false
+                    break
+                  }
+                  continue
+                }
+                const replacedFrom = wasReplaced && chunks.length === 1 ? polished : undefined
+                sendItems = chunks.map(text => ({ text, replacedFrom }))
+              }
+            }
           } catch (err) {
             // AbortError = 停车 mid-polish; propagate as "round aborted" so the success log doesn't fire.
             if (err instanceof DOMException && err.name === 'AbortError') {
@@ -210,10 +293,10 @@ export async function loop(): Promise<void> {
             continue
           }
         } else {
-          sendItems = [task.text]
+          sendItems = [task.item]
         }
 
-        // Sub-items (2+ when polish overran maxLength) share one `[i+1/total]` label as one polish unit.
+        // Sub-items (2+ when polish or mid-round cap drop splits a task) share one `[i+1/total]` label.
         for (let j = 0; j < sendItems.length; j++) {
           if (signal.aborted) {
             completed = false
@@ -221,7 +304,24 @@ export async function loop(): Promise<void> {
           }
           if (!sendMsg.value) break outer
 
-          const message = sendItems[j]
+          let item = sendItems[j]
+          const liveMaxUnits = effectiveAutoSendMaxUnits.value
+          if (
+            liveMaxUnits > 0 &&
+            !isEmoticonUnique(item.text) &&
+            !isUnavailableEmoticon(item.text) &&
+            getDanmakuUnits(item.text) > liveMaxUnits
+          ) {
+            const resplit = trimDanmakuByUnits(item.text, liveMaxUnits).filter(c => c.trim().length > 0)
+            if (resplit.length === 0) continue
+            const nextItems = resplit.map(chunk => ({
+              text: chunk,
+              replacedFrom: resplit.length === 1 ? item.replacedFrom : undefined,
+            }))
+            sendItems.splice(j, 1, ...nextItems)
+            item = nextItems[0]
+          }
+          const { text: message, replacedFrom } = item
 
           // Skip locked emotes client-side rather than let Bilibili reject them; still sleep to keep cadence.
           if (isLockedEmoticon(message)) {
@@ -247,24 +347,19 @@ export async function loop(): Promise<void> {
             continue
           }
 
-          const isEmote = isEmoticonUnique(message)
-          const originalMessage = message
-          const processedMessage = isEmote ? message : applyReplacements(message)
-          const wasReplaced = !isEmote && originalMessage !== processedMessage
-
           if (enableRandomColor) {
             await setRandomDanmakuColor(roomId, csrfToken ?? '')
           }
 
           const result = await enqueueDanmaku(
-            processedMessage,
+            message,
             roomId,
             csrfToken ?? '',
             SendPriority.AUTO,
             'loop',
             () => !signal.aborted
           )
-          const displayMsg = wasReplaced ? `${originalMessage} → ${processedMessage}` : processedMessage
+          const displayMsg = replacedFrom ? `${replacedFrom} → ${message}` : message
           const baseLabel = result.isEmoticon ? '自动表情' : '自动'
           const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
           appendLog(result, label, displayMsg)

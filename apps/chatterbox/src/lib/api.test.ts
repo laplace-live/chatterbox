@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 
 import * as constants from './const'
+import * as danmakuLimit from './danmaku-limit'
 import * as utils from './utils'
 
 const source = await Bun.file(new URL('./api.ts', import.meta.url)).text()
@@ -13,8 +14,8 @@ async function loadApi(body: unknown) {
   )
   const dependencies: Record<string, unknown> = {
     './const': constants,
+    './danmaku-limit': danmakuLimit,
     './emoticon': { isEmoticonUnique: () => false },
-    './replacement': { buildReplacementMap: () => {} },
     './store': {},
     './utils': utils,
     './wbi': { cachedWbiKeys: null, encodeWbi: () => '' },
@@ -77,4 +78,20 @@ test('an unreadable response fails without counting as a rejection', async () =>
   const result = await api.sendDanmaku('hi', 1, 'csrf')
   expect(result).toMatchObject({ success: false })
   expect(result.rejected).toBeUndefined()
+})
+
+test('fetchDanmakuMaxLength populates roomDanmakuUnits from getInfoByUser', async () => {
+  danmakuLimit.resetRoomDanmakuLimits()
+  try {
+    const { api, fetch } = await loadApi({ code: 0, data: { property: { danmu: { length: 60 } } } })
+    await api.fetchDanmakuMaxLength(12345)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [calledUrl, calledInit] = fetch.mock.calls[0] as unknown as [string, RequestInit]
+    expect(calledUrl).toBe(`${constants.BASE_URL.BILIBILI_GET_INFO_BY_USER}?room_id=12345`)
+    expect(calledInit).toMatchObject({ method: 'GET', credentials: 'include' })
+    expect(calledInit.signal).toBeInstanceOf(AbortSignal)
+    expect(danmakuLimit.roomDanmakuUnits.peek()).toBe(60)
+  } finally {
+    danmakuLimit.resetRoomDanmakuLimits()
+  }
 })

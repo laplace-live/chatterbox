@@ -1,8 +1,8 @@
 import type { BilibiliGetEmoticonsResponse } from '../types'
 
 import { BASE_URL } from './const'
+import { applyGetInfoByUserDanmakuLength } from './danmaku-limit'
 import { isEmoticonUnique } from './emoticon'
-import { buildReplacementMap } from './replacement'
 import { availableDanmakuColors, cachedEmoticonPackages, cachedRoomId, cachedStreamerUid } from './store'
 import { extractRoomNumber, readPath } from './utils'
 import { cachedWbiKeys, encodeWbi } from './wbi'
@@ -83,8 +83,6 @@ export async function ensureRoomId(): Promise<number> {
   if (roomId === null) {
     roomId = await getRoomId()
     cachedRoomId.value = roomId
-    // Room-specific replacement rules depend on the resolved room id.
-    buildReplacementMap()
   }
   return roomId
 }
@@ -100,6 +98,17 @@ export async function fetchEmoticons(roomId: number): Promise<void> {
     // 把傻逼b豆表情移除（pkg_id === 100）
     cachedEmoticonPackages.value = json.data.data.filter(pkg => pkg.pkg_id !== 100)
   }
+}
+
+/** Fallback `getInfoByUser` fetch when `fetch-hijack` missed the page's initial request (e.g. `vite dev`). */
+export async function fetchDanmakuMaxLength(roomId: number): Promise<void> {
+  const resp = await fetch(`${BASE_URL.BILIBILI_GET_INFO_BY_USER}?room_id=${roomId}`, {
+    method: 'GET',
+    credentials: 'include',
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
+  applyGetInfoByUserDanmakuLength(await resp.json(), { roomId })
 }
 
 export interface SendDanmakuResult {

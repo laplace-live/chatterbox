@@ -5,16 +5,19 @@ import {
   addRandomCharacter,
   buildMemeContributeUrl,
   buildOvuContributeUrl,
+  countDanmakuMessages,
   extractBvid,
   extractOpusAuthorUid,
   extractOpusPubDate,
   formatCodePoints,
   formatDanmakuError,
+  getDanmakuUnits,
   insertRandomChar,
   isHttpUrl,
   parseCustomChar,
-  processMessages,
+  processDanmakuMessages,
   resolveInvisibleChar,
+  trimDanmakuByUnits,
 } from './utils'
 
 /** Derives the BV id from bilibili video URLs; `undefined` for non-BV paths (legacy `av`, case-sensitive prefix). */
@@ -217,15 +220,15 @@ describe('addRandomCharacter', () => {
 })
 
 /** Per-line split with optional char insertion; blank lines are dropped. */
-describe('processMessages', () => {
+describe('processDanmakuMessages', () => {
   test('inserts the char into every non-blank line when given', () => {
-    const out = processMessages('ab\n\ncd', 10, '~')
+    const out = processDanmakuMessages('ab\n\ncd', 20, '~')
     expect(out).toHaveLength(2)
     for (const msg of out) expect(msg.split('~')).toHaveLength(2)
   })
 
   test('leaves lines untouched without a char', () => {
-    expect(processMessages('ab\n\ncd', 10)).toEqual(['ab', 'cd'])
+    expect(processDanmakuMessages('ab\n\ncd', 20)).toEqual(['ab', 'cd'])
   })
 })
 
@@ -341,5 +344,78 @@ describe('insertRandomChar', () => {
     // A fully-bracketed string leaves only the two outer slots; avoiding one still yields the other.
     const { index } = insertRandomChar('[ab]', '~', 0)
     expect(index).toBe(4)
+  })
+})
+
+/** Matches Bilibili's `utilDanmuLength`: printable ASCII = 1, BMP non-ASCII = 2, astral surrogate pair = 4. */
+describe('getDanmakuUnits & trimDanmakuByUnits', () => {
+  test('weights ASCII, CJK, invisible chars, and emojis identically to Bilibili utilDanmuLength', () => {
+    expect(getDanmakuUnits('a ~')).toBe(3)
+    expect(getDanmakuUnits('你好')).toBe(4)
+    expect(getDanmakuUnits('【】')).toBe(4)
+    expect(getDanmakuUnits('\u200B')).toBe(2)
+    expect(getDanmakuUnits('😀')).toBe(4)
+    expect(getDanmakuUnits('👍🏽')).toBe(8)
+  })
+
+  test('fits 40 CJK chars or 80 ASCII chars or 20 emojis into 80 units and splits past 80', () => {
+    expect(trimDanmakuByUnits('好'.repeat(40), 80)).toEqual(['好'.repeat(40)])
+    expect(trimDanmakuByUnits('好'.repeat(41), 80)).toEqual(['好'.repeat(40), '好'])
+    expect(trimDanmakuByUnits('a'.repeat(80), 80)).toEqual(['a'.repeat(80)])
+    expect(trimDanmakuByUnits('a'.repeat(81), 80)).toEqual(['a'.repeat(80), 'a'])
+    expect(trimDanmakuByUnits(`${'a'.repeat(79)}好`, 80)).toEqual(['a'.repeat(79), '好'])
+    expect(trimDanmakuByUnits('😀'.repeat(20), 80)).toEqual(['😀'.repeat(20)])
+    expect(trimDanmakuByUnits('😀'.repeat(21), 80)).toEqual(['😀'.repeat(20), '😀'])
+  })
+
+  test('keeps multi-codepoint grapheme clusters intact unless a single cluster exceeds maxUnits', () => {
+    // 10 * 8 = 80 units; 11th skin-tone emoji moves whole to chunk 2.
+    expect(trimDanmakuByUnits('👍🏽'.repeat(11), 80)).toEqual(['👍🏽'.repeat(10), '👍🏽'])
+    // Oversized ZWJ cluster (22 units) falls back to code-point cuts when maxUnits = 10.
+    const chunks = trimDanmakuByUnits('👨‍👩‍👧‍👦', 10)
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) expect(getDanmakuUnits(chunk)).toBeLessThanOrEqual(10)
+    // Indivisible single astral code point (4 units) stays whole under a 1-字 (2-unit) override without tearing UTF-16 surrogates.
+    expect(trimDanmakuByUnits('😀你好', 2)).toEqual(['😀', '你', '好'])
+  })
+
+  test('processDanmakuMessages accounts for inserted invisible char (2 units) before splitting', () => {
+    const out = processDanmakuMessages('好'.repeat(40), 80, '\u200B')
+    expect(out).toHaveLength(2)
+    for (const seg of out) expect(getDanmakuUnits(seg)).toBeLessThanOrEqual(80)
+  })
+
+  test('countDanmakuMessages counts split lines, randomChar (including U+FEFF), transformLine, and unsplit emotes', () => {
+    expect(countDanmakuMessages('   \n  ', 80)).toBe(0)
+    expect(countDanmakuMessages('好'.repeat(40), 80)).toBe(1)
+    expect(countDanmakuMessages('好'.repeat(41), 80)).toBe(2)
+    expect(countDanmakuMessages('第一行\n\n第二行', 80)).toBe(2)
+    expect(countDanmakuMessages('好'.repeat(40), 80, { randomChar: '\u00AD' })).toBe(2)
+    expect(countDanmakuMessages('好'.repeat(40), 80, { randomChar: '\uFEFF' })).toBe(2)
+    expect(countDanmakuMessages(`\uFEFF${'好'.repeat(40)}`, 80)).toBe(2)
+    expect(
+      countDanmakuMessages(`${'好'.repeat(19)}v`, 40, {
+        transformLine: line => line.replaceAll('v', '微信'),
+      })
+    ).toBe(2)
+    expect(
+      countDanmakuMessages('drop', 40, {
+        transformLine: () => '',
+      })
+    ).toBe(0)
+    expect(
+      countDanmakuMessages('official_147\n你好世界', 10, {
+        isEmote: line => line === 'official_147',
+        trimLines: true,
+      })
+    ).toBe(2)
+    expect(
+      countDanmakuMessages('赞', 10, {
+        isEmote: line => line === 'official_147',
+        transformLine: line => (line === '赞' ? 'official_147' : line),
+        randomChar: '\u00AD',
+        trimLines: true,
+      })
+    ).toBe(1)
   })
 })

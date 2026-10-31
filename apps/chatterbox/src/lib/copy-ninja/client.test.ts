@@ -62,7 +62,7 @@ async function loadClient(uid: string, gm: Record<string, unknown>): Promise<Har
     [join(LIB, 'store.ts')]: `
       import { signal } from '@preact/signals'
       export const cachedRoomId = signal(${ROOM})
-      export const maxLength = signal(40)
+      export const danmakuMaxUnits = signal(80)
     `,
     [join(LIB, 'log.ts')]: `
       export const lines = []

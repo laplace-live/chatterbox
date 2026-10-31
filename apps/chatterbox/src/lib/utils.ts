@@ -3,12 +3,13 @@ import { DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM, INVISIBLE_CHAR_PRESETS }
 /** 1σ of send-interval jitter as a fraction of the base interval; samples clamped to ±2σ. */
 const SEND_JITTER_SIGMA = 0.2
 
+const graphemeSegmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' })
+
 /**
  * Splits a string into grapheme clusters (user-perceived characters).
  */
 export function getGraphemes(str: string): string[] {
-  const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' })
-  return Array.from(segmenter.segment(str), ({ segment }) => segment)
+  return Array.from(graphemeSegmenter.segment(str), ({ segment }) => segment)
 }
 
 /**
@@ -39,6 +40,58 @@ export function trimText(text: string, maxLength: number): string[] {
     parts.push(currentPart.join(''))
   }
 
+  return parts
+}
+
+/**
+ * Bilibili's `utilDanmuLength` weight: printable ASCII (`0x20..0x7E`) = 1, BMP non-ASCII = 2, astral surrogate pair = 4.
+ * Matched against `getInfoByUser`'s `data.property.danmu.length` (`80` = 40 CJK chars / 80 ASCII chars / 20 emojis).
+ */
+export function getDanmakuUnits(text: string): number {
+  let units = 0
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    units += code >= 0x20 && code <= 0x7e ? 1 : 2
+  }
+  return units
+}
+
+/**
+ * Splits `text` into chunks whose {@link getDanmakuUnits} stay within `maxUnits`, keeping grapheme clusters intact
+ * unless a single cluster exceeds `maxUnits` (fallen back to code-point cuts; an indivisible single code point wider than
+ * `maxUnits`, such as a 4-unit astral emoji under a 2-unit `1 字` override, is emitted whole rather than splitting UTF-16 surrogates).
+ */
+export function trimDanmakuByUnits(text: string, maxUnits: number): string[] {
+  if (!text || maxUnits <= 0) return [text]
+  if (getDanmakuUnits(text) <= maxUnits) return [text]
+
+  const parts: string[] = []
+  let current: string[] = []
+  let currentUnits = 0
+
+  const pushPiece = (piece: string, units: number) => {
+    if (current.length > 0 && currentUnits + units > maxUnits) {
+      parts.push(current.join(''))
+      current = [piece]
+      currentUnits = units
+    } else {
+      current.push(piece)
+      currentUnits += units
+    }
+  }
+
+  for (const grapheme of getGraphemes(text)) {
+    const units = getDanmakuUnits(grapheme)
+    if (units <= maxUnits) {
+      pushPiece(grapheme, units)
+    } else {
+      for (const cp of grapheme) {
+        pushPiece(cp, getDanmakuUnits(cp))
+      }
+    }
+  }
+
+  if (current.length > 0) parts.push(current.join(''))
   return parts
 }
 
@@ -379,10 +432,8 @@ export function formatDanmakuError(error: string | undefined): string {
   return error
 }
 
-/**
- * Splits lines, optionally inserts `randomChar` into each (see `addRandomCharacter`), trims to max length per message.
- */
-export function processMessages(text: string, maxLength: number, randomChar?: string): string[] {
+/** Splits lines, optionally inserts `randomChar` into each, and chunks each line within `maxUnits` Bilibili half-width units. */
+export function processDanmakuMessages(text: string, maxUnits: number, randomChar?: string): string[] {
   return text
     .split('\n')
     .flatMap(line => {
@@ -390,9 +441,51 @@ export function processMessages(text: string, maxLength: number, randomChar?: st
       if (randomChar && l?.trim()) {
         l = addRandomCharacter(l, randomChar)
       }
-      return trimText(l, maxLength)
+      return trimDanmakuByUnits(l, maxUnits)
     })
     .filter(line => line?.trim())
+}
+
+/** Counts how many danmaku messages `text` produces under `maxUnits` (shared by 独轮车 and 常规发送 `x 条` readouts). */
+export function countDanmakuMessages(
+  text: string,
+  maxUnits: number,
+  opts: {
+    isEmote?: (line: string) => boolean
+    trimLines?: boolean
+    transformLine?: (line: string) => string
+    randomChar?: string
+  } = {}
+): number {
+  if (!text) return 0
+  let count = 0
+  for (const rawLine of text.split('\n')) {
+    const trimmed = rawLine.trim()
+    if (!trimmed) continue
+    if (opts.isEmote?.(trimmed)) {
+      count += 1
+      continue
+    }
+    const baseLine = opts.trimLines ? trimmed : rawLine
+    const transformed = opts.transformLine ? opts.transformLine(baseLine) : baseLine
+    for (const subLine of transformed.split('\n')) {
+      const trimmedSub = subLine.trim()
+      if (!trimmedSub) continue
+      if (opts.isEmote?.(trimmedSub)) {
+        count += 1
+        continue
+      }
+      const line = opts.randomChar ? opts.randomChar + subLine : subLine
+      if (maxUnits <= 0 || getDanmakuUnits(line) <= maxUnits) {
+        count += 1
+      } else {
+        for (const chunk of trimDanmakuByUnits(line, maxUnits)) {
+          if (chunk.trim()) count += 1
+        }
+      }
+    }
+  }
+  return count
 }
 
 /**

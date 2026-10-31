@@ -8,7 +8,6 @@ import { BASE_URL, DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM, INVISIBLE_CHAR
 import { fetchLlmModels, formatLlmPricing } from '../lib/llm'
 import { appendLog, maxLogLines } from '../lib/log'
 import { isRegexEntry, validateRegexEntry } from '../lib/message-blacklist'
-import { buildReplacementMap } from '../lib/replacement'
 import { applySettingsFile, exportSettings, parseSettingsFile } from '../lib/settings-io'
 import {
   activeLlmProvider,
@@ -447,7 +446,6 @@ export function SettingsTab() {
       const data = await fetchRemoteKeywords()
       remoteKeywords.value = data
       remoteKeywordsLastSync.value = Date.now()
-      buildReplacementMap()
       updateRemoteStatus()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -648,7 +646,6 @@ export function SettingsTab() {
       return
     }
     localGlobalRules.value = [...localGlobalRules.value, { from: globalReplaceFrom.value, to: globalReplaceTo.value }]
-    buildReplacementMap()
     globalReplaceFrom.value = ''
     globalReplaceTo.value = ''
   }
@@ -657,7 +654,6 @@ export function SettingsTab() {
     const next = [...localGlobalRules.value]
     next.splice(index, 1)
     localGlobalRules.value = next
-    buildReplacementMap()
   }
 
   const addRoomRule = () => {
@@ -674,7 +670,6 @@ export function SettingsTab() {
     const existing = all[rid] ?? []
     all[rid] = [...existing, { from: roomReplaceFrom.value, to: roomReplaceTo.value }]
     localRoomRules.value = all
-    buildReplacementMap()
     roomReplaceFrom.value = ''
     roomReplaceTo.value = ''
   }
@@ -691,7 +686,6 @@ export function SettingsTab() {
       all[rid] = existing
     }
     localRoomRules.value = all
-    buildReplacementMap()
   }
 
   const addRoom = () => {
@@ -716,7 +710,6 @@ export function SettingsTab() {
     if (editingRoomId.value === rid) {
       editingRoomId.value = cachedRoomId.value !== null ? String(cachedRoomId.value) : ''
     }
-    buildReplacementMap()
   }
 
   const didInit = useRef(false)
@@ -1076,19 +1069,15 @@ export function SettingsTab() {
               onInput={e => {
                 const enabled = e.currentTarget.checked
                 remoteRulesEnabled.value = enabled
-                // Rebuild now (no reload); on re-enable, pull fresh rules if the cache is stale.
+                // On re-enable, pull fresh rules if the cache is stale.
                 if (enabled) {
                   const ls = remoteKeywordsLastSync.value
                   if (!ls || Date.now() - ls > SYNC_INTERVAL) {
                     void syncRemote()
-                  } else {
-                    buildReplacementMap()
-                    updateRemoteStatus()
+                    return
                   }
-                } else {
-                  buildReplacementMap()
-                  updateRemoteStatus()
                 }
+                updateRemoteStatus()
               }}
               label='启用云端规则替换'
             />

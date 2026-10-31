@@ -41,8 +41,8 @@ async function createHarness() {
     autoBlendUserBlacklist: signal<Record<string, string>>({}),
     autoBlendWindowSec: signal(30),
     autoBlendYolo: signal(false),
+    danmakuMaxUnits: signal(200),
     invisibleChar: signal('\u200b'),
-    maxLength: signal(100),
     randomChar: signal(false),
     randomColor: signal(false),
   }

@@ -15,18 +15,18 @@ import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   aiEvasion,
+  danmakuMaxUnits,
   fasongText,
   invisibleChar,
   llmActivePromptNormalSend,
   llmPromptsNormalSend,
-  maxLength,
   normalSendPanelOpen,
   normalSendRoadRage,
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { insertRandomChar, processMessages } from '../lib/utils'
-import { wrapSegment, wrapSplitLen } from '../lib/wrap'
+import { countDanmakuMessages, insertRandomChar, processDanmakuMessages } from '../lib/utils'
+import { wrapSegment, wrapSplitUnits } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
@@ -38,6 +38,30 @@ import { Textarea } from './ui/textarea'
 // grapheme slot the invisible char last landed in, so a repeat varies at a different position each time.
 let lastRoadRageText = ''
 let lastRoadRageIndex: number | undefined
+let pendingRoadRage: { key: string; text: string; index: number } | null = null
+
+function resolveRoadRage(original: string, processed: string): { text: string; index: number } {
+  const char = invisibleChar.value
+  const key = `${original}\0${processed}\0${char}\0${lastRoadRageIndex ?? ''}`
+  if (pendingRoadRage?.key === key) return pendingRoadRage
+  const inserted = insertRandomChar(processed, char, lastRoadRageIndex)
+  pendingRoadRage = { key, ...inserted }
+  return pendingRoadRage
+}
+
+function previewNormalSendCount(raw: string): number {
+  const trimmed = raw.trim()
+  if (!trimmed) return 0
+  if (isEmoticonUnique(trimmed) || isUnavailableEmoticon(trimmed)) return 1
+  let preview = applyReplacements(trimmed)
+  const trimmedPreview = preview.trim()
+  if (!trimmedPreview) return 0
+  if (isEmoticonUnique(trimmedPreview) || isUnavailableEmoticon(trimmedPreview)) return 1
+  if (normalSendRoadRage.value && trimmed === lastRoadRageText) {
+    preview = resolveRoadRage(trimmed, preview).text
+  }
+  return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
+}
 
 export function NormalSendTab() {
   // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
@@ -48,6 +72,8 @@ export function NormalSendTab() {
 
   // Shown even when the active draft is empty (llmReady false), so the user can switch to a non-empty draft.
   const showPromptPicker = isLlmApiConfigured() && llmPromptsNormalSend.value.length > 0
+
+  const msgCount = previewNormalSendCount(fasongText.value)
 
   /** Polish the textarea content in place; returns whether it succeeded. */
   const polishCurrentInput = async (): Promise<boolean> => {
@@ -97,9 +123,27 @@ export function NormalSendTab() {
       return
     }
 
-    const isEmote = isEmoticonUnique(originalMessage)
-    let processedMessage = isEmote ? originalMessage : applyReplacements(originalMessage)
-    const wasReplaced = !isEmote && originalMessage !== processedMessage
+    const wasOriginalEmote = isEmoticonUnique(originalMessage)
+    let processedMessage = wasOriginalEmote ? originalMessage : applyReplacements(originalMessage)
+    const trimmedProcessed = processedMessage.trim()
+    if (!trimmedProcessed) {
+      appendLog(`⚠️ 消息替换后为空，未发送：${originalMessage}`)
+      fasongText.value = ''
+      return
+    }
+    if (!wasOriginalEmote && isLockedEmoticon(trimmedProcessed)) {
+      appendLog(formatLockedEmoticonReject(trimmedProcessed, '手动表情'))
+      fasongText.value = ''
+      return
+    }
+    if (!wasOriginalEmote && isUnavailableEmoticon(trimmedProcessed)) {
+      appendLog(formatUnavailableEmoticonReject(trimmedProcessed, '手动表情'))
+      fasongText.value = ''
+      return
+    }
+    const isEmote = wasOriginalEmote || isEmoticonUnique(trimmedProcessed)
+    if (isEmote) processedMessage = trimmedProcessed
+    const wasReplaced = !wasOriginalEmote && originalMessage !== processedMessage
     fasongText.value = ''
 
     // 路怒模式: re-sending the exact same text would be dropped by B站's duplicate filter, so vary the
@@ -107,12 +151,14 @@ export function NormalSendTab() {
     // inside the id breaks it). Keyed on the original text so replacements don't mask a repeat.
     let roadRaged = false
     if (!isEmote && normalSendRoadRage.value && originalMessage === lastRoadRageText) {
-      const { text, index } = insertRandomChar(processedMessage, invisibleChar.value, lastRoadRageIndex)
+      const { text, index } = resolveRoadRage(originalMessage, processedMessage)
+      pendingRoadRage = null
       processedMessage = text
       lastRoadRageIndex = index
       roadRaged = true
     } else {
       lastRoadRageIndex = undefined
+      pendingRoadRage = null
     }
     lastRoadRageText = originalMessage
 
@@ -124,11 +170,13 @@ export function NormalSendTab() {
         return
       }
 
-      // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper graphemes so each segment still fits maxLength.
+      // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper units so each segment still fits danmakuMaxUnits.
       const wrap = !isEmote && normalSendWrapBrackets.value
       const segments = isEmote
         ? [processedMessage]
-        : processMessages(processedMessage, wrapSplitLen(maxLength.value, wrap)).map(s => wrapSegment(s, wrap))
+        : processDanmakuMessages(processedMessage, wrapSplitUnits(danmakuMaxUnits.value, wrap)).map(s =>
+            wrapSegment(s, wrap)
+          )
       const total = segments.length
 
       for (let i = 0; i < total; i++) {
@@ -192,7 +240,9 @@ export function NormalSendTab() {
             }
             className='h-14'
           />
-          <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>{fasongText.value.length}</div>
+          <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>
+            {msgCount > 1 ? `${msgCount} 条 · ${fasongText.value.length}` : fasongText.value.length}
+          </div>
         </div>
 
         <div class='my-2 flex items-center gap-1'>

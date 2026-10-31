@@ -1,14 +1,9 @@
-import {
-  cachedRoomId,
-  localGlobalRules,
-  localRoomRules,
-  remoteKeywords,
-  remoteRulesEnabled,
-  replacementMap,
-} from './store'
+import { computed } from '@preact/signals'
 
-/** Build the replacement map; priority: remote global < remote room < local global < local room. */
-export function buildReplacementMap(): void {
+import { cachedRoomId, localGlobalRules, localRoomRules, remoteKeywords, remoteRulesEnabled } from './store'
+
+/** Active replacement map; priority: remote global < remote room < local global < local room. */
+const replacementMap = computed(() => {
   const map = new Map<string, string>()
 
   const rk = remoteRulesEnabled.value ? remoteKeywords.value : null
@@ -40,16 +35,13 @@ export function buildReplacementMap(): void {
     }
   }
 
-  replacementMap.value = map
-}
+  return map
+})
 
-/** Apply all replacement rules to the text using the cached map. */
+/** Apply all active replacement rules to `text` (pure and safe for Preact render). */
 export function applyReplacements(text: string): string {
-  if (replacementMap.value === null) {
-    buildReplacementMap()
-  }
   let result = text
-  for (const [from, to] of (replacementMap.value ?? new Map<string, string>()).entries()) {
+  for (const [from, to] of replacementMap.value.entries()) {
     result = result.split(from).join(to)
   }
   return result

@@ -1,4 +1,5 @@
 import { unsafeWindow } from '$'
+import { applyGetInfoByUserDanmakuLength } from './danmaku-limit'
 import { createDeferredNode } from './deferred-node'
 import { createLiveBlockPill } from './live-block-pill'
 
@@ -109,6 +110,7 @@ function shouldHijackUrl(url: string): boolean {
 function applyTransforms(url: string, data: any): void {
   if (url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
+    applyGetInfoByUserDanmakuLength(data, { url })
     // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
     liveBlockPill.remove()
     const forbid = data?.data?.forbid_live
