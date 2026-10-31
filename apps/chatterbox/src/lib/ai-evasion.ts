@@ -4,7 +4,7 @@ import { appendLog } from './log'
 import { enqueueDanmaku, SendPriority, type SendSource } from './send-queue'
 import { aiEvasion, danmakuMaxUnits, invisibleChar } from './store'
 import { getDanmakuUnits, getGraphemes, trimDanmakuByUnits } from './utils'
-import { BRACKET_CLOSE, BRACKET_OPEN, wrapSegment, wrapSplitUnits } from './wrap'
+import { unwrapSegment, wrapSegment, wrapSplitUnits } from './wrap'
 
 interface DetectionResult {
   hasSensitiveContent?: boolean
@@ -50,15 +50,9 @@ export function replaceSensitiveWords(text: string, sensitiveWords: string[]): s
 /** Splits an evaded message only when inserted invisible chars pushed it past `maxUnits`, preserving outer 【】 wrappers. */
 export function splitEvadedMessage(evadedMessage: string, maxUnits: number): string[] {
   if (maxUnits <= 0 || getDanmakuUnits(evadedMessage) <= maxUnits) return [evadedMessage]
-  if (
-    evadedMessage.startsWith(BRACKET_OPEN) &&
-    evadedMessage.endsWith(BRACKET_CLOSE) &&
-    evadedMessage.length > BRACKET_OPEN.length + BRACKET_CLOSE.length
-  ) {
-    const inner = evadedMessage.slice(BRACKET_OPEN.length, -BRACKET_CLOSE.length)
-    if (!inner.includes(BRACKET_CLOSE)) {
-      return trimDanmakuByUnits(inner, wrapSplitUnits(maxUnits, true)).map(s => wrapSegment(s, true))
-    }
+  const inner = unwrapSegment(evadedMessage)
+  if (inner !== null) {
+    return trimDanmakuByUnits(inner, wrapSplitUnits(maxUnits, true)).map(s => wrapSegment(s, true))
   }
   return trimDanmakuByUnits(evadedMessage, maxUnits)
 }

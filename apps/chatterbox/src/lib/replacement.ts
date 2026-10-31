@@ -1,3 +1,5 @@
+import { computed } from '@preact/signals'
+
 import {
   cachedRoomId,
   localGlobalRules,
@@ -7,8 +9,7 @@ import {
   replacementMap,
 } from './store'
 
-/** Build the replacement map; priority: remote global < remote room < local global < local room. */
-export function buildReplacementMap(): void {
+function computeReplacementMap(): Map<string, string> {
   const map = new Map<string, string>()
 
   const rk = remoteRulesEnabled.value ? remoteKeywords.value : null
@@ -40,17 +41,35 @@ export function buildReplacementMap(): void {
     }
   }
 
-  replacementMap.value = map
+  return map
+}
+
+const fallbackReplacementMap = computed(computeReplacementMap)
+
+/** Build the replacement map; priority: remote global < remote room < local global < local room. */
+export function buildReplacementMap(): void {
+  replacementMap.value = computeReplacementMap()
+}
+
+function replaceWithMap(text: string, map: Map<string, string>): string {
+  let result = text
+  for (const [from, to] of map.entries()) {
+    result = result.split(from).join(to)
+  }
+  return result
 }
 
 /** Apply all replacement rules to the text using the cached map. */
 export function applyReplacements(text: string): string {
-  if (replacementMap.value === null) {
-    buildReplacementMap()
+  let map = replacementMap.value
+  if (map === null) {
+    map = computeReplacementMap()
+    replacementMap.value = map
   }
-  let result = text
-  for (const [from, to] of (replacementMap.value ?? new Map<string, string>()).entries()) {
-    result = result.split(from).join(to)
-  }
-  return result
+  return replaceWithMap(text, map)
+}
+
+/** Pure read-only replacement pass safe for Preact render (never mutates `replacementMap`). */
+export function previewReplacements(text: string): string {
+  return replaceWithMap(text, replacementMap.value ?? fallbackReplacementMap.value)
 }

@@ -11,7 +11,7 @@ import {
 } from '../lib/emoticon'
 import { describeLlmGap, isLlmApiConfigured, polishWithLlm } from '../lib/llm-tasks'
 import { appendLog } from '../lib/log'
-import { applyReplacements } from '../lib/replacement'
+import { applyReplacements, previewReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   aiEvasion,
@@ -25,7 +25,7 @@ import {
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { insertRandomChar, processDanmakuMessages } from '../lib/utils'
+import { countDanmakuMessages, insertRandomChar, processDanmakuMessages } from '../lib/utils'
 import { wrapSegment, wrapSplitUnits } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
@@ -39,6 +39,17 @@ import { Textarea } from './ui/textarea'
 let lastRoadRageText = ''
 let lastRoadRageIndex: number | undefined
 
+function previewNormalSendCount(raw: string): number {
+  const trimmed = raw.trim()
+  if (!trimmed) return 0
+  if (isEmoticonUnique(trimmed)) return 1
+  let preview = previewReplacements(trimmed)
+  if (preview && normalSendRoadRage.value && trimmed === lastRoadRageText) {
+    preview += invisibleChar.value
+  }
+  return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
+}
+
 export function NormalSendTab() {
   // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
   const polishing = useSignal(false)
@@ -48,6 +59,8 @@ export function NormalSendTab() {
 
   // Shown even when the active draft is empty (llmReady false), so the user can switch to a non-empty draft.
   const showPromptPicker = isLlmApiConfigured() && llmPromptsNormalSend.value.length > 0
+
+  const msgCount = previewNormalSendCount(fasongText.value)
 
   /** Polish the textarea content in place; returns whether it succeeded. */
   const polishCurrentInput = async (): Promise<boolean> => {
@@ -194,7 +207,9 @@ export function NormalSendTab() {
             }
             className='h-14'
           />
-          <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>{fasongText.value.length}</div>
+          <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>
+            {msgCount > 1 ? `${msgCount} 条 · ${fasongText.value.length}` : fasongText.value.length}
+          </div>
         </div>
 
         <div class='my-2 flex items-center gap-1'>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { BRACKET_RESERVE, BRACKET_UNIT_RESERVE, wrapSegment, wrapSplitLen, wrapSplitUnits } from './wrap'
+import { BRACKET_RESERVE, BRACKET_UNIT_RESERVE, unwrapSegment, wrapSegment, wrapSplitLen, wrapSplitUnits } from './wrap'
 
 /** Split length must reserve the two 【】 graphemes so a wrapped segment still fits maxLen. */
 describe('wrapSplitLen', () => {
@@ -38,5 +38,12 @@ describe('wrapSegment', () => {
     expect(wrapSplitUnits(80, true)).toBe(76)
     expect(wrapSplitUnits(80, false)).toBe(80)
     expect(wrapSplitUnits(2, true)).toBe(1)
+  })
+
+  test('unwrapSegment strips only a single non-empty outer 【】 wrapper', () => {
+    expect(unwrapSegment('【你好】')).toBe('你好')
+    expect(unwrapSegment('【】')).toBeNull()
+    expect(unwrapSegment('【甲】和【乙】')).toBeNull()
+    expect(unwrapSegment('你好')).toBeNull()
   })
 })

@@ -48,9 +48,9 @@ export function trimText(text: string, maxLength: number): string[] {
  */
 export function getDanmakuUnits(text: string): number {
   let units = 0
-  for (const ch of text) {
-    const cp = ch.codePointAt(0) ?? 0
-    units += cp >= 0x20 && cp <= 0x7e ? 1 : 2 * ch.length
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    units += code >= 0x20 && code <= 0x7e ? 1 : 2
   }
   return units
 }
@@ -430,22 +430,6 @@ export function formatDanmakuError(error: string | undefined): string {
   return error
 }
 
-/**
- * Splits lines, optionally inserts `randomChar` into each (see `addRandomCharacter`), trims to max length per message.
- */
-export function processMessages(text: string, maxLength: number, randomChar?: string): string[] {
-  return text
-    .split('\n')
-    .flatMap(line => {
-      let l = line
-      if (randomChar && l?.trim()) {
-        l = addRandomCharacter(l, randomChar)
-      }
-      return trimText(l, maxLength)
-    })
-    .filter(line => line?.trim())
-}
-
 /** Splits lines, optionally inserts `randomChar` into each, and chunks each line within `maxUnits` Bilibili half-width units. */
 export function processDanmakuMessages(text: string, maxUnits: number, randomChar?: string): string[] {
   return text
@@ -458,6 +442,33 @@ export function processDanmakuMessages(text: string, maxUnits: number, randomCha
       return trimDanmakuByUnits(l, maxUnits)
     })
     .filter(line => line?.trim())
+}
+
+/** Counts how many danmaku messages `text` produces under `maxUnits` (shared by 独轮车 and 常规发送 `x 条` readouts). */
+export function countDanmakuMessages(
+  text: string,
+  maxUnits: number,
+  opts: { isEmote?: (line: string) => boolean; trimLines?: boolean } = {}
+): number {
+  if (!text) return 0
+  let count = 0
+  for (const rawLine of text.split('\n')) {
+    const trimmed = rawLine.trim()
+    if (!trimmed) continue
+    if (opts.isEmote?.(trimmed)) {
+      count += 1
+      continue
+    }
+    const line = opts.trimLines ? trimmed : rawLine
+    if (maxUnits <= 0 || getDanmakuUnits(line) <= maxUnits) {
+      count += 1
+    } else {
+      for (const chunk of trimDanmakuByUnits(line, maxUnits)) {
+        if (chunk.trim()) count += 1
+      }
+    }
+  }
+  return count
 }
 
 /**

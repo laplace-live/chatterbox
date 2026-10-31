@@ -6,13 +6,13 @@ import * as utils from './utils'
 import * as wrap from './wrap'
 
 const source = await Bun.file(new URL('./ai-evasion.ts', import.meta.url)).text()
+const transpiledJs = new Bun.Transpiler({ loader: 'ts' }).transformSync(source)
 let moduleId = 0
 
 async function loadAiEvasion(opts: { maxUnits?: number; sensitiveWords?: string[]; failChunkAt?: number } = {}) {
   const aiEvasion = signal(true)
   const danmakuMaxUnits = signal(opts.maxUnits ?? 80)
   const invisibleChar = signal('\u00AD')
-  const logs: string[] = []
   const sent: string[] = []
   const enqueueDanmaku = mock(async (message: string) => {
     const idx = sent.length
@@ -30,7 +30,7 @@ async function loadAiEvasion(opts: { maxUnits?: number; sensitiveWords?: string[
   const dependencies: Record<string, unknown> = {
     './const': constants,
     './emoticon': { isEmoticonUnique: () => false },
-    './log': { appendLog: (msg: string) => logs.push(msg) },
+    './log': { appendLog: () => {} },
     './send-queue': { enqueueDanmaku, SendPriority: { MANUAL: 2 } },
     './store': { aiEvasion, danmakuMaxUnits, invisibleChar },
     './utils': utils,
@@ -38,8 +38,7 @@ async function loadAiEvasion(opts: { maxUnits?: number; sensitiveWords?: string[
   }
   const key = `__aiEvasionTest${++moduleId}`
   Reflect.set(globalThis, key, { fetch, dependencies })
-  const js = new Bun.Transpiler({ loader: 'ts' }).transformSync(source)
-  const injected = js.replace(/import\s*\{([^}]+)\}\s*from\s*["']([^"']+)["'];?/g, (_match, names, path) => {
+  const injected = transpiledJs.replace(/import\s*\{([^}]+)\}\s*from\s*["']([^"']+)["'];?/g, (_match, names, path) => {
     if (!(path in dependencies)) throw new Error(`Unmocked import: ${path}`)
     return `const {${names}} = globalThis[${JSON.stringify(key)}].dependencies[${JSON.stringify(path)}];`
   })
@@ -48,7 +47,7 @@ async function loadAiEvasion(opts: { maxUnits?: number; sensitiveWords?: string[
     const mod: typeof import('./ai-evasion') = await import(
       `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
     )
-    return { mod, sent, logs, danmakuMaxUnits }
+    return { mod, sent }
   } finally {
     Reflect.deleteProperty(globalThis, key)
   }

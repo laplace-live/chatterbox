@@ -4,7 +4,7 @@ import { DANMAKU_UNITS_PER_CHAR, DEFAULT_DANMAKU_MAX_UNITS } from './const'
 import { readPath } from './utils'
 
 /** Converts Bilibili `utilDanmuLength` half-width units (e.g. `80`) to full-width Chinese character ("字") count (`40`). */
-export function unitsToDanmakuChars(units: number): number {
+function unitsToDanmakuChars(units: number): number {
   return Math.max(1, Math.floor(units / DANMAKU_UNITS_PER_CHAR))
 }
 

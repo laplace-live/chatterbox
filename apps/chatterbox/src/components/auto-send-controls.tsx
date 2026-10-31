@@ -1,3 +1,4 @@
+import { isEmoticonUnique } from '../lib/emoticon'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import { appendLog } from '../lib/log'
 import { cancelLoop } from '../lib/loop'
@@ -21,7 +22,7 @@ import {
   roomDanmakuChars,
   sendMsg,
 } from '../lib/store'
-import { getGraphemes, processDanmakuMessages, trimText } from '../lib/utils'
+import { countDanmakuMessages, getGraphemes, trimText } from '../lib/utils'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -41,7 +42,10 @@ export function AutoSendControls() {
   const templates = msgTemplates.value
   const idx = activeTemplateIndex.value
   const currentTemplate = templates[idx] ?? ''
-  const msgCount = processDanmakuMessages(currentTemplate, effectiveAutoSendMaxUnits.value).length
+  const msgCount = countDanmakuMessages(currentTemplate, effectiveAutoSendMaxUnits.value, {
+    isEmote: isEmoticonUnique,
+    trimLines: true,
+  })
 
   const toggleSend = () => {
     if (!sendMsg.value) {

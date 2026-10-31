@@ -5,6 +5,7 @@ import {
   addRandomCharacter,
   buildMemeContributeUrl,
   buildOvuContributeUrl,
+  countDanmakuMessages,
   extractBvid,
   extractOpusAuthorUid,
   extractOpusPubDate,
@@ -15,7 +16,6 @@ import {
   isHttpUrl,
   parseCustomChar,
   processDanmakuMessages,
-  processMessages,
   resolveInvisibleChar,
   trimDanmakuByUnits,
 } from './utils'
@@ -220,15 +220,15 @@ describe('addRandomCharacter', () => {
 })
 
 /** Per-line split with optional char insertion; blank lines are dropped. */
-describe('processMessages', () => {
+describe('processDanmakuMessages', () => {
   test('inserts the char into every non-blank line when given', () => {
-    const out = processMessages('ab\n\ncd', 10, '~')
+    const out = processDanmakuMessages('ab\n\ncd', 20, '~')
     expect(out).toHaveLength(2)
     for (const msg of out) expect(msg.split('~')).toHaveLength(2)
   })
 
   test('leaves lines untouched without a char', () => {
-    expect(processMessages('ab\n\ncd', 10)).toEqual(['ab', 'cd'])
+    expect(processDanmakuMessages('ab\n\ncd', 20)).toEqual(['ab', 'cd'])
   })
 })
 
@@ -381,5 +381,18 @@ describe('getDanmakuUnits & trimDanmakuByUnits', () => {
     const out = processDanmakuMessages('好'.repeat(40), 80, '\u200B')
     expect(out).toHaveLength(2)
     for (const seg of out) expect(getDanmakuUnits(seg)).toBeLessThanOrEqual(80)
+  })
+
+  test('countDanmakuMessages counts split lines and keeps emote lines unsplit', () => {
+    expect(countDanmakuMessages('   \n  ', 80)).toBe(0)
+    expect(countDanmakuMessages('好'.repeat(40), 80)).toBe(1)
+    expect(countDanmakuMessages('好'.repeat(41), 80)).toBe(2)
+    expect(countDanmakuMessages('第一行\n\n第二行', 80)).toBe(2)
+    expect(
+      countDanmakuMessages('official_147\n你好世界', 10, {
+        isEmote: line => line === 'official_147',
+        trimLines: true,
+      })
+    ).toBe(2)
   })
 })
