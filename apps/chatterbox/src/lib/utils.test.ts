@@ -375,6 +375,8 @@ describe('getDanmakuUnits & trimDanmakuByUnits', () => {
     const chunks = trimDanmakuByUnits('👨‍👩‍👧‍👦', 10)
     expect(chunks.length).toBeGreaterThan(1)
     for (const chunk of chunks) expect(getDanmakuUnits(chunk)).toBeLessThanOrEqual(10)
+    // Indivisible single astral code point (4 units) stays whole under a 1-字 (2-unit) override without tearing UTF-16 surrogates.
+    expect(trimDanmakuByUnits('😀你好', 2)).toEqual(['😀', '你', '好'])
   })
 
   test('processDanmakuMessages accounts for inserted invisible char (2 units) before splitting', () => {
@@ -407,5 +409,13 @@ describe('getDanmakuUnits & trimDanmakuByUnits', () => {
         trimLines: true,
       })
     ).toBe(2)
+    expect(
+      countDanmakuMessages('赞', 10, {
+        isEmote: line => line === 'official_147',
+        transformLine: line => (line === '赞' ? 'official_147' : line),
+        randomChar: '\u00AD',
+        trimLines: true,
+      })
+    ).toBe(1)
   })
 })

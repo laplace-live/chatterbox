@@ -58,7 +58,8 @@ export function getDanmakuUnits(text: string): number {
 
 /**
  * Splits `text` into chunks whose {@link getDanmakuUnits} stay within `maxUnits`, keeping grapheme clusters intact
- * unless a single cluster itself exceeds `maxUnits` (fallen back to code-point cuts).
+ * unless a single cluster exceeds `maxUnits` (fallen back to code-point cuts; an indivisible single code point wider than
+ * `maxUnits`, such as a 4-unit astral emoji under a 2-unit `1 字` override, is emitted whole rather than splitting UTF-16 surrogates).
  */
 export function trimDanmakuByUnits(text: string, maxUnits: number): string[] {
   if (!text || maxUnits <= 0) return [text]
@@ -468,7 +469,12 @@ export function countDanmakuMessages(
     const baseLine = opts.trimLines ? trimmed : rawLine
     const transformed = opts.transformLine ? opts.transformLine(baseLine) : baseLine
     for (const subLine of transformed.split('\n')) {
-      if (!subLine.trim()) continue
+      const trimmedSub = subLine.trim()
+      if (!trimmedSub) continue
+      if (opts.isEmote?.(trimmedSub)) {
+        count += 1
+        continue
+      }
       const line = opts.randomChar ? opts.randomChar + subLine : subLine
       if (maxUnits <= 0 || getDanmakuUnits(line) <= maxUnits) {
         count += 1

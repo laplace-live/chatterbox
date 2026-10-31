@@ -37,7 +37,13 @@ import {
   roomDanmakuUnits,
   sendMsg,
 } from './store'
-import { abortableSleep, processDanmakuMessages, resolveSendDelayMs } from './utils'
+import {
+  abortableSleep,
+  getDanmakuUnits,
+  processDanmakuMessages,
+  resolveSendDelayMs,
+  trimDanmakuByUnits,
+} from './utils'
 import { cachedWbiKeys, encodeWbi, waitForWbiKeys } from './wbi'
 
 const CAP_LOOKUP_RETRY_MS = 30_000
@@ -194,10 +200,18 @@ export async function loop(): Promise<void> {
           } else {
             const replaced = applyReplacements(line)
             const wasReplaced = replaced !== line
-            const chunks = processDanmakuMessages(replaced, maxUnits, randomCharToInsert)
-            const replacedFrom = wasReplaced && chunks.length === 1 ? line : undefined
-            for (const text of chunks) {
-              tasks.push({ kind: 'direct', item: { text, replacedFrom } })
+            const trimmedReplaced = replaced.trim()
+            if (isEmoticonUnique(trimmedReplaced) || isUnavailableEmoticon(trimmedReplaced)) {
+              tasks.push({
+                kind: 'direct',
+                item: { text: trimmedReplaced, replacedFrom: wasReplaced ? line : undefined },
+              })
+            } else {
+              const chunks = processDanmakuMessages(replaced, maxUnits, randomCharToInsert)
+              const replacedFrom = wasReplaced && chunks.length === 1 ? line : undefined
+              for (const text of chunks) {
+                tasks.push({ kind: 'direct', item: { text, replacedFrom } })
+              }
             }
           }
         }
@@ -243,19 +257,24 @@ export async function loop(): Promise<void> {
             } else {
               const replaced = applyReplacements(polished)
               const wasReplaced = replaced !== polished
-              // Re-process: replaced polish output may exceed effectiveAutoSendMaxUnits, and randomChar applies now.
-              const chunks = processDanmakuMessages(replaced, effectiveAutoSendMaxUnits.value, randomCharToInsert)
-              if (chunks.length === 0) {
-                appendLog(`⚠️ 独轮车替换后为空，跳过本段：${polished}`)
-                const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
-                if (!ok) {
-                  completed = false
-                  break
+              const trimmedReplaced = replaced.trim()
+              if (isEmoticonUnique(trimmedReplaced) || isUnavailableEmoticon(trimmedReplaced)) {
+                sendItems = [{ text: trimmedReplaced, replacedFrom: wasReplaced ? polished : undefined }]
+              } else {
+                // Re-process: replaced polish output may exceed effectiveAutoSendMaxUnits, and randomChar applies now.
+                const chunks = processDanmakuMessages(replaced, effectiveAutoSendMaxUnits.value, randomCharToInsert)
+                if (chunks.length === 0) {
+                  appendLog(`⚠️ 独轮车替换后为空，跳过本段：${polished}`)
+                  const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
+                  if (!ok) {
+                    completed = false
+                    break
+                  }
+                  continue
                 }
-                continue
+                const replacedFrom = wasReplaced && chunks.length === 1 ? polished : undefined
+                sendItems = chunks.map(text => ({ text, replacedFrom }))
               }
-              const replacedFrom = wasReplaced && chunks.length === 1 ? polished : undefined
-              sendItems = chunks.map(text => ({ text, replacedFrom }))
             }
           } catch (err) {
             // AbortError = 停车 mid-polish; propagate as "round aborted" so the success log doesn't fire.
@@ -274,7 +293,22 @@ export async function loop(): Promise<void> {
             continue
           }
         } else {
-          sendItems = [task.item]
+          const liveMaxUnits = effectiveAutoSendMaxUnits.value
+          const { text, replacedFrom } = task.item
+          if (
+            liveMaxUnits > 0 &&
+            !isEmoticonUnique(text) &&
+            !isUnavailableEmoticon(text) &&
+            getDanmakuUnits(text) > liveMaxUnits
+          ) {
+            const resplit = trimDanmakuByUnits(text, liveMaxUnits).filter(c => c.trim().length > 0)
+            sendItems = resplit.map(chunk => ({
+              text: chunk,
+              replacedFrom: resplit.length === 1 ? replacedFrom : undefined,
+            }))
+          } else {
+            sendItems = [task.item]
+          }
         }
 
         // Sub-items (2+ when polish overran effectiveAutoSendMaxUnits) share one `[i+1/total]` label as one polish unit.

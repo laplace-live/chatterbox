@@ -38,14 +38,27 @@ import { Textarea } from './ui/textarea'
 // grapheme slot the invisible char last landed in, so a repeat varies at a different position each time.
 let lastRoadRageText = ''
 let lastRoadRageIndex: number | undefined
+let pendingRoadRage: { key: string; text: string; index: number } | null = null
+
+function resolveRoadRage(original: string, processed: string): { text: string; index: number } {
+  const char = invisibleChar.value
+  const key = `${original}\0${processed}\0${char}\0${lastRoadRageIndex ?? ''}`
+  if (pendingRoadRage?.key === key) return pendingRoadRage
+  const inserted = insertRandomChar(processed, char, lastRoadRageIndex)
+  pendingRoadRage = { key, ...inserted }
+  return pendingRoadRage
+}
 
 function previewNormalSendCount(raw: string): number {
   const trimmed = raw.trim()
   if (!trimmed) return 0
   if (isEmoticonUnique(trimmed) || isUnavailableEmoticon(trimmed)) return 1
   let preview = applyReplacements(trimmed)
-  if (preview.trim() && normalSendRoadRage.value && trimmed === lastRoadRageText) {
-    preview = invisibleChar.value + preview
+  const trimmedPreview = preview.trim()
+  if (!trimmedPreview) return 0
+  if (isEmoticonUnique(trimmedPreview) || isUnavailableEmoticon(trimmedPreview)) return 1
+  if (normalSendRoadRage.value && trimmed === lastRoadRageText) {
+    preview = resolveRoadRage(trimmed, preview).text
   }
   return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
 }
@@ -110,9 +123,22 @@ export function NormalSendTab() {
       return
     }
 
-    const isEmote = isEmoticonUnique(originalMessage)
-    let processedMessage = isEmote ? originalMessage : applyReplacements(originalMessage)
-    const wasReplaced = !isEmote && originalMessage !== processedMessage
+    const wasOriginalEmote = isEmoticonUnique(originalMessage)
+    let processedMessage = wasOriginalEmote ? originalMessage : applyReplacements(originalMessage)
+    const trimmedProcessed = processedMessage.trim()
+    if (!wasOriginalEmote && isLockedEmoticon(trimmedProcessed)) {
+      appendLog(formatLockedEmoticonReject(trimmedProcessed, '手动表情'))
+      fasongText.value = ''
+      return
+    }
+    if (!wasOriginalEmote && isUnavailableEmoticon(trimmedProcessed)) {
+      appendLog(formatUnavailableEmoticonReject(trimmedProcessed, '手动表情'))
+      fasongText.value = ''
+      return
+    }
+    const isEmote = wasOriginalEmote || isEmoticonUnique(trimmedProcessed)
+    if (isEmote) processedMessage = trimmedProcessed
+    const wasReplaced = !wasOriginalEmote && originalMessage !== processedMessage
     fasongText.value = ''
 
     // 路怒模式: re-sending the exact same text would be dropped by B站's duplicate filter, so vary the
@@ -120,12 +146,14 @@ export function NormalSendTab() {
     // inside the id breaks it). Keyed on the original text so replacements don't mask a repeat.
     let roadRaged = false
     if (!isEmote && normalSendRoadRage.value && originalMessage === lastRoadRageText) {
-      const { text, index } = insertRandomChar(processedMessage, invisibleChar.value, lastRoadRageIndex)
+      const { text, index } = resolveRoadRage(originalMessage, processedMessage)
+      pendingRoadRage = null
       processedMessage = text
       lastRoadRageIndex = index
       roadRaged = true
     } else {
       lastRoadRageIndex = undefined
+      pendingRoadRage = null
     }
     lastRoadRageText = originalMessage
 

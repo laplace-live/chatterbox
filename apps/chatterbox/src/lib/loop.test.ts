@@ -18,6 +18,7 @@ async function createLoopHarness(opts: {
   invisibleChar?: string
   yolo?: boolean
   replacements?: Record<string, string>
+  emoteIds?: string[]
   polishFn?: (text: string) => Promise<string>
   fetchMaxLengthFn?: (roomId: number) => Promise<void>
   onSleepFn?: () => Promise<void>
@@ -61,7 +62,7 @@ async function createLoopHarness(opts: {
     './emoticon': {
       formatLockedEmoticonReject: (m: string) => m,
       formatUnavailableEmoticonReject: (m: string) => m,
-      isEmoticonUnique: () => false,
+      isEmoticonUnique: (m: string) => (opts.emoteIds ?? []).includes(m),
       isLockedEmoticon: () => false,
       isUnavailableEmoticon: () => false,
     },
@@ -186,6 +187,7 @@ describe('loop replacement & unit-cap ordering', () => {
     let now = 1_000_000
     Date.now = () => now
     let sleepCount = 0
+    const lookupTimes: number[] = []
     try {
       const { loop, fetchMaxLengthCalls, store } = await createLoopHarness({
         template: '你好',
@@ -193,6 +195,7 @@ describe('loop replacement & unit-cap ordering', () => {
         roomUnits: null,
         stopAfterRounds: 3,
         fetchMaxLengthFn: async () => {
+          lookupTimes.push(now)
           if (fetchMaxLengthCalls.length === 1) throw new Error('HTTP 502')
           store.roomDanmakuUnits.value = 60
         },
@@ -206,10 +209,42 @@ describe('loop replacement & unit-cap ordering', () => {
 
       await expect(loop()).rejects.toBeInstanceOf(StopLoop)
       expect(fetchMaxLengthCalls).toEqual([456117, 456117])
+      expect(lookupTimes[1] - lookupTimes[0]).toBeGreaterThanOrEqual(30_000)
       expect(store.roomDanmakuUnits.value).toBe(60)
     } finally {
       Date.now = realDateNow
     }
+  })
+
+  test('re-splits unsent direct tasks when effectiveAutoSendMaxUnits drops mid-round', async () => {
+    let sleepCount = 0
+    const harness = await createLoopHarness({
+      template: `第一句\n${'好'.repeat(40)}`,
+      maxUnits: 80,
+      onSleepFn: async () => {
+        sleepCount += 1
+        if (sleepCount === 1) {
+          harness.store.effectiveAutoSendMaxUnits.value = 40
+        }
+      },
+    })
+
+    await expect(harness.loop()).rejects.toBeInstanceOf(StopLoop)
+    expect(harness.sent).toEqual(['第一句', '好'.repeat(20), '好'.repeat(20)])
+  })
+
+  test('keeps emote IDs produced by replacement aliases intact without randomChar or splitting', async () => {
+    const { loop, sent } = await createLoopHarness({
+      template: '赞',
+      maxUnits: 10,
+      randomChar: true,
+      invisibleChar: '\u00AD',
+      replacements: { 赞: 'official_147' },
+      emoteIds: ['official_147'],
+    })
+
+    await expect(loop()).rejects.toBeInstanceOf(StopLoop)
+    expect(sent).toEqual(['official_147'])
   })
 
   test('stops cleanly when replacements erase the entire template instead of spinning empty rounds', async () => {

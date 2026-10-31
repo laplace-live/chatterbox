@@ -45,6 +45,7 @@ export function AutoSendControls() {
   const idx = activeTemplateIndex.value
   const currentTemplate = templates[idx] ?? ''
   const yolo = autoSendYolo.value
+  const isCountEstimate = yolo || randomChar.value
   const msgCount = countDanmakuMessages(currentTemplate, effectiveAutoSendMaxUnits.value, {
     isEmote: line => isEmoticonUnique(line) || isUnavailableEmoticon(line),
     trimLines: true,
@@ -162,7 +163,9 @@ export function AutoSendControls() {
 
         <div class='my-2 flex flex-wrap gap-2'>
           <div class='flex flex-wrap items-center gap-x-2 gap-y-1'>
-            <span>{msgCount} 条</span>
+            <span title={isCountEstimate ? '开启 YOLO 或随机字符时，每轮实际分段数可能略有浮动' : undefined}>
+              {isCountEstimate && msgCount > 0 ? `~${msgCount}` : msgCount} 条
+            </span>
             <Label className='inline-flex items-center gap-1'>
               间隔
               <Input
