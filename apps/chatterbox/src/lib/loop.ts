@@ -97,14 +97,6 @@ export async function loop(): Promise<void> {
         // non-critical
       }
 
-      if (roomDanmakuUnits.value === null && getCsrfToken()) {
-        try {
-          await fetchDanmakuMaxLength(roomId)
-        } catch {
-          // non-critical
-        }
-      }
-
       if (forceScrollDanmaku.value) {
         const initCsrfToken = getCsrfToken()
         if (initCsrfToken) {
@@ -119,9 +111,17 @@ export async function loop(): Promise<void> {
     }
   }
 
+  let fallbackAttemptedRoomId: number | null = null
   const csrfToken = getCsrfToken()
 
   while (true) {
+    const activeRoomId = cachedRoomId.value
+    if (activeRoomId !== null) roomId = activeRoomId
+    if (roomDanmakuUnits.value === null && fallbackAttemptedRoomId !== roomId && csrfToken) {
+      fallbackAttemptedRoomId = roomId
+      void fetchDanmakuMaxLength(roomId).catch(() => {})
+    }
+
     if (sendMsg.value) {
       currentAbort = new AbortController()
       const { signal } = currentAbort

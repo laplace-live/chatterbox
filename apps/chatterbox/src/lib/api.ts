@@ -105,9 +105,10 @@ export async function fetchDanmakuMaxLength(roomId: number): Promise<void> {
   const resp = await fetch(`${BASE_URL.BILIBILI_GET_INFO_BY_USER}?room_id=${roomId}`, {
     method: 'GET',
     credentials: 'include',
+    signal: AbortSignal.timeout(5000),
   })
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
-  applyGetInfoByUserDanmakuLength(await resp.json())
+  applyGetInfoByUserDanmakuLength(await resp.json(), { roomId })
 }
 
 export interface SendDanmakuResult {

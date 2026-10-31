@@ -16,6 +16,7 @@ import {
   SONIOX_DEFAULT_MODEL,
 } from './const'
 import {
+  cachedRoomId,
   danmakuMaxChars,
   danmakuMaxUnits,
   resolveAutoSendMaxUnits,
@@ -27,7 +28,7 @@ import { appendLog } from './log'
 import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT, DEFAULT_KANCHI_PROMPT } from './prompts'
 import { resolveInvisibleChar } from './utils'
 
-export { danmakuMaxChars, danmakuMaxUnits, roomDanmakuChars, roomDanmakuUnits }
+export { cachedRoomId, danmakuMaxChars, danmakuMaxUnits, roomDanmakuChars, roomDanmakuUnits }
 
 // GM-persisted settings
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
@@ -370,7 +371,6 @@ export const persistSendState = gmSignal<Record<string, boolean>>('persistSendSt
 // Runtime state (not GM-persisted)
 export const sendMsg = signal(false)
 export const sttRunning = signal(false)
-export const cachedRoomId = signal<number | null>(null)
 export const autoBlendEnabled = signal(false)
 
 // Live metrics from `lib/auto-seek.ts`, kept out of GM so a stale reload value doesn't paint a fake latency before the first tick. `autoSeekCurrentBufferLen` is seconds buffered ahead ≈ live latency; `autoSeekCurrentRate` is the last observed `video.playbackRate`.

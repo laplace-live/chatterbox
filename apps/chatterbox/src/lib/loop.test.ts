@@ -12,14 +12,17 @@ class StopLoop extends Error {}
 async function createLoopHarness(opts: {
   template: string
   maxUnits?: number
+  roomUnits?: number | null
   randomChar?: boolean
   invisibleChar?: string
   yolo?: boolean
   replacements?: Record<string, string>
   polishFn?: (text: string) => Promise<string>
+  fetchMaxLengthFn?: (roomId: number) => Promise<void>
 }) {
   const sent: string[] = []
   const logs: string[] = []
+  const fetchMaxLengthCalls: number[] = []
   const store = {
     activeTemplateIndex: signals.signal(0),
     autoSendYolo: signals.signal(opts.yolo ?? false),
@@ -33,14 +36,19 @@ async function createLoopHarness(opts: {
     randomChar: signals.signal(opts.randomChar ?? false),
     randomColor: signals.signal(false),
     randomInterval: signals.signal(false),
-    roomDanmakuUnits: signals.signal<number | null>(opts.maxUnits ?? 40),
+    roomDanmakuUnits: signals.signal<number | null>(
+      opts.roomUnits !== undefined ? opts.roomUnits : (opts.maxUnits ?? 40)
+    ),
     sendMsg: signals.signal(true),
   }
   const rules = opts.replacements ?? {}
   const deps: Record<string, unknown> = {
     './api': {
       ensureRoomId: async () => 456117,
-      fetchDanmakuMaxLength: async () => 40,
+      fetchDanmakuMaxLength: async (roomId: number) => {
+        fetchMaxLengthCalls.push(roomId)
+        if (opts.fetchMaxLengthFn) await opts.fetchMaxLengthFn(roomId)
+      },
       fetchEmoticons: async () => {},
       getCsrfToken: () => 'csrf',
       getSpmPrefix: () => '444.8',
@@ -121,7 +129,7 @@ async function createLoopHarness(opts: {
     const mod: typeof import('./loop') = await import(
       `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
     )
-    return { loop: mod.loop, sent, logs, store }
+    return { loop: mod.loop, sent, logs, store, fetchMaxLengthCalls }
   } finally {
     Reflect.deleteProperty(globalThis, key)
   }
@@ -139,9 +147,32 @@ describe('loop replacement & unit-cap ordering', () => {
 
     await expect(loop()).rejects.toBeInstanceOf(StopLoop)
     expect(sent.length).toBe(2)
-    expect(sent.join('').replaceAll('\u00AD', '')).toBe(`${'好'.repeat(18)}敏·感`)
+    const combined = sent.join('')
+    expect([...combined].filter(ch => ch === '\u00AD')).toHaveLength(1)
+    expect(combined.replaceAll('\u00AD', '')).toBe(`${'好'.repeat(18)}敏·感`)
     for (const chunk of sent) {
       expect(utils.getDanmakuUnits(chunk)).toBeLessThanOrEqual(40)
+    }
+  })
+
+  test('triggers fallback cap lookup when cachedRoomId is pre-populated and sends without blocking on a pending lookup', async () => {
+    let releaseLookup: (() => void) | undefined
+    const stalledLookup = new Promise<void>(resolve => {
+      releaseLookup = resolve
+    })
+    const { loop, sent, fetchMaxLengthCalls } = await createLoopHarness({
+      template: '你好世界',
+      maxUnits: 80,
+      roomUnits: null,
+      fetchMaxLengthFn: () => stalledLookup,
+    })
+
+    try {
+      await expect(loop()).rejects.toBeInstanceOf(StopLoop)
+      expect(fetchMaxLengthCalls).toEqual([456117])
+      expect(sent).toEqual(['你好世界'])
+    } finally {
+      releaseLookup?.()
     }
   })
 

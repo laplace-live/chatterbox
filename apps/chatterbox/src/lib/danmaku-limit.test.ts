@@ -3,16 +3,18 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { DEFAULT_DANMAKU_MAX_UNITS } from './const'
 import {
   applyGetInfoByUserDanmakuLength,
+  cachedRoomId,
   danmakuMaxChars,
   danmakuMaxUnits,
   extractDanmakuMaxUnits,
+  resetRoomDanmakuLimits,
   resolveAutoSendMaxUnits,
   roomDanmakuChars,
   roomDanmakuUnits,
 } from './danmaku-limit'
 
 afterEach(() => {
-  roomDanmakuUnits.value = null
+  resetRoomDanmakuLimits()
 })
 
 describe('extractDanmakuMaxUnits & applyGetInfoByUserDanmakuLength', () => {
@@ -50,6 +52,36 @@ describe('extractDanmakuMaxUnits & applyGetInfoByUserDanmakuLength', () => {
     expect(roomDanmakuChars.value).toBeNull()
     expect(danmakuMaxUnits.value).toBe(DEFAULT_DANMAKU_MAX_UNITS)
     expect(danmakuMaxChars.value).toBe(40)
+  })
+
+  test('isolates caps per room so older overlapping responses and room switches never leak across rooms', () => {
+    cachedRoomId.value = 222
+    applyGetInfoByUserDanmakuLength(
+      { code: 0, data: { property: { danmu: { length: 80, room_id: 222 } } } },
+      { url: 'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByUser?room_id=222' }
+    )
+    expect(roomDanmakuUnits.value).toBe(80)
+
+    // Out-of-order response and -101 for room 111 must not overwrite or clear active room 222.
+    applyGetInfoByUserDanmakuLength(
+      { code: 0, data: { property: { danmu: { length: 40, room_id: 111 } } } },
+      { url: 'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByUser?room_id=111' }
+    )
+    expect(roomDanmakuUnits.value).toBe(80)
+    applyGetInfoByUserDanmakuLength(
+      { code: -101, message: '账号未登录' },
+      { url: 'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByUser?room_id=111' }
+    )
+    expect(roomDanmakuUnits.value).toBe(80)
+
+    // Switching to room 333 whose getInfoByUser was missed or malformed resets to null (default 80) instead of keeping room 222's cap.
+    cachedRoomId.value = 333
+    applyGetInfoByUserDanmakuLength(
+      { code: 0, data: {} },
+      { url: 'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByUser?room_id=333' }
+    )
+    expect(roomDanmakuUnits.value).toBeNull()
+    expect(danmakuMaxUnits.value).toBe(DEFAULT_DANMAKU_MAX_UNITS)
   })
 })
 
