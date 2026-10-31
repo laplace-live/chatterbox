@@ -16,7 +16,6 @@ async function loadApi(body: unknown) {
     './const': constants,
     './danmaku-limit': danmakuLimit,
     './emoticon': { isEmoticonUnique: () => false },
-    './replacement': { buildReplacementMap: () => {} },
     './store': {},
     './utils': utils,
     './wbi': { cachedWbiKeys: null, encodeWbi: () => '' },

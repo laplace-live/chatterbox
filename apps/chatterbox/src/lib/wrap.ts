@@ -1,8 +1,4 @@
-/**
- * Shared 【】-wrapping helpers for danmaku content. Wrapping is per-segment, so
- * the split length must reserve the two wrapper graphemes up front or a wrapped
- * segment overruns the configured max length.
- */
+/** Shared 【】-wrapping helpers: reserve wrapper width before splitting (`wrapSplitUnits` / `wrapSplitLen`) so wrapped segments stay within cap. */
 
 import { getDanmakuUnits } from './utils'
 

@@ -1,7 +1,8 @@
-import { isEmoticonUnique } from '../lib/emoticon'
+import { isEmoticonUnique, isUnavailableEmoticon } from '../lib/emoticon'
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import { appendLog } from '../lib/log'
 import { cancelLoop } from '../lib/loop'
+import { applyReplacements } from '../lib/replacement'
 import {
   activeTemplateIndex,
   autoSendMaxLength,
@@ -11,6 +12,7 @@ import {
   danmakuMaxChars,
   danmakuMaxUnits,
   effectiveAutoSendMaxUnits,
+  invisibleChar,
   llmActivePromptAutoSend,
   llmPromptsAutoSend,
   msgSendInterval,
@@ -42,9 +44,12 @@ export function AutoSendControls() {
   const templates = msgTemplates.value
   const idx = activeTemplateIndex.value
   const currentTemplate = templates[idx] ?? ''
+  const yolo = autoSendYolo.value
   const msgCount = countDanmakuMessages(currentTemplate, effectiveAutoSendMaxUnits.value, {
-    isEmote: isEmoticonUnique,
+    isEmote: line => isEmoticonUnique(line) || isUnavailableEmoticon(line),
     trimLines: true,
+    transformLine: yolo ? undefined : applyReplacements,
+    randomChar: !yolo && randomChar.value ? invisibleChar.value : undefined,
   })
 
   const toggleSend = () => {

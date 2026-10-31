@@ -11,7 +11,7 @@ import {
 } from '../lib/emoticon'
 import { describeLlmGap, isLlmApiConfigured, polishWithLlm } from '../lib/llm-tasks'
 import { appendLog } from '../lib/log'
-import { applyReplacements, previewReplacements } from '../lib/replacement'
+import { applyReplacements } from '../lib/replacement'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   aiEvasion,
@@ -42,10 +42,10 @@ let lastRoadRageIndex: number | undefined
 function previewNormalSendCount(raw: string): number {
   const trimmed = raw.trim()
   if (!trimmed) return 0
-  if (isEmoticonUnique(trimmed)) return 1
-  let preview = previewReplacements(trimmed)
-  if (preview && normalSendRoadRage.value && trimmed === lastRoadRageText) {
-    preview += invisibleChar.value
+  if (isEmoticonUnique(trimmed) || isUnavailableEmoticon(trimmed)) return 1
+  let preview = applyReplacements(trimmed)
+  if (preview.trim() && normalSendRoadRage.value && trimmed === lastRoadRageText) {
+    preview = invisibleChar.value + preview
   }
   return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
 }

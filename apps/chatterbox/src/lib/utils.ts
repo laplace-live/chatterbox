@@ -3,12 +3,13 @@ import { DEFAULT_INVISIBLE_CHAR, INVISIBLE_CHAR_CUSTOM, INVISIBLE_CHAR_PRESETS }
 /** 1σ of send-interval jitter as a fraction of the base interval; samples clamped to ±2σ. */
 const SEND_JITTER_SIGMA = 0.2
 
+const graphemeSegmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' })
+
 /**
  * Splits a string into grapheme clusters (user-perceived characters).
  */
 export function getGraphemes(str: string): string[] {
-  const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' })
-  return Array.from(segmenter.segment(str), ({ segment }) => segment)
+  return Array.from(graphemeSegmenter.segment(str), ({ segment }) => segment)
 }
 
 /**
@@ -448,7 +449,12 @@ export function processDanmakuMessages(text: string, maxUnits: number, randomCha
 export function countDanmakuMessages(
   text: string,
   maxUnits: number,
-  opts: { isEmote?: (line: string) => boolean; trimLines?: boolean } = {}
+  opts: {
+    isEmote?: (line: string) => boolean
+    trimLines?: boolean
+    transformLine?: (line: string) => string
+    randomChar?: string
+  } = {}
 ): number {
   if (!text) return 0
   let count = 0
@@ -459,12 +465,17 @@ export function countDanmakuMessages(
       count += 1
       continue
     }
-    const line = opts.trimLines ? trimmed : rawLine
-    if (maxUnits <= 0 || getDanmakuUnits(line) <= maxUnits) {
-      count += 1
-    } else {
-      for (const chunk of trimDanmakuByUnits(line, maxUnits)) {
-        if (chunk.trim()) count += 1
+    const baseLine = opts.trimLines ? trimmed : rawLine
+    const transformed = opts.transformLine ? opts.transformLine(baseLine) : baseLine
+    for (const subLine of transformed.split('\n')) {
+      if (!subLine.trim()) continue
+      const line = opts.randomChar ? opts.randomChar + subLine : subLine
+      if (maxUnits <= 0 || getDanmakuUnits(line) <= maxUnits) {
+        count += 1
+      } else {
+        for (const chunk of trimDanmakuByUnits(line, maxUnits)) {
+          if (chunk.trim()) count += 1
+        }
       }
     }
   }

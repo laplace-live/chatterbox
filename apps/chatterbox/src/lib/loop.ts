@@ -19,7 +19,7 @@ import {
 } from './emoticon'
 import { isLlmReady, polishWithLlm } from './llm-tasks'
 import { appendLog } from './log'
-import { applyReplacements, buildReplacementMap } from './replacement'
+import { applyReplacements } from './replacement'
 import { enqueueDanmaku, SendPriority } from './send-queue'
 import {
   activeTemplateIndex,
@@ -55,7 +55,6 @@ export async function loop(): Promise<void> {
   if (roomId === null) {
     try {
       roomId = await ensureRoomId()
-      buildReplacementMap()
 
       await waitForWbiKeys()
       if (cachedWbiKeys) {
@@ -147,8 +146,10 @@ export async function loop(): Promise<void> {
         .filter(l => l.length > 0)
 
       // Pre-built upfront so `[i+1/N]` has a stable denominator; only the polish CALLS are deferred (just-in-time, right before send).
-      type SendTask = { kind: 'direct'; text: string } | { kind: 'polish'; text: string }
+      type SendItem = { text: string; replacedFrom?: string }
+      type SendTask = { kind: 'direct'; item: SendItem } | { kind: 'polish'; text: string }
 
+      const maxUnits = effectiveAutoSendMaxUnits.value
       const tasks: SendTask[] = []
       if (autoSendYolo.value) {
         // Loud bail, not silent fallback to unpolished text: the user opted into polish. Checked once at round start to fail fast; per-segment failures below stay recoverable.
@@ -160,25 +161,36 @@ export async function loop(): Promise<void> {
         }
         // randomChar (dedup marker) suppressed on LLM input — the LLM would ignore or "fix" it; re-applied on output in the polish branch below.
         for (const line of rawLines) {
-          if (isEmoticonUnique(line)) {
-            tasks.push({ kind: 'direct', text: line })
+          if (isEmoticonUnique(line) || isUnavailableEmoticon(line)) {
+            tasks.push({ kind: 'direct', item: { text: line } })
           } else {
-            for (const chunk of processDanmakuMessages(line, effectiveAutoSendMaxUnits.value)) {
+            for (const chunk of processDanmakuMessages(line, maxUnits)) {
               tasks.push({ kind: 'polish', text: chunk })
             }
           }
         }
       } else {
-        // Non-YOLO: randomChar applied here at split time.
+        // Non-YOLO: replace before randomChar + unit splitting so expanded replacements never overrun maxUnits.
         for (const line of rawLines) {
-          if (isEmoticonUnique(line)) {
-            tasks.push({ kind: 'direct', text: line })
+          if (isEmoticonUnique(line) || isUnavailableEmoticon(line)) {
+            tasks.push({ kind: 'direct', item: { text: line } })
           } else {
-            for (const chunk of processDanmakuMessages(line, effectiveAutoSendMaxUnits.value, randomCharToInsert)) {
-              tasks.push({ kind: 'direct', text: chunk })
+            const replaced = applyReplacements(line)
+            const wasReplaced = replaced !== line
+            const chunks = processDanmakuMessages(replaced, maxUnits, randomCharToInsert)
+            const replacedFrom = wasReplaced && chunks.length === 1 ? line : undefined
+            for (const text of chunks) {
+              tasks.push({ kind: 'direct', item: { text, replacedFrom } })
             }
           }
         }
+      }
+
+      if (tasks.length === 0) {
+        appendLog('⚠️ 当前模板替换后为空，已自动停止运行')
+        sendMsg.value = false
+        currentAbort = null
+        continue
       }
 
       const total = tasks.length
@@ -192,12 +204,13 @@ export async function loop(): Promise<void> {
         if (!sendMsg.value) break
 
         const task = tasks[i]
-        let sendItems: string[]
+        let sendItems: SendItem[]
 
         if (task.kind === 'polish') {
           try {
             const polished = await polishWithLlm('autoSend', task.text, { signal })
-            if (!polished.trim()) {
+            const trimmedPolished = polished.trim()
+            if (!trimmedPolished) {
               // Empty polish = refusal; sleep first so a streak doesn't spin past the configured cadence.
               appendLog(`⚠️ 独轮车 AI 返回为空，跳过本段：${task.text}`)
               const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
@@ -208,8 +221,25 @@ export async function loop(): Promise<void> {
               continue
             }
             appendLog(`✨ 独轮车 AI 润色：${task.text} → ${polished}`)
-            // Re-process: output may exceed effectiveAutoSendMaxUnits, and randomChar (suppressed on input) applies now.
-            sendItems = processDanmakuMessages(polished, effectiveAutoSendMaxUnits.value, randomCharToInsert)
+            if (isEmoticonUnique(trimmedPolished) || isUnavailableEmoticon(trimmedPolished)) {
+              sendItems = [{ text: trimmedPolished }]
+            } else {
+              const replaced = applyReplacements(polished)
+              const wasReplaced = replaced !== polished
+              // Re-process: replaced polish output may exceed effectiveAutoSendMaxUnits, and randomChar applies now.
+              const chunks = processDanmakuMessages(replaced, effectiveAutoSendMaxUnits.value, randomCharToInsert)
+              if (chunks.length === 0) {
+                appendLog(`⚠️ 独轮车替换后为空，跳过本段：${polished}`)
+                const ok = await abortableSleep(resolveSendDelayMs(interval, enableRandomInterval), signal)
+                if (!ok) {
+                  completed = false
+                  break
+                }
+                continue
+              }
+              const replacedFrom = wasReplaced && chunks.length === 1 ? polished : undefined
+              sendItems = chunks.map(text => ({ text, replacedFrom }))
+            }
           } catch (err) {
             // AbortError = 停车 mid-polish; propagate as "round aborted" so the success log doesn't fire.
             if (err instanceof DOMException && err.name === 'AbortError') {
@@ -227,7 +257,7 @@ export async function loop(): Promise<void> {
             continue
           }
         } else {
-          sendItems = [task.text]
+          sendItems = [task.item]
         }
 
         // Sub-items (2+ when polish overran effectiveAutoSendMaxUnits) share one `[i+1/total]` label as one polish unit.
@@ -238,7 +268,7 @@ export async function loop(): Promise<void> {
           }
           if (!sendMsg.value) break outer
 
-          const message = sendItems[j]
+          const { text: message, replacedFrom } = sendItems[j]
 
           // Skip locked emotes client-side rather than let Bilibili reject them; still sleep to keep cadence.
           if (isLockedEmoticon(message)) {
@@ -264,24 +294,19 @@ export async function loop(): Promise<void> {
             continue
           }
 
-          const isEmote = isEmoticonUnique(message)
-          const originalMessage = message
-          const processedMessage = isEmote ? message : applyReplacements(message)
-          const wasReplaced = !isEmote && originalMessage !== processedMessage
-
           if (enableRandomColor) {
             await setRandomDanmakuColor(roomId, csrfToken ?? '')
           }
 
           const result = await enqueueDanmaku(
-            processedMessage,
+            message,
             roomId,
             csrfToken ?? '',
             SendPriority.AUTO,
             'loop',
             () => !signal.aborted
           )
-          const displayMsg = wasReplaced ? `${originalMessage} → ${processedMessage}` : processedMessage
+          const displayMsg = replacedFrom ? `${replacedFrom} → ${message}` : message
           const baseLabel = result.isEmoticon ? '自动表情' : '自动'
           const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
           appendLog(result, label, displayMsg)

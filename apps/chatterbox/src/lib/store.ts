@@ -33,7 +33,7 @@ export { danmakuMaxChars, danmakuMaxUnits, roomDanmakuChars, roomDanmakuUnits }
 export const msgSendInterval = gmSignal('msgSendInterval', 1)
 /** Optional 独轮车 split-length override in full-width Chinese characters ("字"); `null` = follow the room's detected cap. */
 export const autoSendMaxLength = gmSignal<number | null>('autoSendMaxLength', null)
-/** Effective 独轮车 split budget in Bilibili half-width units: `autoSendMaxLength * 2` when set, else `danmakuMaxUnits`. */
+/** Effective 独轮车 split budget in Bilibili half-width units: `autoSendMaxLength * 2` (clamped to `roomDanmakuUnits` when known), else `danmakuMaxUnits`. */
 export const effectiveAutoSendMaxUnits = computed(() =>
   resolveAutoSendMaxUnits(autoSendMaxLength.value, roomDanmakuUnits.value)
 )
@@ -355,7 +355,7 @@ export const sttAudioDeviceId = gmSignal('sttAudioDeviceId', '')
 })()
 
 // Replacement rules
-// Master switch for cloud-synced rules. When off, `buildReplacementMap` skips the remote layer and auto-sync pauses (local rules unaffected). Toggling rebuilds the map immediately.
+// Master switch for cloud-synced rules. When off, `applyReplacements` skips the remote layer and auto-sync pauses (local rules unaffected).
 export const remoteRulesEnabled = gmSignal('remoteRulesEnabled', false)
 export const localGlobalRules = gmSignal<Array<{ from?: string; to?: string }>>('localGlobalRules', [])
 export const localRoomRules = gmSignal<Record<string, Array<{ from?: string; to?: string }>>>('localRoomRules', {})
@@ -440,7 +440,6 @@ effect(() => {
 
 export const cachedStreamerUid = signal<number | null>(null)
 export const availableDanmakuColors = signal<string[] | null>(null)
-export const replacementMap = signal<Map<string, string> | null>(null)
 
 export const cachedEmoticonPackages = signal<BilibiliEmoticonPackage[]>([])
 

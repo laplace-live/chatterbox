@@ -383,11 +383,24 @@ describe('getDanmakuUnits & trimDanmakuByUnits', () => {
     for (const seg of out) expect(getDanmakuUnits(seg)).toBeLessThanOrEqual(80)
   })
 
-  test('countDanmakuMessages counts split lines and keeps emote lines unsplit', () => {
+  test('countDanmakuMessages counts split lines, randomChar (including U+FEFF), transformLine, and unsplit emotes', () => {
     expect(countDanmakuMessages('   \n  ', 80)).toBe(0)
     expect(countDanmakuMessages('好'.repeat(40), 80)).toBe(1)
     expect(countDanmakuMessages('好'.repeat(41), 80)).toBe(2)
     expect(countDanmakuMessages('第一行\n\n第二行', 80)).toBe(2)
+    expect(countDanmakuMessages('好'.repeat(40), 80, { randomChar: '\u00AD' })).toBe(2)
+    expect(countDanmakuMessages('好'.repeat(40), 80, { randomChar: '\uFEFF' })).toBe(2)
+    expect(countDanmakuMessages(`\uFEFF${'好'.repeat(40)}`, 80)).toBe(2)
+    expect(
+      countDanmakuMessages(`${'好'.repeat(19)}v`, 40, {
+        transformLine: line => line.replaceAll('v', '微信'),
+      })
+    ).toBe(2)
+    expect(
+      countDanmakuMessages('drop', 40, {
+        transformLine: () => '',
+      })
+    ).toBe(0)
     expect(
       countDanmakuMessages('official_147\n你好世界', 10, {
         isEmote: line => line === 'official_147',
