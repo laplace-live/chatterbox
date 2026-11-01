@@ -4,17 +4,6 @@ import type { SttChunk, SttModelOption } from './types'
 
 import { translationCapabilities } from './capabilities'
 
-/** Structural subset of Soniox tokens for chunk mapping. */
-export interface SonioxTokenLike {
-  text: string
-  is_final: boolean
-  translation_status?: string
-}
-
-export interface SonioxResultLike {
-  tokens?: SonioxTokenLike[]
-}
-
 /** Parsed Soniox realtime WebSocket frame. */
 export interface ParsedSonioxMessage {
   chunks: SttChunk[]
@@ -22,24 +11,6 @@ export interface ParsedSonioxMessage {
   endpoint: boolean
   finished: boolean
   error?: string
-}
-
-function isSonioxControlToken(text: string): boolean {
-  return text === '<end>' || text === '<fin>'
-}
-
-/** Map a Soniox realtime result frame onto normalized chunks, stripping `<end>` / `<fin>` control tokens. */
-export function sonioxResultToChunks(result: SonioxResultLike): SttChunk[] {
-  const chunks: SttChunk[] = []
-  for (const token of result.tokens ?? []) {
-    if (isSonioxControlToken(token.text)) continue
-    chunks.push({
-      text: token.text,
-      isFinal: token.is_final,
-      kind: token.translation_status === 'translation' ? 'translation' : 'original',
-    })
-  }
-  return chunks
 }
 
 /** Parse a raw Soniox WebSocket JSON frame; `null` for non-object / malformed payloads. */

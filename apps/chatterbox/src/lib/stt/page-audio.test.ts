@@ -3,33 +3,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { AUDIO_EL_ID, PLAYER_VIDEO_SELECTOR } from '../player-dom'
 import { acquirePageAudio, bindPageAudio } from './page-audio'
 
-class FakeEventTarget {
-  private listeners = new Map<string, Set<EventListener>>()
-
-  addEventListener(type: string, listener: EventListener): void {
-    let set = this.listeners.get(type)
-    if (!set) {
-      set = new Set()
-      this.listeners.set(type, set)
-    }
-    set.add(listener)
-  }
-
-  removeEventListener(type: string, listener: EventListener): void {
-    this.listeners.get(type)?.delete(listener)
-  }
-
+class FakeEventTarget extends EventTarget {
   emit(type: string): void {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) {
-      listener(new Event(type))
-    }
-  }
-
-  listenerCount(type?: string): number {
-    if (type) return this.listeners.get(type)?.size ?? 0
-    let total = 0
-    for (const set of this.listeners.values()) total += set.size
-    return total
+    this.dispatchEvent(new Event(type))
   }
 }
 
@@ -394,7 +370,6 @@ describe('bindPageAudio', () => {
     const video = new FakeMediaElement({ tagName: 'VIDEO', src: 'blob:https://live.bilibili.com/q1' })
     fakeDoc.videoEl = video
 
-    // Session A acquires `video`, then gets superseded by Session B before Session A's late release runs.
     const sessionA = await acquirePageAudio()
     const sessionB = await acquirePageAudio()
     expect(sessionA.track.readyState).toBe('ended')
@@ -441,7 +416,6 @@ describe('bindPageAudio', () => {
       interruptionWarnMs: 25,
     })
 
-    // Brief pause + resume under threshold: zero recaptures, zero warning logs.
     video.paused = true
     video.dispatchMediaEvent('pause')
     video.paused = false
@@ -450,7 +424,6 @@ describe('bindPageAudio', () => {
     expect(video.captureCalls).toBe(1)
     expect(logs).toEqual([])
 
-    // Prolonged mute logs once, then unmuting logs recovery once without recapturing.
     video.muted = true
     video.dispatchMediaEvent('volumechange')
     await new Promise(r => setTimeout(r, 40))

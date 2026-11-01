@@ -19,6 +19,7 @@ import {
   OPENAI_TRANSLATION_MODEL,
   SONIOX_DEFAULT_MODEL,
   STT_STOP_TIMEOUT_MS,
+  WEB_AUDIO_DEVICE_ID,
   WHISPER_CPP_URL,
 } from '../lib/const'
 import { appendLog } from '../lib/log'
@@ -73,7 +74,6 @@ import { translationCapabilities } from '../lib/stt/capabilities'
 import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
 import { fetchGeminiModels } from '../lib/stt/gemini-models'
 import { reduceChunks } from '../lib/stt/normalize'
-import { WEB_AUDIO_DEVICE_ID } from '../lib/stt/page-audio'
 import { useSttRecording } from '../lib/use-stt-recording'
 import { isHttpUrl, splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { wrapSegment, wrapSplitLen } from '../lib/wrap'
@@ -370,10 +370,7 @@ export function SttTab() {
     console.error('STT error:', err)
     const message = err.message || String(err)
     const label = PROVIDER_META[sttProvider.value].label
-    // Terminal on every provider — no `finished` can follow an `error` (Soniox
-    // cleans up + unbinds; the raw-WS engines latch `settled`). So always unwind,
-    // including from 'stopping', which would otherwise leave the tab disabled at
-    // 停止中… forever. Runs before the status paint since resetState clears it.
+    // Errors are terminal on every engine (no 'finished' follows); unwind first since resetState clears status.
     clearStopWatchdog()
     if (state.value !== 'stopped') resetState()
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -416,11 +413,12 @@ export function SttTab() {
   const activeBaseUrl = openaiSttBaseUrl.value.trim()
 
   // Fall back to default if the saved device is gone; the persisted reset is deferred to toggle() to avoid a store write during render.
-  const savedDeviceIdForHook = sttAudioDeviceId.value
-  const isWebAudio = savedDeviceIdForHook === WEB_AUDIO_DEVICE_ID
-  const deviceStillAvailable =
-    !savedDeviceIdForHook || isWebAudio || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
-  const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
+  const devices = audioDevices.value
+  const savedDeviceId = sttAudioDeviceId.value
+  const isWebAudio = savedDeviceId === WEB_AUDIO_DEVICE_ID
+  const deviceStillAvailable = !savedDeviceId || isWebAudio || devices.some(d => d.deviceId === savedDeviceId)
+  const savedDeviceMissing = !deviceStillAvailable
+  const effectiveDeviceId = deviceStillAvailable ? savedDeviceId : ''
 
   const model =
     provider === 'soniox'
@@ -532,7 +530,7 @@ export function SttTab() {
         return
       }
       // Persist the device fallback here, deferred from render to avoid a signal write during render.
-      if (savedDeviceIdForHook && !deviceStillAvailable) {
+      if (savedDeviceMissing) {
         appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
         sttAudioDeviceId.value = ''
       }
@@ -593,11 +591,8 @@ export function SttTab() {
           : `开始${modeLabel}`
 
   const hints = sonioxLanguageHints.value
-  const devices = audioDevices.value
   // Labels are blank until mic permission is granted, so a non-empty label means "already granted".
   const hasMicLabels = devices.some(d => d.label)
-  const savedDeviceId = sttAudioDeviceId.value
-  const savedDeviceMissing = Boolean(savedDeviceId) && !isWebAudio && !devices.some(d => d.deviceId === savedDeviceId)
 
   const knownModels = isGemini
     ? [{ id: GEMINI_DEFAULT_MODEL }, { id: GEMINI_TRANSLATION_MODEL }, ...(modelPicker?.models.value ?? [])]

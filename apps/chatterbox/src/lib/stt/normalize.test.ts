@@ -16,57 +16,18 @@ import {
   parseSonioxMessage,
   readStringField,
   reduceChunks,
-  sonioxResultToChunks,
   tidyGeminiText,
 } from './normalize'
 
-// Pure mappers: the seam that lets one STT consumer handle both providers.
-describe('sonioxResultToChunks', () => {
-  test('maps text + is_final and defaults kind to original', () => {
-    const chunks = sonioxResultToChunks({
-      tokens: [
-        { text: 'hello', is_final: true },
-        { text: ' world', is_final: false },
-      ],
-    })
-    expect(chunks).toEqual([
-      { text: 'hello', isFinal: true, kind: 'original' },
-      { text: ' world', isFinal: false, kind: 'original' },
-    ])
-  })
-
-  test('marks translation_status === "translation" tokens as translation', () => {
-    const chunks = sonioxResultToChunks({
-      tokens: [
-        { text: '你好', is_final: true, translation_status: 'original' },
-        { text: 'hello', is_final: true, translation_status: 'translation' },
-      ],
-    })
-    expect(chunks[0]?.kind).toBe('original')
-    expect(chunks[1]?.kind).toBe('translation')
-  })
-
-  test('tolerates a missing tokens array and strips <end>/<fin> control tokens', () => {
-    expect(sonioxResultToChunks({})).toEqual([])
-    expect(
-      sonioxResultToChunks({
-        tokens: [
-          { text: '你好', is_final: true },
-          { text: '<end>', is_final: true },
-          { text: '<fin>', is_final: true },
-        ],
-      })
-    ).toEqual([{ text: '你好', isFinal: true, kind: 'original' }])
-  })
-})
-
+// Pure mappers: the seam that lets one STT consumer handle all providers.
 describe('parseSonioxMessage', () => {
-  test('extracts tokens, detects <end> endpoint, strips <end>/<fin>, and reports finished', () => {
+  test('extracts tokens, defaults kind to original, detects <end> endpoint, strips <end>/<fin>, and reports finished', () => {
     expect(
       parseSonioxMessage({
         tokens: [
+          { text: 'hello', is_final: true },
           { text: '你好', is_final: true, translation_status: 'original' },
-          { text: 'hello', is_final: false, translation_status: 'translation' },
+          { text: 'bonjour', is_final: false, translation_status: 'translation' },
           { text: '<end>', is_final: true },
           { text: '<fin>', is_final: true },
         ],
@@ -74,12 +35,22 @@ describe('parseSonioxMessage', () => {
       })
     ).toEqual({
       chunks: [
+        { text: 'hello', isFinal: true, kind: 'original' },
         { text: '你好', isFinal: true, kind: 'original' },
-        { text: 'hello', isFinal: false, kind: 'translation' },
+        { text: 'bonjour', isFinal: false, kind: 'translation' },
       ],
       hasTokens: true,
       endpoint: true,
       finished: true,
+    })
+  })
+
+  test('tolerates a missing tokens array', () => {
+    expect(parseSonioxMessage({})).toEqual({
+      chunks: [],
+      hasTokens: false,
+      endpoint: false,
+      finished: false,
     })
   })
 

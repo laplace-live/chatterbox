@@ -53,6 +53,9 @@ export const GEMINI_TRANSLATION_MODEL = 'gemini-3.5-live-translate-preview'
 export const ELEVENLABS_TRANSLATION_MODE = 'realtime-translation'
 export const OPENAI_TRANSLATION_MODEL = 'gpt-realtime-translate'
 
+/** Sentinel `audioDeviceId` selecting live-player audio capture instead of a microphone. */
+export const WEB_AUDIO_DEVICE_ID = '__web_audio__'
+
 /** mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns to `window.mpegts` at runtime. */
 export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.2/dist/mpegts.js'
 

@@ -18,6 +18,7 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
   let started = false
   let paused = false
   let opened = false
+  let hasNonFinal = false
   let ws: WebSocket | null = null
   let capture: PcmCapture | null = null
   let connectTimer: ReturnType<typeof setTimeout> | null = null
@@ -38,19 +39,17 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const syncKeepalive = (): void => {
-    if (opened && paused && !stopping && !settled) {
-      if (!keepaliveTimer) {
-        keepaliveTimer = setInterval(() => {
-          if (ws?.readyState === WebSocket.OPEN) {
-            try {
-              ws.send(JSON.stringify({ type: 'keepalive' }))
-            } catch {}
-          }
-        }, KEEPALIVE_INTERVAL_MS)
-      }
-    } else {
+    if (!opened || !paused || stopping || settled) {
       stopKeepalive()
+      return
     }
+    if (keepaliveTimer) return
+    keepaliveTimer = setInterval(() => {
+      if (ws?.readyState !== WebSocket.OPEN) return
+      try {
+        ws.send(JSON.stringify({ type: 'keepalive' }))
+      } catch {}
+    }, KEEPALIVE_INTERVAL_MS)
   }
 
   const clearTimers = (): void => {
@@ -126,7 +125,8 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
       fail(new Error(parsed.error))
       return
     }
-    if (parsed.hasTokens) {
+    if (parsed.chunks.length > 0 || (parsed.hasTokens && hasNonFinal)) {
+      hasNonFinal = parsed.chunks.some(c => !c.isFinal)
       onEvent({ type: 'transcript', chunks: parsed.chunks })
     }
     if (parsed.endpoint) {
@@ -200,12 +200,8 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
 
   const finalize = (options?: SttFinalizeOptions): void => {
     if (settled || !opened || !ws || ws.readyState !== WebSocket.OPEN) return
-    const payload =
-      options?.trailingSilenceMs !== undefined
-        ? { type: 'finalize', trailing_silence_ms: options.trailingSilenceMs }
-        : { type: 'finalize' }
     try {
-      ws.send(JSON.stringify(payload))
+      ws.send(JSON.stringify({ type: 'finalize', trailing_silence_ms: options?.trailingSilenceMs }))
     } catch {}
   }
 

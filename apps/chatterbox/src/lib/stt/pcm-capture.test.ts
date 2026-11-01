@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 
+import { WEB_AUDIO_DEVICE_ID } from '../const'
 import { PLAYER_VIDEO_SELECTOR } from '../player-dom'
 
 const entry = join(import.meta.dir, '__pcm-capture-test-entry__.ts')
@@ -140,16 +141,15 @@ describe('startPcmCapture', () => {
       processorOptions: { frameSize: 256 },
     })
 
-    // Evaluate the actual AudioWorklet script passed into `addModule()` to verify `PcmTapProcessor`.
+    type TapProcessorCtor = new (opts: {
+      processorOptions: { frameSize: number }
+    }) => {
+      port: { postMessage: (data: Float32Array) => void }
+      process: (inputs: Float32Array[][]) => boolean
+    }
+
     const workletCode = await workletBlobs[0].text()
-    let RegisteredProcessor:
-      | (new (opts: {
-          processorOptions: { frameSize: number }
-        }) => {
-          port: { postMessage: (data: Float32Array) => void }
-          process: (inputs: Float32Array[][]) => boolean
-        })
-      | null = null
+    let RegisteredProcessor: TapProcessorCtor | null = null
 
     class FakeAudioWorkletProcessor {
       port = {
@@ -159,17 +159,12 @@ describe('startPcmCapture', () => {
       }
     }
     const runner = new Function('AudioWorkletProcessor', 'registerProcessor', workletCode)
-    runner(FakeAudioWorkletProcessor, (_name: string, ctor: typeof RegisteredProcessor) => {
+    runner(FakeAudioWorkletProcessor, (_name: string, ctor: TapProcessorCtor) => {
       RegisteredProcessor = ctor
     })
 
     if (!RegisteredProcessor) throw new Error('pcm-tap processor was not registered')
-    const ProcessorCtor: new (opts: {
-      processorOptions: { frameSize: number }
-    }) => {
-      port: { postMessage: (data: Float32Array) => void }
-      process: (inputs: Float32Array[][]) => boolean
-    } = RegisteredProcessor
+    const ProcessorCtor: TapProcessorCtor = RegisteredProcessor
     const proc = new ProcessorCtor({ processorOptions: { frameSize: 256 } })
 
     // 1st quantum: 128 live samples at +0.5; 2nd quantum: disconnected source (`[[]]`) emits 128 zeros.
@@ -190,7 +185,7 @@ describe('startPcmCapture', () => {
   })
 
   test('captures live-player audio for WEB_AUDIO_DEVICE_ID without getUserMedia and releases tracks on failure or stop', async () => {
-    const { startPcmCapture, WEB_AUDIO_DEVICE_ID } = await loadPcmCapture()
+    const { startPcmCapture } = await loadPcmCapture()
     let activeTrackStops = 0
     let trackState: MediaStreamTrackState = 'live'
 
@@ -237,7 +232,6 @@ describe('startPcmCapture', () => {
       removeEventListener() {},
     } as unknown as Document
 
-    // Worklet `addModule` failure must release the captured page-audio track and close AudioContext.
     addModuleError = new Error('CSP blocked blob worklet')
     await expect(startPcmCapture({ deviceId: WEB_AUDIO_DEVICE_ID, onFrame() {} })).rejects.toThrow(
       'CSP blocked blob worklet'
@@ -246,7 +240,6 @@ describe('startPcmCapture', () => {
     expect(activeTrackStops).toBe(1)
     expect(closedContexts).toBe(1)
 
-    // Subsequent start succeeds and cleans up idempotently on `stop()`.
     addModuleError = null
     const cap = await startPcmCapture({ deviceId: WEB_AUDIO_DEVICE_ID, onFrame() {} })
     expect(getUserMediaCalls).toBe(0)

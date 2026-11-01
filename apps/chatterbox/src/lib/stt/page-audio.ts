@@ -2,9 +2,6 @@
 
 import { getAudioOnlyElement, getPlayerVideo, isNativePlayerStreaming } from '../player-dom'
 
-/** Sentinel `audioDeviceId` selecting live-player audio capture instead of a microphone. */
-export const WEB_AUDIO_DEVICE_ID = '__web_audio__'
-
 const HAVE_CURRENT_DATA = 2
 const DEFAULT_STARTUP_TIMEOUT_MS = 2000
 const DEFAULT_INTERRUPTION_WARN_MS = 5000
@@ -140,9 +137,27 @@ function tryCaptureCandidates(candidates: readonly HTMLMediaElement[]): Acquired
   return null
 }
 
-function toAbortError(signal: AbortSignal): Error {
+/** Normalize an `AbortSignal`'s reason into an `Error` (`DOMException('Aborted', 'AbortError')` fallback). */
+export function toAbortError(signal: AbortSignal): Error {
   if (signal.reason instanceof Error) return signal.reason
   return new DOMException('Aborted', 'AbortError')
+}
+
+type ProbeOutcome =
+  | { kind: 'acquired'; value: AcquiredPageAudio }
+  | { kind: 'fatal'; error: Error }
+  | { kind: 'pending'; candidates: HTMLMediaElement[] }
+
+function probePageAudio(): ProbeOutcome {
+  const candidates = getCandidates()
+  const unsupported = checkUnsupportedBrowser(candidates)
+  if (unsupported) return { kind: 'fatal', error: unsupported }
+  const acquired = tryCaptureCandidates(candidates)
+  if (acquired) return { kind: 'acquired', value: acquired }
+  if (candidates.length > 0 && candidates.every(el => !isAudible(el))) {
+    return { kind: 'fatal', error: new Error(ERR_MUTED) }
+  }
+  return { kind: 'pending', candidates }
 }
 
 /** Acquire an audible, live audio track from the active Bilibili player, waiting briefly on cold start. */
@@ -150,19 +165,10 @@ export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<Ac
   const { signal, startupTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS } = opts
   if (signal?.aborted) return Promise.reject(toAbortError(signal))
 
-  const initialCandidates = getCandidates()
-  const unsupported = checkUnsupportedBrowser(initialCandidates)
-  if (unsupported) return Promise.reject(unsupported)
-
-  const immediate = tryCaptureCandidates(initialCandidates)
-  if (immediate) return Promise.resolve(immediate)
-
-  if (initialCandidates.length > 0 && initialCandidates.every(el => !isAudible(el))) {
-    return Promise.reject(new Error(ERR_MUTED))
-  }
-  if (startupTimeoutMs <= 0) {
-    return Promise.reject(diagnoseFailure(initialCandidates))
-  }
+  const initial = probePageAudio()
+  if (initial.kind === 'acquired') return Promise.resolve(initial.value)
+  if (initial.kind === 'fatal') return Promise.reject(initial.error)
+  if (startupTimeoutMs <= 0) return Promise.reject(diagnoseFailure(initial.candidates))
 
   return new Promise<AcquiredPageAudio>((resolve, reject) => {
     let settled = false
@@ -187,21 +193,13 @@ export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<Ac
 
     const check = (): void => {
       if (settled) return
-      const candidates = getCandidates()
-      const browserErr = checkUnsupportedBrowser(candidates)
-      if (browserErr) {
-        fail(browserErr)
-        return
-      }
-      const acquired = tryCaptureCandidates(candidates)
-      if (acquired) {
+      const outcome = probePageAudio()
+      if (outcome.kind === 'acquired') {
         settled = true
         cleanup()
-        resolve(acquired)
-        return
-      }
-      if (candidates.length > 0 && candidates.every(el => !isAudible(el))) {
-        fail(new Error(ERR_MUTED))
+        resolve(outcome.value)
+      } else if (outcome.kind === 'fatal') {
+        fail(outcome.error)
       }
     }
 
@@ -294,16 +292,16 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
     detachBound()
     const source = context.createMediaStreamSource(captured.stream)
     source.connect(destination)
-    if (context.state === 'suspended') {
-      void context.resume().catch(() => {})
-    }
 
-    // Direct listeners catch queued media tasks on `el` even if `audioEl.remove()` detached it first.
+    // Direct listeners catch queued media tasks on `el` after `audioEl.remove()` detaches it from `document`.
+    const onElementEvent = (event: Event): void => {
+      if (event.type === 'ended' || captured.el.isConnected !== true) reconcile()
+    }
     captured.track.addEventListener('ended', reconcile)
     captured.stream.addEventListener('addtrack', reconcile)
     captured.stream.addEventListener('removetrack', reconcile)
     for (const evt of ELEMENT_MEDIA_EVENTS) {
-      captured.el.addEventListener(evt, reconcile)
+      captured.el.addEventListener(evt, onElementEvent)
     }
 
     bound = {
@@ -315,7 +313,7 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
         captured.stream.removeEventListener('addtrack', reconcile)
         captured.stream.removeEventListener('removetrack', reconcile)
         for (const evt of ELEMENT_MEDIA_EVENTS) {
-          captured.el.removeEventListener(evt, reconcile)
+          captured.el.removeEventListener(evt, onElementEvent)
         }
       },
     }
@@ -333,11 +331,8 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
     }
 
     for (const candidate of candidates) {
-      if (bound && candidate === bound.el) {
-        if (isPlayable(candidate) && isAudible(candidate)) break
-        continue
-      }
       if (!isPlayable(candidate) || !isAudible(candidate)) continue
+      if (bound?.el === candidate) break
       const captured = captureElement(candidate)
       if (captured) {
         attach(captured)

@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import type { PcmCaptureOptions } from './pcm-capture'
 import type { SttEngineEvent, SttSessionParams } from './types'
 
+import { WEB_AUDIO_DEVICE_ID } from '../const'
+
 const entry = join(import.meta.dir, '__soniox-test-entry__.ts')
 const captureModule = join(import.meta.dir, '__soniox-test-capture__.ts')
 let bundle: string
@@ -16,7 +18,6 @@ beforeAll(async () => {
     files: {
       [entry]: `
         export { createSonioxEngine } from './soniox-engine'
-        export { WEB_AUDIO_DEVICE_ID } from './page-audio'
         export { captureState } from './__soniox-test-capture__'
       `,
       [captureModule]: `
@@ -52,7 +53,6 @@ beforeAll(async () => {
 
 interface SonioxHarness {
   createSonioxEngine: typeof import('./soniox-engine').createSonioxEngine
-  WEB_AUDIO_DEVICE_ID: string
   captureState: {
     starts: number
     stops: number
@@ -135,7 +135,7 @@ describe('createSonioxEngine (raw WebSocket + unified startPcmCapture)', () => {
   test('authenticates via subprotocol, sends pcm_s16le config, streams PCM frames for any deviceId, and drains on stop', async () => {
     const h = await load()
     const events: SttEngineEvent[] = []
-    const engine = h.createSonioxEngine(baseParams(h.WEB_AUDIO_DEVICE_ID, true), ev => events.push(ev))
+    const engine = h.createSonioxEngine(baseParams(WEB_AUDIO_DEVICE_ID, true), ev => events.push(ev))
 
     engine.start()
     const ws = FakeWebSocket.instances[0]
@@ -155,13 +155,12 @@ describe('createSonioxEngine (raw WebSocket + unified startPcmCapture)', () => {
       endpoint_latency_adjustment_level: 1,
       translation: { type: 'one_way', target_language: 'ja' },
     })
-    expect(h.captureState.lastOptions?.deviceId).toBe(h.WEB_AUDIO_DEVICE_ID)
+    expect(h.captureState.lastOptions?.deviceId).toBe(WEB_AUDIO_DEVICE_ID)
 
     const pcm = new Int16Array([120, -240, 360])
     h.captureState.lastOptions?.onFrame(pcm)
     expect(ws.sent[1]).toBe(pcm)
 
-    // Server returns tokens + `<end>` endpoint marker; `<end>` must be stripped from transcript chunks.
     ws.receive({
       tokens: [
         { text: '你好', is_final: true, translation_status: 'original' },
@@ -178,7 +177,6 @@ describe('createSonioxEngine (raw WebSocket + unified startPcmCapture)', () => {
     })
     expect(events).toContainEqual({ type: 'endpoint' })
 
-    // Graceful stop sends `""` EOF and waits for `{ finished: true }` before resolving.
     let stopResolved = false
     const stopping = engine.stop().then(() => {
       stopResolved = true
@@ -248,7 +246,6 @@ describe('createSonioxEngine (raw WebSocket + unified startPcmCapture)', () => {
     await Promise.resolve()
     expect(h.captureState.stops).toBe(1)
 
-    // Separate session surfaces Soniox server-side `error_message`.
     h.captureState.gate = null
     const errors: string[] = []
     const errEngine = h.createSonioxEngine(baseParams(''), ev => {

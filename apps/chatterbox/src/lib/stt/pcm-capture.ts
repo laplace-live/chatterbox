@@ -1,10 +1,9 @@
 /** Shared mic or live-player → 16 kHz mono PCM16 capture via a blob-loaded AudioWorklet. */
 
+import { WEB_AUDIO_DEVICE_ID } from '../const'
 import { appendLog } from '../log'
 import { floatTo16 } from './audio'
-import { acquirePageAudio, bindPageAudio, WEB_AUDIO_DEVICE_ID } from './page-audio'
-
-export { WEB_AUDIO_DEVICE_ID }
+import { acquirePageAudio, bindPageAudio, toAbortError } from './page-audio'
 
 /** Default capture sample rate in Hz. */
 export const PCM_SAMPLE_RATE = 16000
@@ -65,9 +64,7 @@ async function createWorkletSink(
   } finally {
     URL.revokeObjectURL(moduleUrl)
   }
-  if (opts.signal?.aborted) {
-    throw opts.signal.reason instanceof Error ? opts.signal.reason : new DOMException('Aborted', 'AbortError')
-  }
+  if (opts.signal?.aborted) throw toAbortError(opts.signal)
   const node = new AudioWorkletNode(context, 'pcm-tap', {
     numberOfInputs: 1,
     numberOfOutputs: 1,
@@ -96,33 +93,24 @@ async function createWorkletSink(
   }
 }
 
-/** Start capturing mono PCM16 frames from the selected microphone or live-player stream. */
-export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCapture> {
+interface AcquiredAudioSource {
+  connect: (context: AudioContext, destination: AudioNode) => () => void
+  release: () => void
+}
+
+async function acquireAudioSource(opts: PcmCaptureOptions): Promise<AcquiredAudioSource> {
   if (opts.deviceId === WEB_AUDIO_DEVICE_ID) {
     const initial = await acquirePageAudio({ signal: opts.signal })
-    const context = new AudioContext({ sampleRate: opts.sampleRate ?? PCM_SAMPLE_RATE })
-    try {
-      const { node, teardownSink } = await createWorkletSink(context, opts)
-      const binding = bindPageAudio({ context, destination: node, initial, onLog: appendLog })
-      void context.resume().catch(() => {})
-
-      let stopped = false
-      return {
-        stop: () => {
-          if (stopped) return
-          stopped = true
-          teardownSink()
-          binding.stop()
-          void context.close().catch(() => {})
-        },
-      }
-    } catch (err) {
-      initial.release()
-      void context.close().catch(() => {})
-      throw err
+    return {
+      connect: (context, destination) => {
+        const binding = bindPageAudio({ context, destination, initial, onLog: appendLog })
+        return () => binding.stop()
+      },
+      release: () => initial.release(),
     }
   }
 
+  if (opts.signal?.aborted) throw toAbortError(opts.signal)
   const constraints: MediaStreamConstraints = {
     audio: {
       ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {}),
@@ -134,11 +122,33 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
     },
   }
   const stream = await navigator.mediaDevices.getUserMedia(constraints)
+  const stopTracks = (): void => {
+    for (const track of stream.getTracks()) track.stop()
+  }
+  if (opts.signal?.aborted) {
+    stopTracks()
+    throw toAbortError(opts.signal)
+  }
+  return {
+    connect: (context, destination) => {
+      const source = context.createMediaStreamSource(stream)
+      source.connect(destination)
+      return () => {
+        source.disconnect()
+        stopTracks()
+      }
+    },
+    release: stopTracks,
+  }
+}
+
+/** Start capturing mono PCM16 frames from the selected microphone or live-player stream. */
+export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCapture> {
+  const audioSource = await acquireAudioSource(opts)
   const context = new AudioContext({ sampleRate: opts.sampleRate ?? PCM_SAMPLE_RATE })
   try {
-    const source = context.createMediaStreamSource(stream)
     const { node, teardownSink } = await createWorkletSink(context, opts)
-    source.connect(node)
+    const teardownSource = audioSource.connect(context, node)
     void context.resume().catch(() => {})
 
     let stopped = false
@@ -147,13 +157,12 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
         if (stopped) return
         stopped = true
         teardownSink()
-        source.disconnect()
-        for (const track of stream.getTracks()) track.stop()
+        teardownSource()
         void context.close().catch(() => {})
       },
     }
   } catch (err) {
-    for (const track of stream.getTracks()) track.stop()
+    audioSource.release()
     void context.close().catch(() => {})
     throw err
   }

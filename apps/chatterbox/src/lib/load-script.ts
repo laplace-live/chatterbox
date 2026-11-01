@@ -1,9 +1,4 @@
-/**
- * Lazy UMD CDN-bundle loader sharing one in-flight cache. Lazy injection
- * avoids the eager fetch of `externalGlobals`/`@require` on every page.
- * Injected scripts run in the page context, so globals are read back via
- * `unsafeWindow`, not the sandboxed `window`.
- */
+/** Lazy UMD loader sharing one in-flight cache; reads globals via `unsafeWindow` since `<script>` runs in page context. */
 
 import { unsafeWindow } from '$'
 
