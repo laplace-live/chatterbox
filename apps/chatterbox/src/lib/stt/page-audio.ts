@@ -316,8 +316,14 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
 
   const attach = (captured: CapturedElementAudio): void => {
     detachBound()
-    const source = context.createMediaStreamSource(captured.stream)
-    source.connect(destination)
+    let source: MediaStreamAudioSourceNode
+    try {
+      source = context.createMediaStreamSource(captured.stream)
+      source.connect(destination)
+    } catch (err) {
+      releaseElementCapture(captured.el, captured.stream)
+      throw err
+    }
 
     // Direct listeners catch queued media tasks on `el` after `audioEl.remove()` detaches it from `document`.
     const onElementEvent = (event: Event): void => {
@@ -360,8 +366,10 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
       if (bound?.el === candidate) break
       const captured = captureElement(candidate)
       if (captured) {
-        attach(captured)
-        break
+        try {
+          attach(captured)
+          break
+        } catch {}
       }
     }
 

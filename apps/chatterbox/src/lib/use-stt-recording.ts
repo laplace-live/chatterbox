@@ -138,7 +138,7 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
     generationRef.current++
     engineRef.current?.cancel()
     engineRef.current = null
-    if (state.value === 'starting') updateState('canceled')
+    if (!TERMINAL_STATES.has(state.value)) updateState('canceled')
   }
 
   const pause = (): void => {

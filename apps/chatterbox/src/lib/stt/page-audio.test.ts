@@ -203,9 +203,13 @@ class FakeSourceNode {
 class FakeAudioContext {
   state: AudioContextState = 'running'
   resumeCalls = 0
+  failForStream: FakeMediaStream | null = null
   readonly sources: FakeSourceNode[] = []
 
   createMediaStreamSource(stream: MediaStream): MediaStreamAudioSourceNode {
+    if (this.failForStream === (stream as unknown as FakeMediaStream)) {
+      throw new Error('createMediaStreamSource failed')
+    }
     const node = new FakeSourceNode(stream as unknown as FakeMediaStream)
     this.sources.push(node)
     return node as unknown as MediaStreamAudioSourceNode
@@ -567,6 +571,39 @@ describe('bindPageAudio', () => {
     expect(ctx.sources[0].disconnected).toBe(true)
     expect(ctx.sources[1].stream).toBe(video.createdStreams[1])
     expect(ctx.sources[1].connectedTo).toBe(destination)
+
+    binding.stop()
+  })
+
+  test('releases replacement capture and falls back cleanly when createMediaStreamSource throws during hot-swap', async () => {
+    const video = new FakeMediaElement({ tagName: 'VIDEO', src: 'blob:https://live.bilibili.com/v1' })
+    fakeDoc.videoEl = video
+
+    const initial = await acquirePageAudio()
+    const ctx = new FakeAudioContext()
+    const destination = {} as unknown as AudioNode
+    const binding = bindPageAudio({
+      context: ctx as unknown as AudioContext,
+      destination,
+      initial,
+    })
+
+    const audio = new FakeMediaElement({ tagName: 'AUDIO', src: 'blob:https://live.bilibili.com/ao-bad' })
+    audio.id = AUDIO_EL_ID
+    const origCapture = audio.captureStream
+    if (!origCapture) throw new Error('expected captureStream on FakeMediaElement')
+    audio.captureStream = () => {
+      const stream = origCapture.call(audio)
+      ctx.failForStream = stream
+      return stream
+    }
+    fakeDoc.audioEl = audio
+    audio.dispatchMediaEvent('playing')
+
+    expect(audio.createdStreams).toHaveLength(1)
+    expect(audio.createdStreams[0].getAudioTracks()[0].readyState).toBe('ended')
+    expect(ctx.sources.at(-1)?.stream).toBe(video.createdStreams.at(-1))
+    expect(ctx.sources.at(-1)?.connectedTo).toBe(destination)
 
     binding.stop()
   })

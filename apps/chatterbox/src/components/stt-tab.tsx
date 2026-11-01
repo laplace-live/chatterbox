@@ -547,6 +547,9 @@ export function SttTab() {
       sessionHasSource.current = !isOpenAiCompat
       // Engine acquires audio/socket directly and reports failure via onError.
       recording.start()
+    } else if (state.value === 'starting') {
+      recording.cancel()
+      resetState()
     } else if (state.value === 'running') {
       state.value = 'stopping'
       statusText.value = '正在停止…'
@@ -583,7 +586,7 @@ export function SttTab() {
 
   const btnText =
     state.value === 'starting'
-      ? '启动中…'
+      ? `取消${modeLabel}`
       : state.value === 'stopping'
         ? '停止中…'
         : state.value === 'running'
@@ -1001,9 +1004,9 @@ export function SttTab() {
       <div class='my-2'>
         <div class={ROW_CLASS}>
           <Button
-            variant={state.value === 'running' ? 'destructive' : 'default'}
+            variant={state.value === 'running' || state.value === 'starting' ? 'destructive' : 'default'}
             size='sm'
-            disabled={state.value === 'starting' || state.value === 'stopping'}
+            disabled={state.value === 'stopping'}
             onClick={() => void toggle()}
           >
             {btnText}
