@@ -4,8 +4,8 @@ export const PROJECT_URL = 'https://laplace.live/chatterbox'
 export const GITHUB_URL = 'https://github.com/laplace-live/chatterbox'
 export const DOCUMENT_URL = 'https://laplace.live/chatterbox'
 
-/** Soniox STT SDK. ESM-only; point at the package's self-contained `dist/index.mjs` (no bare-specifier imports) to avoid a transitive-dep waterfall. Keep in sync with the `@soniox/client` devDependency (types only). */
-export const SONIOX_CDN_URL = 'https://unpkg.com/@soniox/client@2.4.0/dist/index.mjs'
+/** Soniox realtime STT WebSocket. Auth via `Sec-WebSocket-Protocol` (`['soniox-api-key', apiKey]`) — no header, no CORS. */
+export const SONIOX_WS_URL = 'wss://stt-rt.soniox.com/transcribe-websocket'
 
 /** Soniox REST API root; append a path e.g. `${SONIOX_API_BASE}/models`. */
 export const SONIOX_API_BASE = 'https://api.soniox.com/v1'
@@ -52,6 +52,9 @@ export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-transcribe-live'
 export const GEMINI_TRANSLATION_MODEL = 'gemini-3.5-live-translate-preview'
 export const ELEVENLABS_TRANSLATION_MODE = 'realtime-translation'
 export const OPENAI_TRANSLATION_MODEL = 'gpt-realtime-translate'
+
+/** Sentinel `audioDeviceId` selecting live-player audio capture instead of a microphone. */
+export const WEB_AUDIO_DEVICE_ID = '__web_audio__'
 
 /** mpegts.js FLV / MPEG-TS demuxer. UMD bundle — assigns to `window.mpegts` at runtime. */
 export const MPEGTS_CDN_URL = 'https://unpkg.com/mpegts.js@1.8.2/dist/mpegts.js'

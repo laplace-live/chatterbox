@@ -1,6 +1,6 @@
 import type { SttEngine, SttEngineEvent, SttEngineEventHandler } from './types'
 
-import { STT_STOP_TIMEOUT_MS } from '../const'
+import { STT_STOP_TIMEOUT_MS, WEB_AUDIO_DEVICE_ID } from '../const'
 import { type PcmCapture, startPcmCapture } from './pcm-capture'
 
 interface TranslationSocketControls {
@@ -27,6 +27,7 @@ const MAX_BUFFERED_BYTES = 2 * 1024 * 1024
 export function createTranslationSocket(config: TranslationSocketConfig, onEvent: SttEngineEventHandler): SttEngine {
   const decoder = new TextDecoder()
   const controller = new AbortController()
+  const captureAbort = new AbortController()
   let socket: WebSocket | null = null
   let capture: PcmCapture | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -41,6 +42,7 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
   })
 
   const releaseCapture = () => {
+    captureAbort.abort()
     capture?.stop()
     capture = null
   }
@@ -92,6 +94,7 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
       deviceId: config.deviceId,
       sampleRate: config.sampleRate,
       frameSamples: config.sampleRate / 10,
+      signal: captureAbort.signal,
       onFrame: frame => {
         if (!settled && !stopping) send(config.audio(paused ? new Int16Array(frame.length) : frame))
       },
@@ -106,14 +109,18 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
         onEvent({ type: 'state', state: 'running' })
         onEvent({ type: 'connected' })
       })
-      .catch(fail)
+      .catch(err => {
+        if (!stopping && !settled) fail(err)
+      })
   }
 
   const start = () => {
     if (started || settled) return
     started = true
     onEvent({ type: 'state', state: 'connecting' })
-    timer = setTimeout(() => fail(new Error(ready ? '同传麦克风启动超时' : '同传服务连接超时')), CONNECT_TIMEOUT_MS)
+    const captureTimeoutMessage =
+      config.deviceId === WEB_AUDIO_DEVICE_ID ? '同传网页音源启动超时' : '同传麦克风启动超时'
+    timer = setTimeout(() => fail(new Error(ready ? captureTimeoutMessage : '同传服务连接超时')), CONNECT_TIMEOUT_MS)
     void config
       .connect(controller.signal)
       .then(connection => {
@@ -153,8 +160,9 @@ export function createTranslationSocket(config: TranslationSocketConfig, onEvent
   const stop = () => {
     if (settled || stopping) return stopped
     stopping = true
+    const hadCapture = capture !== null
     releaseCapture()
-    if (!ready || socket?.readyState !== WebSocket.OPEN) {
+    if (!hadCapture || socket?.readyState !== WebSocket.OPEN) {
       finish()
       return stopped
     }

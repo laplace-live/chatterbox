@@ -13,11 +13,7 @@ export interface SttModelOption {
   name?: string
 }
 
-/**
- * Recording lifecycle state: superset of Soniox's own `RecordingState` plus
- * `running` (synthetic, emitted by the raw-WebSocket engines once audio can stream). Local
- * union so no provider package leaks into the shared contract.
- */
+/** Normalized STT/translation session lifecycle state emitted across all engines. */
 export type SttRecordingState =
   | 'idle'
   | 'starting'
@@ -25,7 +21,6 @@ export type SttRecordingState =
   | 'recording'
   | 'running'
   | 'paused'
-  | 'reconnecting'
   | 'stopping'
   | 'stopped'
   | 'canceled'
@@ -57,13 +52,13 @@ export interface SttSessionParams {
   translation?: { targetLanguage: string; voiceId?: string; authorizationToken?: string }
   /** Explicit backend contract for Whisper translation requests. */
   translationApi?: SttTranslationApi
-  /** Resolved microphone device id; `''` = system default. */
+  /** Microphone device id, `''` for system default, or `WEB_AUDIO_DEVICE_ID` for live-player audio. */
   audioDeviceId: string
   /** API root: required by `openai-compat`; optional for Gemini and OpenAI. */
   baseUrl?: string
 }
 
-/** Optional knobs for `finalize()`. Provider-agnostic; Soniox maps it onto its SDK. */
+/** Optional knobs for `finalize()` (used by Soniox trailing-silence endpointing). */
 export interface SttFinalizeOptions {
   trailingSilenceMs?: number
 }

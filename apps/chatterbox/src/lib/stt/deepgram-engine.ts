@@ -18,12 +18,15 @@ const toError = (err: unknown): Error => (err instanceof Error ? err : new Error
 export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngineEventHandler): SttEngine {
   let aborted = false
   let settled = false
+  let stopping = false
   let paused = false
   let opened = false
   let ws: WebSocket | null = null
   let capture: PcmCapture | null = null
+  const captureAbort = new AbortController()
 
   const stopCapture = (): void => {
+    captureAbort.abort()
     capture?.stop()
     capture = null
   }
@@ -51,13 +54,14 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
   const beginAudio = async (): Promise<void> => {
     const cap = await startPcmCapture({
       deviceId: params.audioDeviceId,
+      signal: captureAbort.signal,
       onFrame: frame => {
         // Deepgram takes raw binary PCM16 frames — no base64, no JSON wrapper.
-        if (paused || !ws || ws.readyState !== WebSocket.OPEN) return
+        if (paused || stopping || !ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(frame)
       },
     })
-    if (aborted || settled) {
+    if (aborted || settled || stopping) {
       cap.stop()
       return
     }
@@ -98,13 +102,15 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
 
       socket.onopen = () => {
         opened = true
-        if (aborted || settled) {
+        if (aborted || settled || stopping) {
           socket.close()
           return
         }
         onEvent({ type: 'state', state: 'running' })
         onEvent({ type: 'connected' })
-        void beginAudio().catch(err => fail(err))
+        void beginAudio().catch(err => {
+          if (!aborted && !settled && !stopping) fail(err)
+        })
       }
       socket.onmessage = event => {
         if (typeof event.data === 'string') handleMessage(event.data)
@@ -113,7 +119,7 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
       socket.onclose = () => {
         if (aborted || settled) return
         // Never opened ⇒ handshake/auth failure; browser surfaces it only as a close.
-        if (!opened) {
+        if (!opened && !stopping) {
           fail(new Error('连接失败，请检查 Deepgram API Key 或网络'))
           return
         }
@@ -125,14 +131,22 @@ export function createDeepgramEngine(params: SttSessionParams, onEvent: SttEngin
   }
 
   const stop = async (): Promise<void> => {
+    if (settled || stopping) return
+    stopping = true
     onEvent({ type: 'state', state: 'stopping' })
     stopCapture()
-    // Ask Deepgram to flush any final transcript before we close.
+    if (!ws) {
+      finish()
+      return
+    }
+    if (ws.readyState === WebSocket.OPEN) {
+      // Ask Deepgram to flush any final transcript before we close.
+      try {
+        ws.send(JSON.stringify({ type: 'CloseStream' }))
+      } catch {}
+    }
     try {
-      ws?.send(JSON.stringify({ type: 'CloseStream' }))
-    } catch {}
-    try {
-      ws?.close()
+      ws.close()
     } catch {}
   }
 

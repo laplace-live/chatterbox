@@ -5,12 +5,19 @@ import type { FakeGmRequest } from '../../testing/fake-gm-transport'
 import type { PcmCaptureOptions } from './pcm-capture'
 import type { SttEngineEvent, SttSessionParams } from './types'
 
+import { WEB_AUDIO_DEVICE_ID } from '../const'
 import { int16ToBase64 } from './audio'
 
 type Engines = typeof import('./elevenlabs-translation-engine') & typeof import('./openai-translation-engine')
 interface Harness extends Engines {
   requests: FakeGmRequest[]
-  captureState: { options: PcmCaptureOptions | null; stops: number; gate: Promise<void> | null }
+  captureState: {
+    options: PcmCaptureOptions | null
+    stops: number
+    gate: Promise<void> | null
+    aborted: boolean
+    rejectOnAbort: boolean
+  }
 }
 
 const entry = join(import.meta.dir, '__translation-test-entry__.ts')
@@ -21,10 +28,22 @@ const build = await Bun.build({
     [entry]: `export * from './elevenlabs-translation-engine'; export * from './openai-translation-engine'; export { requests } from '$'; export { captureState } from './pcm-capture'`,
     [capturePath]: `
       export const PCM_SAMPLE_RATE = 16000;
-      export const captureState = { options: null, stops: 0, gate: null };
+      export const captureState = { options: null, stops: 0, gate: null, aborted: false, rejectOnAbort: false };
       export async function startPcmCapture(options) {
         captureState.options = options;
-        if (captureState.gate) await captureState.gate;
+        if (captureState.gate) {
+          await new Promise((resolve, reject) => {
+            const onAbort = () => {
+              captureState.aborted = true;
+              if (captureState.rejectOnAbort) reject(new DOMException('Aborted', 'AbortError'));
+            };
+            options.signal?.addEventListener('abort', onAbort, { once: true });
+            captureState.gate.then(() => {
+              options.signal?.removeEventListener('abort', onAbort);
+              resolve();
+            }, reject);
+          });
+        }
         return { stop() { captureState.stops++; } };
       }
     `,
@@ -368,10 +387,26 @@ describe('translation lifecycle', () => {
     socket.open()
     socket.receive({ message_type: 'session_started' })
     engine.cancel()
+    expect(harness.captureState.aborted).toBe(true)
     release()
     await tick()
     expect(harness.captureState.stops).toBe(1)
     expect(events.some(e => e.type === 'connected')).toBe(false)
+    expect(errors(events)).toEqual([])
+  })
+
+  test('stops immediately without drain error when startPcmCapture is pending and rejects on abort', async () => {
+    const { engine, harness, events } = await start('elevenlabs', { audioDeviceId: WEB_AUDIO_DEVICE_ID })
+    harness.captureState.rejectOnAbort = true
+    harness.captureState.gate = new Promise<void>(() => {})
+    const socket = sockets[0]
+    socket.open()
+    socket.receive({ message_type: 'session_started' })
+    await engine.stop()
+    await tick()
+    expect(harness.captureState.aborted).toBe(true)
+    expect(socket.closed).toBe(1)
+    expect(events.at(-1)).toEqual({ type: 'finished' })
     expect(errors(events)).toEqual([])
   })
 
@@ -447,4 +482,14 @@ describe('microphone startup deadline', () => {
       engine.cancel()
     }
   )
+
+  test('reports live-player capture timeout wording for WEB_AUDIO_DEVICE_ID', async () => {
+    jest.useFakeTimers()
+    const { harness, events } = await start('elevenlabs', { audioDeviceId: WEB_AUDIO_DEVICE_ID })
+    harness.captureState.gate = new Promise<void>(() => {})
+    sockets[0].open()
+    sockets[0].receive({ message_type: 'session_started' })
+    jest.advanceTimersByTime(15_000)
+    expect(errors(events)).toEqual(['同传网页音源启动超时'])
+  })
 })

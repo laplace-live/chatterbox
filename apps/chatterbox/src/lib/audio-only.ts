@@ -20,11 +20,18 @@ import type Mpegts from 'mpegts.js'
 
 import { unsafeWindow } from '$'
 import { ensureRoomId } from './api'
+import { applyAudioOnlyVolume } from './audio-only-volume'
 import { MPEGTS_CDN_URL } from './const'
 import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
 import { isTabHidden } from './page-visibility'
-import { getPlayerVideo, isNativePlayerStreaming, PLAYER_CONTAINER_SELECTOR, resolveLivePlayer } from './player-dom'
+import {
+  AUDIO_EL_ID,
+  getPlayerVideo,
+  isNativePlayerStreaming,
+  PLAYER_CONTAINER_SELECTOR,
+  resolveLivePlayer,
+} from './player-dom'
 import { audioOnlyActive, audioOnlyMode, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost, isRecord } from './utils'
 
@@ -37,9 +44,6 @@ declare global {
 
 const HTML_FLAG_CLASS = 'lc-audio-only'
 const STYLE_ID = 'lc-audio-only-style'
-// Exported for id-lookup from `lib/auto-seek.ts`: the element is recreated
-// across refresh/disengage cycles, so a live reference would go stale.
-export const AUDIO_EL_ID = 'lc-audio-only-stream'
 
 // Stream URLs are signed with ~1h expiry; refresh well before that closes.
 const STREAM_REFRESH_MS = 50 * 60 * 1000
@@ -420,10 +424,7 @@ function syncVolumeToAudioEl(): void {
   const volume = audioOnlyVolume.value
   const muted = audioOnlyMuted.value
   if (!audioEl) return
-  // Silenced via volume, not `muted`, during preroll: unmuting a muted element later can trip autoplay policy.
-  const level = prerolling ? 0 : volume
-  if (Math.abs(audioEl.volume - level) > 0.005) audioEl.volume = level
-  if (audioEl.muted !== muted) audioEl.muted = muted
+  applyAudioOnlyVolume(audioEl, volume, muted, prerolling)
 }
 
 /** Whether B站's own `<video>` is streaming and actually playing (not stalled or paused). */
@@ -561,6 +562,7 @@ async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts, roomId: nu
     audioEl.id = AUDIO_EL_ID
     // `display: none` also drops it from tab order.
     audioEl.style.display = 'none'
+    syncVolumeToAudioEl()
     document.body.appendChild(audioEl)
   } else if (mpegtsPlayer) {
     // Refresh path: destroy the existing player before re-attaching.

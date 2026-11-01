@@ -1,4 +1,4 @@
-/** Single source of truth for reaching into bilibili's native live player DOM. */
+/** Single source of truth for reaching into bilibili's native live player and audio-only DOM. */
 
 /** bilibili's live player container. */
 export const PLAYER_CONTAINER_SELECTOR = '#live-player'
@@ -8,6 +8,18 @@ export const PLAYER_VIDEO_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} video`
 
 /** The player's top-left watermark overlay: B站 logo plus the viewer's UID. */
 export const PLAYER_WATERMARK_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} .web-player-icon-roomStatus`
+
+/** Hidden `<audio>` mounted by audio-only mode; recreated across refresh/disengage cycles. */
+export const AUDIO_EL_ID = 'lc-audio-only-stream'
+
+/** Marks `#lc-audio-only-stream` while silenced (`volume = 0`) during FLV autoplay preroll. */
+export const AUDIO_PREROLLING_ATTR = 'data-lc-prerolling'
+
+/** The active audio-only `<audio>` element, or `null` when none is mounted. */
+export function getAudioOnlyElement(): HTMLAudioElement | null {
+  const el = document.getElementById(AUDIO_EL_ID)
+  return el?.tagName.toUpperCase() === 'AUDIO' ? (el as HTMLAudioElement) : null
+}
 
 /** The native player's `<video>` element, or `null` when not mounted. */
 export function getPlayerVideo(): HTMLVideoElement | null {

@@ -21,9 +21,22 @@ beforeAll(async () => {
         export { captureState } from './__batch-test-capture__'`,
       [captureModule]: `
         export const PCM_SAMPLE_RATE = 16000
-        export const captureState = { starts: 0, stops: 0 }
-        export async function startPcmCapture() {
+        export const captureState = { starts: 0, stops: 0, aborted: false, gate: null }
+        export async function startPcmCapture(opts) {
           captureState.starts++
+          if (captureState.gate) {
+            await new Promise((resolve, reject) => {
+              const onAbort = () => {
+                captureState.aborted = true
+                reject(new DOMException('Aborted', 'AbortError'))
+              }
+              opts.signal?.addEventListener('abort', onAbort, { once: true })
+              captureState.gate.then(() => {
+                opts.signal?.removeEventListener('abort', onAbort)
+                resolve()
+              }, reject)
+            })
+          }
           return { stop() { captureState.stops++ } }
         }
       `,
@@ -58,7 +71,7 @@ async function load() {
     typeof import('./openai-compat-engine') & {
       requests: FakeGmRequest[]
       emitSegment: () => void
-      captureState: { starts: number; stops: number }
+      captureState: { starts: number; stops: number; aborted: boolean; gate: Promise<void> | null }
     }
   >
 }
@@ -129,4 +142,26 @@ test('invalid translation target fails before microphone access', async () => {
   expect(events).toEqual([{ type: 'error', error: new Error('Whisper 仅支持翻译为英语') }])
   expect(requests).toHaveLength(0)
   expect(captureState.starts).toBe(0)
+})
+
+test('stop while startPcmCapture is pending aborts signal and finishes without emitting AbortError', async () => {
+  const mod = await load()
+  mod.captureState.gate = new Promise<void>(() => {})
+  const events: SttEngineEvent[] = []
+  const engine = mod.createOpenAiCompatEngine(
+    {
+      apiKey: '',
+      baseUrl: 'http://localhost:8080/v1',
+      model: 'whisper-1',
+      audioDeviceId: '',
+      languageHints: [],
+    },
+    event => events.push(event)
+  )
+  engine.start()
+  await engine.stop()
+  await tick()
+  expect(mod.captureState.aborted).toBe(true)
+  expect(events.some(e => e.type === 'error')).toBe(false)
+  expect(events.at(-1)).toEqual({ type: 'finished' })
 })

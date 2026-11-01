@@ -83,6 +83,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   let connected = false
   let current: LiveConnection | null = null
   let capture: PcmCapture | null = null
+  const captureAbort = new AbortController()
   // Set while waiting on a final after `audioStreamEnd`; audio is held meanwhile so the stream stays ended.
   let afterDrain: (() => void) | null = null
   let drainTimer: ReturnType<typeof setTimeout> | null = null
@@ -159,14 +160,19 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     )
   }
 
+  const stopCapture = (): void => {
+    captureAbort.abort()
+    capture?.stop()
+    capture = null
+  }
+
   const teardown = (): void => {
     translationText.cancel()
     cancelDrain()
     cancelBreakWait()
     if (stopTimer) clearTimeout(stopTimer)
     stopTimer = null
-    capture?.stop()
-    capture = null
+    stopCapture()
     backlog.length = 0
     if (current) retire(current)
     current = null
@@ -201,7 +207,12 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
   }
 
   const beginAudio = async (): Promise<void> => {
-    const cap = await startPcmCapture({ deviceId: params.audioDeviceId, frameSamples: FRAME_SAMPLES, onFrame })
+    const cap = await startPcmCapture({
+      deviceId: params.audioDeviceId,
+      frameSamples: FRAME_SAMPLES,
+      signal: captureAbort.signal,
+      onFrame,
+    })
     if (settled || stopping) {
       cap.stop()
       return
@@ -223,7 +234,9 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     connected = true
     onEvent({ type: 'state', state: 'running' })
     onEvent({ type: 'connected' })
-    void beginAudio().catch(err => fail(err))
+    void beginAudio().catch(err => {
+      if (!stopping && !settled) fail(err)
+    })
   }
 
   const swap = (conn: LiveConnection): void => {
@@ -377,8 +390,7 @@ export function createGeminiEngine(params: SttSessionParams, onEvent: SttEngineE
     stopping = true
     cancelBreakWait()
     onEvent({ type: 'state', state: 'stopping' })
-    capture?.stop()
-    capture = null
+    stopCapture()
     const stopBudget = translating ? GEMINI_TRANSLATION_STOP_TIMEOUT_MS - 2000 : STOP_DEADLINE_MS
     stopDeadline = Date.now() + stopBudget
     stopTimer = setTimeout(() => {

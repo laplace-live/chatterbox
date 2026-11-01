@@ -17,11 +17,23 @@ beforeAll(async () => {
       [entry]: `export { createGladiaEngine } from './gladia-engine'; export { captureState } from './__gladia-test-capture__'`,
       [captureModule]: `
         export const PCM_SAMPLE_RATE = 16000
-        export const captureState = { starts: 0, stops: 0, onFrame: () => {}, gate: null }
+        export const captureState = { starts: 0, stops: 0, onFrame: () => {}, gate: null, aborted: false, rejectOnAbort: false }
         export async function startPcmCapture(opts) {
           captureState.starts++
           captureState.onFrame = opts.onFrame
-          if (captureState.gate) await captureState.gate
+          if (captureState.gate) {
+            await new Promise((resolve, reject) => {
+              const onAbort = () => {
+                captureState.aborted = true
+                if (captureState.rejectOnAbort) reject(new DOMException('Aborted', 'AbortError'))
+              }
+              opts.signal?.addEventListener('abort', onAbort, { once: true })
+              captureState.gate.then(() => {
+                opts.signal?.removeEventListener('abort', onAbort)
+                resolve()
+              }, reject)
+            })
+          }
           return { stop() { captureState.stops++ } }
         }
       `,
@@ -42,7 +54,14 @@ beforeAll(async () => {
 async function load() {
   return import(`data:text/javascript;base64,${Buffer.from(`${bundle}\n//${++loads}`).toString('base64')}`) as Promise<
     typeof import('./gladia-engine') & {
-      captureState: { starts: number; stops: number; onFrame: PcmCaptureOptions['onFrame']; gate: Promise<void> | null }
+      captureState: {
+        starts: number
+        stops: number
+        onFrame: PcmCaptureOptions['onFrame']
+        gate: Promise<void> | null
+        aborted: boolean
+        rejectOnAbort: boolean
+      }
     }
   >
 }
@@ -228,10 +247,24 @@ test('stop releases a microphone acquired after the stop request', async () => {
   })
   sockets[0].open()
   await engine.stop()
+  expect(capture.aborted).toBe(true)
   release()
   await tick()
   expect(capture.stops).toBe(1)
   sockets[0].drop()
+  expect(events.at(-1)).toEqual({ type: 'finished' })
+})
+
+test('stop aborting pending startPcmCapture does not turn AbortError into a session error during drain', async () => {
+  const { engine, capture, events } = await start()
+  capture.rejectOnAbort = true
+  capture.gate = new Promise<void>(() => {})
+  sockets[0].open()
+  await engine.stop()
+  await tick()
+  expect(capture.aborted).toBe(true)
+  expect(events.some(e => e.type === 'error')).toBe(false)
+  sockets[0].receive({ type: 'end_session' })
   expect(events.at(-1)).toEqual({ type: 'finished' })
 })
 

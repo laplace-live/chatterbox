@@ -19,6 +19,7 @@ import {
   OPENAI_TRANSLATION_MODEL,
   SONIOX_DEFAULT_MODEL,
   STT_STOP_TIMEOUT_MS,
+  WEB_AUDIO_DEVICE_ID,
   WHISPER_CPP_URL,
 } from '../lib/const'
 import { appendLog } from '../lib/log'
@@ -369,17 +370,13 @@ export function SttTab() {
     console.error('STT error:', err)
     const message = err.message || String(err)
     const label = PROVIDER_META[sttProvider.value].label
-    // Terminal on every provider — no `finished` can follow an `error` (Soniox
-    // cleans up + unbinds; the raw-WS engines latch `settled`). So always unwind,
-    // including from 'stopping', which would otherwise leave the tab disabled at
-    // 停止中… forever. Runs before the status paint since resetState clears it.
+    // Errors are terminal on every engine (no 'finished' follows); unwind first since resetState clears status.
     clearStopWatchdog()
     if (state.value !== 'stopped') resetState()
-    // Match by name: DOM throws NotAllowedError/NotFoundError; Soniox adds Audio*Error subclasses.
-    if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
       statusText.value = '麦克风权限被拒绝'
-    } else if (err.name === 'AudioDeviceError' || err.name === 'NotFoundError') {
+    } else if (err.name === 'NotFoundError') {
       appendLog('❌ 未找到麦克风设备')
       statusText.value = '未找到麦克风'
     } else {
@@ -416,10 +413,12 @@ export function SttTab() {
   const activeBaseUrl = openaiSttBaseUrl.value.trim()
 
   // Fall back to default if the saved device is gone; the persisted reset is deferred to toggle() to avoid a store write during render.
-  const savedDeviceIdForHook = sttAudioDeviceId.value
-  const deviceStillAvailable =
-    !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
-  const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
+  const devices = audioDevices.value
+  const savedDeviceId = sttAudioDeviceId.value
+  const isWebAudio = savedDeviceId === WEB_AUDIO_DEVICE_ID
+  const deviceStillAvailable = !savedDeviceId || isWebAudio || devices.some(d => d.deviceId === savedDeviceId)
+  const savedDeviceMissing = !deviceStillAvailable
+  const effectiveDeviceId = deviceStillAvailable ? savedDeviceId : ''
 
   const model =
     provider === 'soniox'
@@ -531,7 +530,7 @@ export function SttTab() {
         return
       }
       // Persist the device fallback here, deferred from render to avoid a signal write during render.
-      if (savedDeviceIdForHook && !deviceStillAvailable) {
+      if (savedDeviceMissing) {
         appendLog('⚠️ 已选麦克风不可用，已切换至系统默认')
         sttAudioDeviceId.value = ''
       }
@@ -546,8 +545,11 @@ export function SttTab() {
       translationModeRef.current = translationEnabledForHook
       sessionTarget.current = targetLanguage
       sessionHasSource.current = !isOpenAiCompat
-      // No pre-warm needed: the engine sets up the SDK/socket and reports failure via onError.
+      // Engine acquires audio/socket directly and reports failure via onError.
       recording.start()
+    } else if (state.value === 'starting') {
+      recording.cancel()
+      resetState()
     } else if (state.value === 'running') {
       state.value = 'stopping'
       statusText.value = '正在停止…'
@@ -584,7 +586,7 @@ export function SttTab() {
 
   const btnText =
     state.value === 'starting'
-      ? '启动中…'
+      ? `取消${modeLabel}`
       : state.value === 'stopping'
         ? '停止中…'
         : state.value === 'running'
@@ -592,11 +594,8 @@ export function SttTab() {
           : `开始${modeLabel}`
 
   const hints = sonioxLanguageHints.value
-  const devices = audioDevices.value
   // Labels are blank until mic permission is granted, so a non-empty label means "already granted".
   const hasMicLabels = devices.some(d => d.label)
-  const savedDeviceId = sttAudioDeviceId.value
-  const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
 
   const knownModels = isGemini
     ? [{ id: GEMINI_DEFAULT_MODEL }, { id: GEMINI_TRANSLATION_MODEL }, ...(modelPicker?.models.value ?? [])]
@@ -753,6 +752,7 @@ export function SttTab() {
               }}
             >
               <option value=''>系统默认</option>
+              <option value={WEB_AUDIO_DEVICE_ID}>获取网页声音</option>
               {devices.map((d, i) => (
                 <option key={d.deviceId || `mic-${i}`} value={d.deviceId}>
                   {d.label || `麦克风 ${i + 1}`}
@@ -760,7 +760,7 @@ export function SttTab() {
               ))}
               {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
             </NativeSelect>
-            {!hasMicLabels && (
+            {!hasMicLabels && !isWebAudio && (
               <Button variant='outline' size='sm' onClick={() => void requestMicPermission()}>
                 授权
               </Button>
@@ -1004,9 +1004,9 @@ export function SttTab() {
       <div class='my-2'>
         <div class={ROW_CLASS}>
           <Button
-            variant={state.value === 'running' ? 'destructive' : 'default'}
+            variant={state.value === 'running' || state.value === 'starting' ? 'destructive' : 'default'}
             size='sm'
-            disabled={state.value === 'starting' || state.value === 'stopping'}
+            disabled={state.value === 'stopping'}
             onClick={() => void toggle()}
           >
             {btnText}

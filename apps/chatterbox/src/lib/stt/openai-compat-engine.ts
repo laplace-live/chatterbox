@@ -38,8 +38,10 @@ export function createOpenAiCompatEngine(params: SttSessionParams, onEvent: SttE
   let inflightAbort: (() => void) | null = null
   let consecutiveFailures = 0
   const queue: Int16Array[] = []
+  const captureAbort = new AbortController()
 
   const stopCapture = (): void => {
+    captureAbort.abort()
     capture?.stop()
     capture = null
   }
@@ -146,6 +148,7 @@ export function createOpenAiCompatEngine(params: SttSessionParams, onEvent: SttE
     onEvent({ type: 'state', state: 'connecting' })
     startPcmCapture({
       deviceId: params.audioDeviceId,
+      signal: captureAbort.signal,
       onFrame: frame => {
         if (paused || settled) return
         segmenter.push(frame)
@@ -161,7 +164,9 @@ export function createOpenAiCompatEngine(params: SttSessionParams, onEvent: SttE
         onEvent({ type: 'connected' })
         onEvent({ type: 'state', state: 'recording' })
       })
-      .catch(err => fail(err))
+      .catch(err => {
+        if (!stopping && !settled) fail(err)
+      })
   }
 
   const stop = async (): Promise<void> => {

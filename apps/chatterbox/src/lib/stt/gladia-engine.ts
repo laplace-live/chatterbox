@@ -24,9 +24,11 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   let startupTimer: ReturnType<typeof setTimeout> | null = null
   let stopTimer: ReturnType<typeof setTimeout> | null = null
   const controller = new AbortController()
+  const captureAbort = new AbortController()
   const translatedIds = new Set<string>()
 
   const stopCapture = (): void => {
+    captureAbort.abort()
     capture?.stop()
     capture = null
   }
@@ -61,6 +63,7 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
   const beginAudio = async (): Promise<void> => {
     const cap = await startPcmCapture({
       deviceId: params.audioDeviceId,
+      signal: captureAbort.signal,
       onFrame: frame => {
         if (settled || stopping || paused || !ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify({ type: 'audio_chunk', data: { chunk: int16ToBase64(frame) } }))
@@ -139,7 +142,9 @@ export function createGladiaEngine(params: SttSessionParams, onEvent: SttEngineE
           }
           onEvent({ type: 'state', state: 'running' })
           onEvent({ type: 'connected' })
-          void beginAudio().catch(fail)
+          void beginAudio().catch(err => {
+            if (!stopping && !settled) fail(err)
+          })
         }
         socket.onmessage = event => {
           if (typeof event.data === 'string') handleMessage(event.data)
