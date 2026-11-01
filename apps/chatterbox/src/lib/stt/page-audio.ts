@@ -265,6 +265,7 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
 
   interface BoundSource extends CapturedElementAudio {
     source: MediaStreamAudioSourceNode
+    connected: boolean
     unbindListeners: () => void
   }
 
@@ -282,9 +283,11 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
     const current = bound
     bound = null
     current.unbindListeners()
-    try {
-      current.source.disconnect()
-    } catch {}
+    if (current.connected) {
+      try {
+        current.source.disconnect()
+      } catch {}
+    }
     releaseElementCapture(current.el, current.stream)
   }
 
@@ -316,10 +319,11 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
 
   const attach = (captured: CapturedElementAudio): void => {
     detachBound()
+    const audible = isAudible(captured.el)
     let source: MediaStreamAudioSourceNode
     try {
       source = context.createMediaStreamSource(captured.stream)
-      source.connect(destination)
+      if (audible) source.connect(destination)
     } catch (err) {
       releaseElementCapture(captured.el, captured.stream)
       throw err
@@ -339,6 +343,7 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
     bound = {
       ...captured,
       source,
+      connected: audible,
       unbindListeners: () => {
         captured.track.removeEventListener('ended', reconcile)
         captured.stream.removeEventListener('addtrack', reconcile)
@@ -370,6 +375,20 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
           attach(captured)
           break
         } catch {}
+      }
+    }
+
+    // W3C `captureStream()` ignores element mute/volume; gate the Web Audio node directly so mute pauses forwarding.
+    if (bound) {
+      const audible = isAudible(bound.el)
+      if (audible && !bound.connected) {
+        bound.source.connect(destination)
+        bound.connected = true
+      } else if (!audible && bound.connected) {
+        try {
+          bound.source.disconnect()
+        } catch {}
+        bound.connected = false
       }
     }
 

@@ -192,6 +192,7 @@ class FakeSourceNode {
 
   connect(dest: unknown): void {
     this.connectedTo = dest
+    this.disconnected = false
   }
 
   disconnect(): void {
@@ -604,6 +605,49 @@ describe('bindPageAudio', () => {
     expect(audio.createdStreams[0].getAudioTracks()[0].readyState).toBe('ended')
     expect(ctx.sources.at(-1)?.stream).toBe(video.createdStreams.at(-1))
     expect(ctx.sources.at(-1)?.connectedTo).toBe(destination)
+
+    binding.stop()
+  })
+
+  test('disconnects Web Audio source while player is muted or at zero volume and reconnects on unmute without recapturing', async () => {
+    const video = new FakeMediaElement({ tagName: 'VIDEO', src: 'blob:https://live.bilibili.com/v1' })
+    fakeDoc.videoEl = video
+
+    const initial = await acquirePageAudio()
+    const ctx = new FakeAudioContext()
+    const destination = {} as unknown as AudioNode
+    const binding = bindPageAudio({
+      context: ctx as unknown as AudioContext,
+      destination,
+      initial,
+    })
+
+    expect(ctx.sources).toHaveLength(1)
+    expect(ctx.sources[0].connectedTo).toBe(destination)
+
+    video.muted = true
+    video.dispatchMediaEvent('volumechange')
+    expect(ctx.sources[0].connectedTo).toBeNull()
+    expect(ctx.sources[0].disconnected).toBe(true)
+    expect(initial.track.readyState).toBe('live')
+    expect(video.captureCalls).toBe(1)
+
+    video.muted = false
+    video.dispatchMediaEvent('volumechange')
+    expect(ctx.sources).toHaveLength(1)
+    expect(ctx.sources[0].connectedTo).toBe(destination)
+    expect(ctx.sources[0].disconnected).toBe(false)
+    expect(video.captureCalls).toBe(1)
+
+    video.volume = 0
+    video.dispatchMediaEvent('volumechange')
+    expect(ctx.sources[0].connectedTo).toBeNull()
+    expect(initial.track.readyState).toBe('live')
+
+    video.volume = 0.6
+    video.dispatchMediaEvent('volumechange')
+    expect(ctx.sources[0].connectedTo).toBe(destination)
+    expect(video.captureCalls).toBe(1)
 
     binding.stop()
   })
