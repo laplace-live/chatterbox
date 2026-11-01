@@ -127,7 +127,8 @@ function checkUnsupportedBrowser(candidates: readonly HTMLMediaElement[]): Error
 
 function tryCaptureCandidates(candidates: readonly HTMLMediaElement[]): AcquiredPageAudio | null {
   for (const candidate of candidates) {
-    if (!isPlayable(candidate) || !isAudible(candidate)) continue
+    if (!isPlayable(candidate) || isPrerolling(candidate)) continue
+    if (!isAudible(candidate)) return null
     const captured = captureElement(candidate)
     if (captured) {
       return {
@@ -157,7 +158,11 @@ function probePageAudio(): ProbeOutcome {
   if (unsupported) return { kind: 'fatal', error: unsupported }
   const acquired = tryCaptureCandidates(candidates)
   if (acquired) return { kind: 'acquired', value: acquired }
-  if (candidates.length > 0 && candidates.every(el => !isAudible(el) && !isPrerolling(el))) {
+  const active = candidates.find(el => isPlayable(el) && !isPrerolling(el))
+  if (
+    (active && !isAudible(active)) ||
+    (candidates.length > 0 && candidates.every(el => !isAudible(el) && !isPrerolling(el)))
+  ) {
     return { kind: 'fatal', error: new Error(ERR_MUTED) }
   }
   return { kind: 'pending', error: new Error(candidates.length > 0 ? ERR_NOT_READY : ERR_NO_PLAYER) }
@@ -307,7 +312,7 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
       if (stopped || warnedInterrupted) return
       const ref = bound?.el ?? candidates[0]
       warnedInterrupted = true
-      if (ref && !isAudible(ref)) {
+      if (ref && !isAudible(ref) && !isPrerolling(ref)) {
         onLog?.('⚠️ 网页直播音源已静音，转录暂停输出（取消静音后将自动恢复）')
       } else if (ref?.paused) {
         onLog?.('⚠️ 网页直播音源已暂停（恢复播放后将自动重连）')
@@ -366,9 +371,10 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
       detachBound()
     }
 
+    // Stop at the active non-prerolling source even if muted so overlap (e.g. audio-only disengage) can't fall back to `<video>`.
     for (const candidate of candidates) {
-      if (!isPlayable(candidate) || !isAudible(candidate)) continue
-      if (bound?.el === candidate) break
+      if (!isPlayable(candidate) || isPrerolling(candidate)) continue
+      if (bound?.el === candidate || !isAudible(candidate)) break
       const captured = captureElement(candidate)
       if (captured) {
         try {
