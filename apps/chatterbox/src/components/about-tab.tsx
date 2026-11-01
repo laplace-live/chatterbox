@@ -52,18 +52,11 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   },
   {
     name: 'Soniox 语音识别',
-    host: 'api.soniox.com',
+    host: 'stt-rt.soniox.com / api.soniox.com',
     url: 'https://soniox.com',
-    trigger: '选择 Soniox 并使用语音转录功能时',
+    trigger: '选择 Soniox 并使用语音转录或刷新模型列表时',
     description:
-      '通过 WebSocket 连接 Soniox 语音识别云服务，将麦克风音频流实时转录为文字；开启实时翻译后，还会翻译为目标语言。需要提供 Soniox API Key。',
-  },
-  {
-    name: 'Soniox SDK',
-    host: 'unpkg.com',
-    url: 'https://github.com/soniox/soniox-js',
-    trigger: '首次使用 Soniox 启动语音转录时',
-    description: '从 unpkg CDN 按需加载 Soniox 语音识别 SDK (@soniox/client)，仅在首次使用 Soniox 启动语音会话时下载。',
+      '通过 WebSocket 直连 Soniox 实时语音识别云服务，将音频流实时转录为文字；开启实时翻译后，还会翻译为目标语言。API Key 通过 WebSocket 子协议（Sec-WebSocket-Protocol）在握手时传递。需要提供 Soniox API Key。',
   },
   {
     name: 'ElevenLabs 语音识别',

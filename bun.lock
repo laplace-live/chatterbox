@@ -11,7 +11,7 @@
     },
     "apps/chatterbox": {
       "name": "laplace-chatterbox",
-      "version": "4.5.1",
+      "version": "4.8.0",
       "dependencies": {
         "@preact/signals": "^2.11.3",
         "@tabler/icons-preact": "^3.49.0",
@@ -22,7 +22,6 @@
         "@laplace.live/internal": "^1.3.39",
         "@laplace.live/kakashi-protocol": "workspace:*",
         "@preact/preset-vite": "^2.10.6",
-        "@soniox/client": "^2.4.0",
         "@tailwindcss/vite": "^4.3.3",
         "@types/bun": "^1.4.3",
         "mpegts.js": "1.8.2",
@@ -276,8 +275,6 @@
     "@rollup/rollup-win32-x64-gnu": ["@rollup/rollup-win32-x64-gnu@4.65.0", "", { "os": "win32", "cpu": "x64" }, "sha512-XfKYFWHIPs4HPODIMsGF1IKlS3H1e3WokUZIgpmn4+uNnZBlnRDDHEylNyazbQXwhMKZre68OjtRYbKqb5+j8w=="],
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.65.0", "", { "os": "win32", "cpu": "x64" }, "sha512-wPWi++K4Bs1VR4XihOhfGi4IGX6Cub7FlerTf8X2v+2BtDHddgSqWCXwGD+h2yAe4/niIhNDwAltioOC+wEogQ=="],
-
-    "@soniox/client": ["@soniox/client@2.4.0", "", {}, "sha512-A8HFPiZdw4YRX+LQG9NAmH3NAFfMeBa7T9FdVMpvhccVR6Rrjl2QMxRS70Z4U9ReSggjpv86nkPQbyJHsXMptg=="],
 
     "@tabler/icons": ["@tabler/icons@3.49.0", "", {}, "sha512-l+GnSkFETx0U26icxv1VUFnxxiTqXfCcVRiRAnyMwibupM2S2L/hSaZ9gmSgz01rkrsH/93NvLsxykqdanc6lw=="],
 

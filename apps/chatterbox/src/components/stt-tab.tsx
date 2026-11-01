@@ -376,11 +376,10 @@ export function SttTab() {
     // 停止中… forever. Runs before the status paint since resetState clears it.
     clearStopWatchdog()
     if (state.value !== 'stopped') resetState()
-    // Match by name: DOM throws NotAllowedError/NotFoundError; Soniox adds Audio*Error subclasses.
-    if (err.name === 'AudioPermissionError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       appendLog('❌ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风')
       statusText.value = '麦克风权限被拒绝'
-    } else if (err.name === 'AudioDeviceError' || err.name === 'NotFoundError') {
+    } else if (err.name === 'NotFoundError') {
       appendLog('❌ 未找到麦克风设备')
       statusText.value = '未找到麦克风'
     } else {

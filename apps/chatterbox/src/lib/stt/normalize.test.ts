@@ -13,6 +13,7 @@ import {
   parseGeminiModels,
   parseGeminiTranslationMessage,
   parseGladiaResult,
+  parseSonioxMessage,
   readStringField,
   reduceChunks,
   sonioxResultToChunks,
@@ -45,8 +46,47 @@ describe('sonioxResultToChunks', () => {
     expect(chunks[1]?.kind).toBe('translation')
   })
 
-  test('tolerates a missing tokens array', () => {
+  test('tolerates a missing tokens array and strips <end>/<fin> control tokens', () => {
     expect(sonioxResultToChunks({})).toEqual([])
+    expect(
+      sonioxResultToChunks({
+        tokens: [
+          { text: '你好', is_final: true },
+          { text: '<end>', is_final: true },
+          { text: '<fin>', is_final: true },
+        ],
+      })
+    ).toEqual([{ text: '你好', isFinal: true, kind: 'original' }])
+  })
+})
+
+describe('parseSonioxMessage', () => {
+  test('extracts tokens, detects <end> endpoint, strips <end>/<fin>, and reports finished', () => {
+    expect(
+      parseSonioxMessage({
+        tokens: [
+          { text: '你好', is_final: true, translation_status: 'original' },
+          { text: 'hello', is_final: false, translation_status: 'translation' },
+          { text: '<end>', is_final: true },
+          { text: '<fin>', is_final: true },
+        ],
+        finished: true,
+      })
+    ).toEqual({
+      chunks: [
+        { text: '你好', isFinal: true, kind: 'original' },
+        { text: 'hello', isFinal: false, kind: 'translation' },
+      ],
+      hasTokens: true,
+      endpoint: true,
+      finished: true,
+    })
+  })
+
+  test('maps error_code and error_message frames', () => {
+    expect(parseSonioxMessage({ error_code: 401, error_message: 'Invalid API key' })?.error).toBe('Invalid API key')
+    expect(parseSonioxMessage({ error_code: 503 })?.error).toBe('Soniox 错误 (503)')
+    expect(parseSonioxMessage(null)).toBeNull()
   })
 })
 

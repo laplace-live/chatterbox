@@ -4,7 +4,7 @@ import type { SttChunk, SttModelOption } from './types'
 
 import { translationCapabilities } from './capabilities'
 
-/** Structural subset of Soniox tokens; `RealtimeResult` is assignable, avoids coupling to `@soniox/client`. */
+/** Structural subset of Soniox tokens for chunk mapping. */
 export interface SonioxTokenLike {
   text: string
   is_final: boolean
@@ -15,10 +15,24 @@ export interface SonioxResultLike {
   tokens?: SonioxTokenLike[]
 }
 
-/** Map a Soniox realtime result frame onto normalized chunks. */
+/** Parsed Soniox realtime WebSocket frame. */
+export interface ParsedSonioxMessage {
+  chunks: SttChunk[]
+  hasTokens: boolean
+  endpoint: boolean
+  finished: boolean
+  error?: string
+}
+
+function isSonioxControlToken(text: string): boolean {
+  return text === '<end>' || text === '<fin>'
+}
+
+/** Map a Soniox realtime result frame onto normalized chunks, stripping `<end>` / `<fin>` control tokens. */
 export function sonioxResultToChunks(result: SonioxResultLike): SttChunk[] {
   const chunks: SttChunk[] = []
   for (const token of result.tokens ?? []) {
+    if (isSonioxControlToken(token.text)) continue
     chunks.push({
       text: token.text,
       isFinal: token.is_final,
@@ -26,6 +40,48 @@ export function sonioxResultToChunks(result: SonioxResultLike): SttChunk[] {
     })
   }
   return chunks
+}
+
+/** Parse a raw Soniox WebSocket JSON frame; `null` for non-object / malformed payloads. */
+export function parseSonioxMessage(value: unknown): ParsedSonioxMessage | null {
+  if (typeof value !== 'object' || value === null) return null
+  const errCode = readField(value, 'error_code')
+  const errMsg = readStringField(value, 'error_message')
+  if (errCode !== undefined || errMsg !== undefined) {
+    return {
+      chunks: [],
+      hasTokens: false,
+      endpoint: false,
+      finished: false,
+      error: errMsg || (errCode !== undefined ? `Soniox 错误 (${String(errCode)})` : 'Soniox 处理失败'),
+    }
+  }
+  const rawTokens = readField(value, 'tokens')
+  const hasTokens = Array.isArray(rawTokens)
+  const chunks: SttChunk[] = []
+  let endpoint = false
+  if (hasTokens) {
+    for (const token of rawTokens) {
+      const text = readStringField(token, 'text')
+      if (text === undefined) continue
+      if (text === '<end>') {
+        endpoint = true
+        continue
+      }
+      if (text === '<fin>') continue
+      chunks.push({
+        text,
+        isFinal: readField(token, 'is_final') === true,
+        kind: readStringField(token, 'translation_status') === 'translation' ? 'translation' : 'original',
+      })
+    }
+  }
+  return {
+    chunks,
+    hasTokens,
+    endpoint,
+    finished: readField(value, 'finished') === true,
+  }
 }
 
 /** Wrap an ElevenLabs partial/committed transcript string as one chunk. */
