@@ -545,7 +545,7 @@ export function SttTab() {
       translationModeRef.current = translationEnabledForHook
       sessionTarget.current = targetLanguage
       sessionHasSource.current = !isOpenAiCompat
-      // No pre-warm needed: the engine sets up the SDK/socket and reports failure via onError.
+      // Engine acquires audio/socket directly and reports failure via onError.
       recording.start()
     } else if (state.value === 'running') {
       state.value = 'stopping'

@@ -9,6 +9,7 @@ import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture
 const CONNECT_TIMEOUT_MS = 20_000
 const KEEPALIVE_INTERVAL_MS = 5000
 const STOP_GRACE_MS = STT_STOP_TIMEOUT_MS - 2000
+const MAX_PREOPEN_FRAMES = 32
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
 
@@ -25,6 +26,7 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
   let stopTimer: ReturnType<typeof setTimeout> | null = null
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null
   const captureAbort = new AbortController()
+  const preopenFrames: Int16Array<ArrayBuffer>[] = []
 
   let resolveStopped: () => void = () => {}
   const stoppedPromise = new Promise<void>(resolve => {
@@ -73,10 +75,16 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
   const cleanup = (): void => {
     clearTimers()
     stopCapture()
-    try {
-      ws?.close()
-    } catch {}
-    ws = null
+    preopenFrames.length = 0
+    if (ws) {
+      ws.onopen = null
+      ws.onmessage = null
+      ws.onclose = null
+      try {
+        ws.close()
+      } catch {}
+      ws = null
+    }
     resolveStopped()
   }
 
@@ -93,22 +101,6 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
     settled = true
     cleanup()
     onEvent({ type: 'error', error: toError(err) })
-  }
-
-  const beginAudio = async (): Promise<void> => {
-    const cap = await startPcmCapture({
-      deviceId: params.audioDeviceId,
-      signal: captureAbort.signal,
-      onFrame: frame => {
-        if (settled || stopping || paused || !ws || ws.readyState !== WebSocket.OPEN) return
-        ws.send(frame)
-      },
-    })
-    if (settled || stopping) {
-      cap.stop()
-      return
-    }
-    capture = cap
   }
 
   const handleMessage = (raw: string): void => {
@@ -137,10 +129,7 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
     }
   }
 
-  const start = (): void => {
-    if (started || settled) return
-    started = true
-    onEvent({ type: 'state', state: 'connecting' })
+  const openSocket = (): void => {
     connectTimer = setTimeout(() => fail(new Error('Soniox 连接超时')), CONNECT_TIMEOUT_MS)
 
     try {
@@ -154,7 +143,7 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
           connectTimer = null
         }
         opened = true
-        if (settled) {
+        if (settled || stopping) {
           socket.close()
           return
         }
@@ -173,29 +162,57 @@ export function createSonioxEngine(params: SttSessionParams, onEvent: SttEngineE
               : {}),
           })
         )
+        for (const frame of preopenFrames.splice(0)) {
+          if (!paused) socket.send(frame)
+        }
         onEvent({ type: 'state', state: paused ? 'paused' : 'running' })
         onEvent({ type: 'connected' })
         syncKeepalive()
-        void beginAudio().catch(err => {
-          if (!stopping && !settled) fail(err)
-        })
       }
       socket.onmessage = event => {
         if (typeof event.data === 'string') handleMessage(event.data)
       }
-      socket.onerror = () => fail(new Error('WebSocket 连接错误'))
-      socket.onclose = event => {
+      socket.onclose = () => {
         if (settled) return
         if (!opened) {
           fail(new Error('连接失败，请检查 Soniox API Key 或网络'))
           return
         }
-        if (event.code === 1000) finish()
-        else fail(new Error(stopping ? 'Soniox 连接在返回最终结果前关闭' : 'Soniox 连接意外关闭'))
+        fail(new Error(stopping ? 'Soniox 连接在返回最终结果前关闭' : 'Soniox 连接意外关闭'))
       }
     } catch (err) {
       fail(err)
     }
+  }
+
+  const start = (): void => {
+    if (started || settled) return
+    started = true
+    onEvent({ type: 'state', state: 'connecting' })
+    void startPcmCapture({
+      deviceId: params.audioDeviceId,
+      signal: captureAbort.signal,
+      onFrame: frame => {
+        if (settled || stopping || paused) return
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(frame)
+          return
+        }
+        preopenFrames.push(frame)
+        if (preopenFrames.length > MAX_PREOPEN_FRAMES) preopenFrames.shift()
+      },
+    })
+      .then(cap => {
+        if (settled || stopping) {
+          cap.stop()
+          return
+        }
+        capture = cap
+        openSocket()
+      })
+      .catch(err => {
+        if (!stopping && !settled) fail(err)
+      })
   }
 
   const finalize = (options?: SttFinalizeOptions): void => {

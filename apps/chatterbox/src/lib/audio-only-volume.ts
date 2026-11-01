@@ -1,4 +1,6 @@
-/** Pure volume→icon mapping for the audio-only controls, split out so it's unit-testable without a DOM. */
+/** Volume→icon mapping and `<audio>` volume/preroll sync for audio-only mode, split out for unit testing. */
+
+import { AUDIO_PREROLLING_ATTR } from './player-dom'
 
 /** Which speaker glyph the mute button shows. */
 export type VolumeIconState = 'muted' | 'low' | 'high'
@@ -12,4 +14,18 @@ export function volumeIconState(volume: number, muted: boolean): VolumeIconState
   if (muted || !(volume > 0)) return 'muted'
   if (volume < HIGH_VOLUME_THRESHOLD) return 'low'
   return 'high'
+}
+
+/** Sync desired volume, mute, and `data-lc-prerolling` state onto the hidden `<audio>` element. */
+export function applyAudioOnlyVolume(
+  el: Pick<HTMLAudioElement, 'volume' | 'muted' | 'toggleAttribute'>,
+  volume: number,
+  muted: boolean,
+  prerolling: boolean
+): void {
+  // Silenced via volume, not `muted`, during preroll: unmuting a muted element later can trip autoplay policy.
+  el.toggleAttribute(AUDIO_PREROLLING_ATTR, prerolling && !muted && volume > 0.005)
+  const level = prerolling ? 0 : volume
+  if (Math.abs(el.volume - level) > 0.005) el.volume = level
+  if (el.muted !== muted) el.muted = muted
 }

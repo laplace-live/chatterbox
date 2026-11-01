@@ -167,7 +167,6 @@ describe('startPcmCapture', () => {
     const ProcessorCtor: TapProcessorCtor = RegisteredProcessor
     const proc = new ProcessorCtor({ processorOptions: { frameSize: 256 } })
 
-    // 1st quantum: 128 live samples at +0.5; 2nd quantum: disconnected source (`[[]]`) emits 128 zeros.
     const liveQuantum = new Float32Array(128).fill(0.5)
     proc.process([[liveQuantum]])
     expect(frames).toHaveLength(0)

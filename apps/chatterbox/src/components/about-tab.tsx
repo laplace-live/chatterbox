@@ -64,7 +64,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     url: 'https://elevenlabs.io',
     trigger: '将转录供应商切换为 ElevenLabs 并使用语音转录功能时',
     description:
-      '通过 WebSocket 连接 ElevenLabs Scribe 实时语音识别服务，将麦克风音频流实时转换为文字。连接前会先用 API Key 申请一个有效期 15 分钟的一次性令牌（避免在 WebSocket 上暴露 API Key）。需要提供 ElevenLabs API Key。',
+      '通过 WebSocket 连接 ElevenLabs Scribe 实时语音识别服务，将音频流实时转换为文字。连接前会先用 API Key 申请一个有效期 15 分钟的一次性令牌（避免在 WebSocket 上暴露 API Key）。需要提供 ElevenLabs API Key。',
   },
   {
     name: 'ElevenLabs 实时翻译',
@@ -72,14 +72,14 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     url: 'https://elevenlabs.io/docs/api-reference/realtime-translation/v-1-translation-realtime',
     trigger: '选择 ElevenLabs Realtime Translation 并开始同传时',
     description:
-      '将麦克风音频通过 WebSocket 发送至企业实时翻译服务，接收原文与译文。需要企业 Authorization Token 和 Voice ID；服务生成的音频不会播放。',
+      '将音频通过 WebSocket 发送至企业实时翻译服务，接收原文与译文。需要企业 Authorization Token 和 Voice ID；服务生成的音频不会播放。',
   },
   {
     name: 'Gladia 转录与同传',
     host: 'api.gladia.io',
     url: 'https://gladia.io',
     trigger: '选择 Gladia 并启动语音会话时',
-    description: '使用 API Key 创建语音会话，通过 WebSocket 发送麦克风音频。开启同传后，同时接收原文与目标语言译文。',
+    description: '使用 API Key 创建语音会话，通过 WebSocket 发送音频。开启同传后，同时接收原文与目标语言译文。',
   },
   {
     name: 'Gemini 转录与同传',
@@ -87,14 +87,14 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     url: 'https://ai.google.dev/gemini-api/docs/live-api/live-translate',
     trigger: '选择 Google AI Studio 并启动语音会话或刷新模型列表时',
     description:
-      '向所配置的 Gemini 服务发送 API Key；语音会话通过 WebSocket 发送麦克风音频。Transcribe 模型返回原文，Live Translate 模型返回原文与译文，生成的音频不会播放。',
+      '向所配置的 Gemini 服务发送 API Key；语音会话通过 WebSocket 发送音频。Transcribe 模型返回原文，Live Translate 模型返回原文与译文，生成的音频不会播放。',
   },
   {
     name: 'OpenAI 实时翻译',
     host: 'api.openai.com',
     url: 'https://developers.openai.com/api/docs/guides/realtime-translation',
     trigger: '选择 OpenAI 实时翻译并开始同传时',
-    description: '使用 API Key 申请临时会话凭据，再通过 WebSocket 发送麦克风音频并接收译文。服务生成的音频不会播放。',
+    description: '使用 API Key 申请临时会话凭据，再通过 WebSocket 发送音频并接收译文。服务生成的音频不会播放。',
   },
   {
     name: 'Deepgram 语音识别',
@@ -102,7 +102,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     url: 'https://deepgram.com',
     trigger: '将转录供应商切换为 Deepgram 并使用语音转录功能时',
     description:
-      '通过 WebSocket 连接 Deepgram 实时语音识别服务，将麦克风音频流实时转换为文字。API Key 通过 WebSocket 子协议（Sec-WebSocket-Protocol）在握手时传递，不经过普通请求头，也无需令牌兑换。需要提供 Deepgram API Key。',
+      '通过 WebSocket 连接 Deepgram 实时语音识别服务，将音频流实时转换为文字。API Key 通过 WebSocket 子协议（Sec-WebSocket-Protocol）在握手时传递，不经过普通请求头，也无需令牌兑换。需要提供 Deepgram API Key。',
   },
   {
     name: '本地 / OpenAI 兼容语音识别',
@@ -110,7 +110,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     url: 'https://github.com/ggml-org/whisper.cpp',
     trigger: '将转录供应商切换为「本地 / OpenAI 兼容」并使用语音转录功能时',
     description:
-      '将麦克风音频按静音切分成片段，逐段以 WAV 上传到你在「服务地址」中填写的兼容接口。转录使用 /audio/transcriptions；开启英文翻译后，OpenAI 兼容模式使用 /audio/translations，whisper.cpp 模式使用翻译参数。默认指向本机 127.0.0.1，音频不出本机；若改为云端地址（如 Groq、OpenAI），音频将发送至该服务商。API Key 可留空。',
+      '将音频按静音切分成片段，逐段以 WAV 上传到你在「服务地址」中填写的兼容接口。转录使用 /audio/transcriptions；开启英文翻译后，OpenAI 兼容模式使用 /audio/translations，whisper.cpp 模式使用翻译参数。默认指向本机 127.0.0.1，音频不出本机；若改为云端地址（如 Groq、OpenAI），音频将发送至该服务商。API Key 可留空。',
   },
   {
     name: 'mpegts.js',

@@ -20,6 +20,7 @@ import type Mpegts from 'mpegts.js'
 
 import { unsafeWindow } from '$'
 import { ensureRoomId } from './api'
+import { applyAudioOnlyVolume } from './audio-only-volume'
 import { MPEGTS_CDN_URL } from './const'
 import { loadUmdScript } from './load-script'
 import { appendLog } from './log'
@@ -33,8 +34,6 @@ import {
 } from './player-dom'
 import { audioOnlyActive, audioOnlyMode, audioOnlyMuted, audioOnlyVolume } from './store'
 import { isIpHost, isRecord } from './utils'
-
-export { AUDIO_EL_ID }
 
 // Installed by the lazy-loaded UMD; narrowed by `isMpegts`.
 declare global {
@@ -425,10 +424,7 @@ function syncVolumeToAudioEl(): void {
   const volume = audioOnlyVolume.value
   const muted = audioOnlyMuted.value
   if (!audioEl) return
-  // Silenced via volume, not `muted`, during preroll: unmuting a muted element later can trip autoplay policy.
-  const level = prerolling ? 0 : volume
-  if (Math.abs(audioEl.volume - level) > 0.005) audioEl.volume = level
-  if (audioEl.muted !== muted) audioEl.muted = muted
+  applyAudioOnlyVolume(audioEl, volume, muted, prerolling)
 }
 
 /** Whether B站's own `<video>` is streaming and actually playing (not stalled or paused). */
@@ -566,6 +562,7 @@ async function attachMpegtsPlayer(url: string, mpegts: typeof Mpegts, roomId: nu
     audioEl.id = AUDIO_EL_ID
     // `display: none` also drops it from tab order.
     audioEl.style.display = 'none'
+    syncVolumeToAudioEl()
     document.body.appendChild(audioEl)
   } else if (mpegtsPlayer) {
     // Refresh path: destroy the existing player before re-attaching.

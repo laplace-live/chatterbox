@@ -2,13 +2,10 @@
 
 import { unsafeWindow } from '$'
 
-// Untyped so one map serves every loader without casts; `loadUmdScript` re-validates per caller.
+// Untyped so one map serves every caller without casts; `loadUmdScript` re-validates per caller.
 const inFlight = new Map<string, Promise<void>>()
 
-/**
- * Inject `url` as a UMD `<script>` and resolve with the global it installs
- * at `unsafeWindow[globalKey]`. Concurrent callers for the same URL share one fetch.
- */
+/** Inject `url` as a UMD `<script>` and resolve with `unsafeWindow[globalKey]`, sharing in-flight fetches per URL. */
 export function loadUmdScript<T>(
   url: string,
   globalKey: keyof Window,

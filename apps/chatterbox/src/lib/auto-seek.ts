@@ -12,9 +12,8 @@
 
 import { effect } from '@preact/signals'
 
-import { AUDIO_EL_ID } from './audio-only'
 import { decidePlaybackRate } from './auto-seek-rate'
-import { getPlayerVideo } from './player-dom'
+import { getAudioOnlyElement, getPlayerVideo } from './player-dom'
 import {
   audioOnlyActive,
   autoSeekBufferThreshold,
@@ -56,11 +55,7 @@ let stateEffectDispose: (() => void) | null = null
  * @returns `null` during transitions (element not yet mounted / being torn down) — caller skips the tick.
  */
 function getMediaTarget(): HTMLMediaElement | null {
-  if (audioOnlyActive.value) {
-    const el = document.getElementById(AUDIO_EL_ID)
-    return el instanceof HTMLAudioElement ? el : null
-  }
-  return getPlayerVideo()
+  return audioOnlyActive.value ? getAudioOnlyElement() : getPlayerVideo()
 }
 
 function getBufferLen(m: HTMLMediaElement): number | null {
@@ -243,8 +238,8 @@ export function startAutoSeek(): void {
       if (v && Math.abs(v.playbackRate - 1) > RATE_EPSILON) {
         v.playbackRate = 1
       }
-      const a = document.getElementById(AUDIO_EL_ID)
-      if (a instanceof HTMLAudioElement && Math.abs(a.playbackRate - 1) > RATE_EPSILON) {
+      const a = getAudioOnlyElement()
+      if (a && Math.abs(a.playbackRate - 1) > RATE_EPSILON) {
         a.playbackRate = 1
       }
     }

@@ -8,6 +8,8 @@ import { int16ToBase64 } from './audio'
 let onFrame: PcmCaptureOptions['onFrame'] = () => {}
 let frameSamples: number | undefined
 let captureStops = 0
+let captureAborted = false
+let rejectCaptureOnAbort = false
 // Holds mic startup open until resolved, like a pending permission prompt.
 let captureGate: Promise<void> | null = null
 
@@ -16,7 +18,19 @@ mock.module('./pcm-capture', () => ({
   startPcmCapture: async (opts: PcmCaptureOptions) => {
     onFrame = opts.onFrame
     frameSamples = opts.frameSamples
-    if (captureGate) await captureGate
+    if (captureGate) {
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          captureAborted = true
+          if (rejectCaptureOnAbort) reject(new DOMException('Aborted', 'AbortError'))
+        }
+        opts.signal?.addEventListener('abort', onAbort, { once: true })
+        captureGate?.then(() => {
+          opts.signal?.removeEventListener('abort', onAbort)
+          resolve()
+        }, reject)
+      })
+    }
     return {
       stop: () => {
         captureStops++
@@ -125,6 +139,8 @@ function errorMessage(events: SttEngineEvent[]): string | undefined {
 beforeEach(() => {
   sockets.length = 0
   captureStops = 0
+  captureAborted = false
+  rejectCaptureOnAbort = false
   frameSamples = undefined
   onFrame = () => {}
   captureGate = null
@@ -1026,5 +1042,20 @@ describe('Gemini Live Translate', () => {
     const incompatible = start({ translation: translationParams.translation })
     expect(errorMessage(incompatible.events)).toContain('仅支持转录')
     expect(sockets).toHaveLength(1)
+  })
+
+  test('stop while startPcmCapture is pending aborts signal without failing the draining session', async () => {
+    rejectCaptureOnAbort = true
+    captureGate = new Promise<void>(() => {})
+    const { engine, events } = start()
+    const [ws] = sockets
+    ws.open()
+    ws.receive({ setupComplete: {} })
+    await engine.stop()
+    await tick()
+    expect(captureAborted).toBe(true)
+    expect(errorMessage(events)).toBeUndefined()
+    ws.receive(final('收尾'))
+    expect(events.at(-1)).toEqual({ type: 'finished' })
   })
 })

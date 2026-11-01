@@ -1,4 +1,4 @@
-/** Single source of truth for reaching into bilibili's native live player DOM. */
+/** Single source of truth for reaching into bilibili's native live player and audio-only DOM. */
 
 /** bilibili's live player container. */
 export const PLAYER_CONTAINER_SELECTOR = '#live-player'
@@ -11,6 +11,9 @@ export const PLAYER_WATERMARK_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} .web-play
 
 /** Hidden `<audio>` mounted by audio-only mode; recreated across refresh/disengage cycles. */
 export const AUDIO_EL_ID = 'lc-audio-only-stream'
+
+/** Marks `#lc-audio-only-stream` while silenced (`volume = 0`) during FLV autoplay preroll. */
+export const AUDIO_PREROLLING_ATTR = 'data-lc-prerolling'
 
 /** The active audio-only `<audio>` element, or `null` when none is mounted. */
 export function getAudioOnlyElement(): HTMLAudioElement | null {

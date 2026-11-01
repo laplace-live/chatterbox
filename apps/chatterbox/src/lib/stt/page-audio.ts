@@ -1,6 +1,6 @@
 /** Event-driven live-player audio capture (`#lc-audio-only-stream` / `#live-player video`) for STT. */
 
-import { getAudioOnlyElement, getPlayerVideo, isNativePlayerStreaming } from '../player-dom'
+import { AUDIO_PREROLLING_ATTR, getAudioOnlyElement, getPlayerVideo, isNativePlayerStreaming } from '../player-dom'
 
 const HAVE_CURRENT_DATA = 2
 const DEFAULT_STARTUP_TIMEOUT_MS = 2000
@@ -21,15 +21,19 @@ type CapturableMediaElement = HTMLMediaElement & {
 
 // Chromium silences a newer `el.captureStream()` if an older stream's track stops afterwards; stop prior tracks first.
 const activeCaptures = new WeakMap<HTMLMediaElement, MediaStream>()
+let cancelPendingAcquire: (() => void) | null = null
 
 interface CapturedElementAudio {
   el: HTMLMediaElement
+  src: string
   stream: MediaStream
   track: MediaStreamTrack
 }
 
 /** Initial live-player capture handle acquired before constructing the Web Audio worklet graph. */
 export interface AcquiredPageAudio extends CapturedElementAudio {
+  /** Whether this handle still owns the element's active capture stream. */
+  isOwned: () => boolean
   /** Release the captured stream if still owned by this handle. */
   release: () => void
 }
@@ -71,6 +75,7 @@ function releaseElementCapture(el: HTMLMediaElement, stream: MediaStream): void 
 
 function captureElement(el: HTMLMediaElement): CapturedElementAudio | null {
   if (!supportsCapture(el)) return null
+  const src = el.src
   const prev = activeCaptures.get(el)
   if (prev) {
     activeCaptures.delete(el)
@@ -89,11 +94,15 @@ function captureElement(el: HTMLMediaElement): CapturedElementAudio | null {
     return null
   }
   activeCaptures.set(el, stream)
-  return { el, stream, track }
+  return { el, src, stream, track }
 }
 
 function isAudible(el: HTMLMediaElement): boolean {
   return !el.muted && el.volume > 0
+}
+
+function isPrerolling(el: HTMLMediaElement): boolean {
+  return el.hasAttribute?.(AUDIO_PREROLLING_ATTR) === true
 }
 
 function isPlayable(el: HTMLMediaElement): boolean {
@@ -115,14 +124,6 @@ function checkUnsupportedBrowser(candidates: readonly HTMLMediaElement[]): Error
   return null
 }
 
-function diagnoseFailure(candidates: readonly HTMLMediaElement[]): Error {
-  const unsupported = checkUnsupportedBrowser(candidates)
-  if (unsupported) return unsupported
-  if (candidates.length > 0 && candidates.every(el => !isAudible(el))) return new Error(ERR_MUTED)
-  if (candidates.length > 0) return new Error(ERR_NOT_READY)
-  return new Error(ERR_NO_PLAYER)
-}
-
 function tryCaptureCandidates(candidates: readonly HTMLMediaElement[]): AcquiredPageAudio | null {
   for (const candidate of candidates) {
     if (!isPlayable(candidate) || !isAudible(candidate)) continue
@@ -130,6 +131,7 @@ function tryCaptureCandidates(candidates: readonly HTMLMediaElement[]): Acquired
     if (captured) {
       return {
         ...captured,
+        isOwned: () => activeCaptures.get(captured.el) === captured.stream,
         release: () => releaseElementCapture(captured.el, captured.stream),
       }
     }
@@ -146,7 +148,7 @@ export function toAbortError(signal: AbortSignal): Error {
 type ProbeOutcome =
   | { kind: 'acquired'; value: AcquiredPageAudio }
   | { kind: 'fatal'; error: Error }
-  | { kind: 'pending'; candidates: HTMLMediaElement[] }
+  | { kind: 'pending'; error: Error }
 
 function probePageAudio(): ProbeOutcome {
   const candidates = getCandidates()
@@ -154,27 +156,32 @@ function probePageAudio(): ProbeOutcome {
   if (unsupported) return { kind: 'fatal', error: unsupported }
   const acquired = tryCaptureCandidates(candidates)
   if (acquired) return { kind: 'acquired', value: acquired }
-  if (candidates.length > 0 && candidates.every(el => !isAudible(el))) {
+  if (candidates.length > 0 && candidates.every(el => !isAudible(el) && !isPrerolling(el))) {
     return { kind: 'fatal', error: new Error(ERR_MUTED) }
   }
-  return { kind: 'pending', candidates }
+  return { kind: 'pending', error: new Error(candidates.length > 0 ? ERR_NOT_READY : ERR_NO_PLAYER) }
 }
 
 /** Acquire an audible, live audio track from the active Bilibili player, waiting briefly on cold start. */
 export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<AcquiredPageAudio> {
   const { signal, startupTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS } = opts
   if (signal?.aborted) return Promise.reject(toAbortError(signal))
+  cancelPendingAcquire?.()
 
   const initial = probePageAudio()
   if (initial.kind === 'acquired') return Promise.resolve(initial.value)
-  if (initial.kind === 'fatal') return Promise.reject(initial.error)
-  if (startupTimeoutMs <= 0) return Promise.reject(diagnoseFailure(initial.candidates))
+  if (initial.kind === 'fatal' || startupTimeoutMs <= 0) return Promise.reject(initial.error)
 
   return new Promise<AcquiredPageAudio>((resolve, reject) => {
     let settled = false
     let observer: MutationObserver | null = null
 
+    const onSupersede = (): void => {
+      fail(new DOMException('Aborted', 'AbortError'))
+    }
+
     const cleanup = (): void => {
+      if (cancelPendingAcquire === onSupersede) cancelPendingAcquire = null
       clearTimeout(timer)
       observer?.disconnect()
       observer = null
@@ -208,21 +215,24 @@ export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<Ac
     }
 
     const timer = setTimeout(() => {
-      fail(diagnoseFailure(getCandidates()))
+      const outcome = probePageAudio()
+      if (outcome.kind === 'acquired') {
+        settled = true
+        cleanup()
+        resolve(outcome.value)
+      } else {
+        fail(outcome.error)
+      }
     }, startupTimeoutMs)
 
+    cancelPendingAcquire = onSupersede
     signal?.addEventListener('abort', onAbort, { once: true })
     for (const evt of DOCUMENT_MEDIA_EVENTS) {
       document.addEventListener(evt, check, true)
     }
-    if (typeof MutationObserver === 'function' && document.documentElement) {
+    if (typeof MutationObserver === 'function' && document.body) {
       observer = new MutationObserver(check)
-      observer.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['src'],
-      })
+      observer.observe(document.body, { childList: true })
     }
   })
 }
@@ -230,6 +240,7 @@ export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<Ac
 /** Keep `destination` fed from the highest-priority audible live-player element across stream swaps. */
 export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
   const { context, destination, initial, onLog, interruptionWarnMs = DEFAULT_INTERRUPTION_WARN_MS } = opts
+  if (!initial.isOwned()) return { stop: () => {} }
 
   let stopped = false
   let warnTimer: ReturnType<typeof setTimeout> | null = null
@@ -237,7 +248,6 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
   let bodyObserver: MutationObserver | null = null
 
   interface BoundSource extends CapturedElementAudio {
-    src: string
     source: MediaStreamAudioSourceNode
     unbindListeners: () => void
   }
@@ -306,7 +316,6 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
 
     bound = {
       ...captured,
-      src: captured.el.src,
       source,
       unbindListeners: () => {
         captured.track.removeEventListener('ended', reconcile)

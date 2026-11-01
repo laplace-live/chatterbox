@@ -1,12 +1,6 @@
 /**
- * Preact-native multi-provider STT recording hook.
- *
- * Shared shell (state signals, callback refs, teardown) around per-provider
- * engines that own the SDK lifecycles; `start()` instantiates the selected one.
- *
- * A fresh engine is built per `start()` from a snapshot of `params`, so a
- * settings edit mid-session never reconfigures a live recording. Callbacks are
- * read through a ref so engine event handlers never close over stale versions.
+ * Preact-native multi-provider STT recording hook: shared state/callback/teardown shell
+ * around per-provider engines, snapshotting `params` per `start()` and reading callbacks via ref.
  */
 
 import { type Signal, signal } from '@preact/signals'
@@ -40,7 +34,7 @@ export interface UseSttRecordingConfig {
   onTranscript?: (chunks: SttChunk[]) => void
   /** Fired when the provider signals an utterance endpoint. */
   onEndpoint?: () => void
-  /** Fired on any error (audio, network, server, SDK load, token mint). */
+  /** Fired on any error (audio capture, network, server, token mint). */
   onError?: (err: Error) => void
   /** Fired when the session has finished and the socket closed. */
   onFinished?: () => void
@@ -99,7 +93,7 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
     engineRef.current = null
     const generation = ++generationRef.current
 
-    // Optimistic transition for UI feedback while SDK loads; engine state events take over.
+    // Optimistic transition for UI feedback until engine state events take over.
     updateState('starting')
 
     const cfg = configRef.current
@@ -134,7 +128,6 @@ export function useSttRecording(config: UseSttRecordingConfig): UseSttRecordingR
   const stop = async (): Promise<void> => {
     const engine = engineRef.current
     if (!engine) {
-      // No engine yet, but may be mid-start (SDK load in flight).
       if (state.value === 'starting') updateState('idle')
       return
     }

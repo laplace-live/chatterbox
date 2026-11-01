@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { applyAudioOnlyVolume } from '../audio-only-volume'
 import { AUDIO_EL_ID, PLAYER_VIDEO_SELECTOR } from '../player-dom'
 import { acquirePageAudio, bindPageAudio } from './page-audio'
 
@@ -88,6 +89,7 @@ class FakeMediaElement extends FakeEventTarget {
 
   private nextSeq = 0
   private latestAudioTrack: FakeTrack | null = null
+  private attrs = new Set<string>()
   readonly createdStreams: FakeMediaStream[] = []
 
   constructor(opts: FakeMediaOptions) {
@@ -121,6 +123,17 @@ class FakeMediaElement extends FakeEventTarget {
     }
   }
 
+  hasAttribute(name: string): boolean {
+    return this.attrs.has(name)
+  }
+
+  toggleAttribute(name: string, force?: boolean): boolean {
+    const next = force ?? !this.attrs.has(name)
+    if (next) this.attrs.add(name)
+    else this.attrs.delete(name)
+    return next
+  }
+
   dispatchMediaEvent(type: string, propagateToDocument = this.isConnected): void {
     this.emit(type)
     if (propagateToDocument) fakeDoc.emitCapture(type)
@@ -128,6 +141,7 @@ class FakeMediaElement extends FakeEventTarget {
 }
 
 class FakeDocument {
+  body = {}
   audioEl: FakeMediaElement | null = null
   videoEl: FakeMediaElement | null = null
   private captureListeners = new Map<string, Set<EventListener>>()
@@ -284,6 +298,55 @@ describe('acquirePageAudio', () => {
     await expect(pending).rejects.toThrow('cancelled by user')
     expect(fakeDoc.totalCaptureListeners()).toBe(0)
   })
+
+  test('waits across silent audio-only preroll instead of failing with ERR_MUTED, while still rejecting genuinely muted audio-only', async () => {
+    const audio = new FakeMediaElement({ tagName: 'AUDIO', src: 'blob:https://live.bilibili.com/ao-1' })
+    audio.id = AUDIO_EL_ID
+    applyAudioOnlyVolume(audio, 0.8, false, true)
+    fakeDoc.audioEl = audio
+    fakeDoc.videoEl = new FakeMediaElement({
+      tagName: 'VIDEO',
+      src: 'https://i0.hdslb.com/bfs/live/poster.mp4',
+      paused: true,
+    })
+
+    const pending = acquirePageAudio({ startupTimeoutMs: 1000 })
+    audio.dispatchMediaEvent('playing')
+    setTimeout(() => {
+      applyAudioOnlyVolume(audio, 0.8, false, false)
+      audio.dispatchMediaEvent('volumechange')
+    }, 5)
+
+    const acquired = await pending
+    expect(acquired.el).toBe(audio as unknown as HTMLMediaElement)
+    acquired.release()
+
+    applyAudioOnlyVolume(audio, 0.8, false, true)
+    await expect(acquirePageAudio({ startupTimeoutMs: 10 })).rejects.toThrow('直播音源尚未就绪或已暂停')
+
+    applyAudioOnlyVolume(audio, 0.8, true, true)
+    await expect(acquirePageAudio()).rejects.toThrow('浏览器标签页静音')
+  })
+
+  test('supersedes an un-aborted pending wait when a newer acquirePageAudio starts', async () => {
+    const video = new FakeMediaElement({ tagName: 'VIDEO', paused: true, readyState: 1 })
+    fakeDoc.videoEl = video
+
+    const stalePending = acquirePageAudio({ startupTimeoutMs: 5000 })
+    const activePending = acquirePageAudio({ startupTimeoutMs: 5000 })
+
+    await expect(stalePending).rejects.toMatchObject({ name: 'AbortError' })
+
+    video.paused = false
+    video.readyState = 4
+    video.dispatchMediaEvent('playing')
+
+    const acquired = await activePending
+    expect(acquired.track.readyState).toBe('live')
+    expect(video.captureCalls).toBe(1)
+    expect(fakeDoc.totalCaptureListeners()).toBe(0)
+    acquired.release()
+  })
 })
 
 describe('bindPageAudio', () => {
@@ -375,10 +438,20 @@ describe('bindPageAudio', () => {
     expect(sessionA.track.readyState).toBe('ended')
     expect(sessionB.track.readyState).toBe('live')
 
-    // Late release from cancelled Session A must not stop Session B or fire stop() after recapture.
     sessionA.release()
     expect(sessionB.track.readyState).toBe('live')
     expect(video.staleStopAfterRecapture).toBe(false)
+
+    const staleCtx = new FakeAudioContext()
+    const staleBinding = bindPageAudio({
+      context: staleCtx as unknown as AudioContext,
+      destination: {} as unknown as AudioNode,
+      initial: sessionA,
+    })
+    expect(staleCtx.sources).toHaveLength(0)
+    expect(sessionB.track.readyState).toBe('live')
+    expect(video.captureCalls).toBe(2)
+    staleBinding.stop()
 
     const ctx = new FakeAudioContext()
     const destination = {} as unknown as AudioNode
@@ -434,6 +507,31 @@ describe('bindPageAudio', () => {
     video.dispatchMediaEvent('volumechange')
     expect(logs).toEqual(['⚠️ 网页直播音源已静音，转录暂停输出（取消静音后将自动恢复）', '🎤 网页直播音源已自动恢复'])
     expect(video.captureCalls).toBe(1)
+
+    binding.stop()
+  })
+
+  test('recaptures immediately if video blob src rotated between acquirePageAudio and bindPageAudio', async () => {
+    const video = new FakeMediaElement({ tagName: 'VIDEO', src: 'blob:https://live.bilibili.com/s1' })
+    fakeDoc.videoEl = video
+
+    const initial = await acquirePageAudio()
+    video.src = 'blob:https://live.bilibili.com/s2'
+
+    const ctx = new FakeAudioContext()
+    const destination = {} as unknown as AudioNode
+    const binding = bindPageAudio({
+      context: ctx as unknown as AudioContext,
+      destination,
+      initial,
+    })
+
+    expect(video.captureCalls).toBe(2)
+    expect(video.createdStreams[0].getAudioTracks()[0].readyState).toBe('ended')
+    expect(ctx.sources).toHaveLength(2)
+    expect(ctx.sources[0].disconnected).toBe(true)
+    expect(ctx.sources[1].stream).toBe(video.createdStreams[1])
+    expect(ctx.sources[1].connectedTo).toBe(destination)
 
     binding.stop()
   })

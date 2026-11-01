@@ -332,7 +332,7 @@ migrateGmKey('sonioxAudioDeviceId', 'sttAudioDeviceId')
 export const sttAutoSend = gmSignal('sttAutoSend', true)
 export const sttMaxLength = gmSignal('sttMaxLength', 40)
 export const sttWrapBrackets = gmSignal('sttWrapBrackets', false)
-// '' = system default mic. Validated against the live device list before each start so a stale id (mic unplugged) falls back to default instead of erroring.
+// '' = system default mic; WEB_AUDIO_DEVICE_ID = live-player audio. Validated against live mic list before start so unplugged mics fall back to ''.
 export const sttAudioDeviceId = gmSignal('sttAudioDeviceId', '')
 
 // Migrate legacy flat replacementRules → localGlobalRules (one-time, then delete old key)

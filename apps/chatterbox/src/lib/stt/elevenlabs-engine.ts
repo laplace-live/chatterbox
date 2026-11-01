@@ -31,11 +31,14 @@ const toError = (err: unknown): Error => (err instanceof Error ? err : new Error
 export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEngineEventHandler): SttEngine {
   let aborted = false
   let settled = false
+  let stopping = false
   let paused = false
   let ws: WebSocket | null = null
   let capture: PcmCapture | null = null
+  const captureAbort = new AbortController()
 
   const stopCapture = (): void => {
+    captureAbort.abort()
     capture?.stop()
     capture = null
   }
@@ -63,8 +66,9 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
   const beginAudio = async (): Promise<void> => {
     const cap = await startPcmCapture({
       deviceId: params.audioDeviceId,
+      signal: captureAbort.signal,
       onFrame: frame => {
-        if (paused || !ws || ws.readyState !== WebSocket.OPEN) return
+        if (paused || stopping || !ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(
           JSON.stringify({
             message_type: 'input_audio_chunk',
@@ -74,7 +78,7 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
         )
       },
     })
-    if (aborted || settled) {
+    if (aborted || settled || stopping) {
       cap.stop()
       return
     }
@@ -134,13 +138,15 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
         ws = socket
 
         socket.onopen = () => {
-          if (aborted || settled) {
+          if (aborted || settled || stopping) {
             socket.close()
             return
           }
           onEvent({ type: 'state', state: 'running' })
           onEvent({ type: 'connected' })
-          void beginAudio().catch(err => fail(err))
+          void beginAudio().catch(err => {
+            if (!aborted && !settled && !stopping) fail(err)
+          })
         }
         socket.onmessage = event => {
           if (typeof event.data === 'string') handleMessage(event.data)
@@ -154,10 +160,16 @@ export function createElevenLabsEngine(params: SttSessionParams, onEvent: SttEng
   }
 
   const stop = async (): Promise<void> => {
+    if (settled || stopping) return
+    stopping = true
     onEvent({ type: 'state', state: 'stopping' })
     stopCapture()
+    if (!ws) {
+      finish()
+      return
+    }
     try {
-      ws?.close()
+      ws.close()
     } catch {}
   }
 
