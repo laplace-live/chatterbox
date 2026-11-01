@@ -4,12 +4,12 @@ import type { SttEngine, SttEngineEventHandler, SttFinalizeOptions, SttSessionPa
 
 import { SONIOX_DEFAULT_MODEL, SONIOX_WS_URL, STT_STOP_TIMEOUT_MS } from '../const'
 import { parseSonioxMessage } from './normalize'
-import { PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
+import { PCM_FRAME_SAMPLES, PCM_SAMPLE_RATE, type PcmCapture, startPcmCapture } from './pcm-capture'
 
 const CONNECT_TIMEOUT_MS = 20_000
 const KEEPALIVE_INTERVAL_MS = 5000
 const STOP_GRACE_MS = STT_STOP_TIMEOUT_MS - 2000
-const MAX_PREOPEN_FRAMES = 32
+const MAX_PREOPEN_FRAMES = Math.ceil(((CONNECT_TIMEOUT_MS / 1000) * PCM_SAMPLE_RATE) / PCM_FRAME_SAMPLES)
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
 

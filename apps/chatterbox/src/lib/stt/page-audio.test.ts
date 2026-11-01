@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test'
 
 import { applyAudioOnlyVolume } from '../audio-only-volume'
 import { AUDIO_EL_ID, PLAYER_VIDEO_SELECTOR } from '../player-dom'
@@ -326,6 +326,41 @@ describe('acquirePageAudio', () => {
 
     applyAudioOnlyVolume(audio, 0.8, true, true)
     await expect(acquirePageAudio()).rejects.toThrow('浏览器标签页静音')
+  })
+
+  test('extends default 2s startup window up to 10s while audio-only preroll is active, but keeps 2s timeout otherwise', async () => {
+    jest.useFakeTimers()
+    try {
+      const audio = new FakeMediaElement({ tagName: 'AUDIO', src: 'blob:https://live.bilibili.com/ao-slow' })
+      audio.id = AUDIO_EL_ID
+      applyAudioOnlyVolume(audio, 0.8, false, true)
+      fakeDoc.audioEl = audio
+
+      let settled = false
+      const pending = acquirePageAudio().then(res => {
+        settled = true
+        return res
+      })
+
+      jest.advanceTimersByTime(4500)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+
+      applyAudioOnlyVolume(audio, 0.8, false, false)
+      audio.dispatchMediaEvent('volumechange')
+      const acquired = await pending
+      expect(acquired.el).toBe(audio as unknown as HTMLMediaElement)
+      acquired.release()
+
+      // Without preroll, default timeout still rejects at 2000 ms.
+      fakeDoc.audioEl = null
+      fakeDoc.videoEl = new FakeMediaElement({ tagName: 'VIDEO', paused: true, readyState: 1 })
+      const rejected = acquirePageAudio()
+      jest.advanceTimersByTime(2000)
+      await expect(rejected).rejects.toThrow('直播音源尚未就绪或已暂停')
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   test('supersedes an un-aborted pending wait when a newer acquirePageAudio starts', async () => {

@@ -4,6 +4,7 @@ import { AUDIO_PREROLLING_ATTR, getAudioOnlyElement, getPlayerVideo, isNativePla
 
 const HAVE_CURRENT_DATA = 2
 const DEFAULT_STARTUP_TIMEOUT_MS = 2000
+const PREROLL_STARTUP_TIMEOUT_MS = 10_000
 const DEFAULT_INTERRUPTION_WARN_MS = 5000
 
 const ERR_UNSUPPORTED = '当前浏览器不支持捕获网页音频（需 Chromium 内核浏览器）'
@@ -165,6 +166,7 @@ function probePageAudio(): ProbeOutcome {
 /** Acquire an audible, live audio track from the active Bilibili player, waiting briefly on cold start. */
 export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<AcquiredPageAudio> {
   const { signal, startupTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS } = opts
+  const allowPrerollExtension = opts.startupTimeoutMs === undefined && PREROLL_STARTUP_TIMEOUT_MS > startupTimeoutMs
   if (signal?.aborted) return Promise.reject(toAbortError(signal))
   cancelPendingAcquire?.()
 
@@ -174,7 +176,9 @@ export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<Ac
 
   return new Promise<AcquiredPageAudio>((resolve, reject) => {
     let settled = false
+    let extendedForPreroll = false
     let observer: MutationObserver | null = null
+    let timer: ReturnType<typeof setTimeout>
 
     const onSupersede = (): void => {
       fail(new DOMException('Aborted', 'AbortError'))
@@ -214,16 +218,28 @@ export function acquirePageAudio(opts: AcquirePageAudioOptions = {}): Promise<Ac
       if (signal) fail(toAbortError(signal))
     }
 
-    const timer = setTimeout(() => {
+    const onTimeout = (): void => {
       const outcome = probePageAudio()
       if (outcome.kind === 'acquired') {
         settled = true
         cleanup()
         resolve(outcome.value)
-      } else {
-        fail(outcome.error)
+        return
       }
-    }, startupTimeoutMs)
+      if (
+        outcome.kind === 'pending' &&
+        allowPrerollExtension &&
+        !extendedForPreroll &&
+        getCandidates().some(isPrerolling)
+      ) {
+        extendedForPreroll = true
+        timer = setTimeout(onTimeout, PREROLL_STARTUP_TIMEOUT_MS - startupTimeoutMs)
+        return
+      }
+      fail(outcome.error)
+    }
+
+    timer = setTimeout(onTimeout, startupTimeoutMs)
 
     cancelPendingAcquire = onSupersede
     signal?.addEventListener('abort', onAbort, { once: true })

@@ -15,6 +15,7 @@ let captureGate: Promise<void> | null = null
 
 mock.module('./pcm-capture', () => ({
   PCM_SAMPLE_RATE: 16000,
+  PCM_FRAME_SAMPLES: 4096,
   startPcmCapture: async (opts: PcmCaptureOptions) => {
     onFrame = opts.onFrame
     frameSamples = opts.frameSamples

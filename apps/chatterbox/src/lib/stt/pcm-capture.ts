@@ -8,9 +8,10 @@ import { acquirePageAudio, bindPageAudio, toAbortError } from './page-audio'
 /** Default capture sample rate in Hz. */
 export const PCM_SAMPLE_RATE = 16000
 
-const DEFAULT_FRAME_SAMPLES = 4096
+/** Default samples per PCM frame (256 ms at 16 kHz). */
+export const PCM_FRAME_SAMPLES = 4096
 
-// Emit zero samples when disconnected so downstream sockets stay alive and VAD flushes open segments.
+// Average active input channels and emit zeros when disconnected so sockets stay alive and VAD flushes open segments.
 const PCM_TAP_PROCESSOR = `
 class PcmTapProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -20,10 +21,18 @@ class PcmTapProcessor extends AudioWorkletProcessor {
     this._n = 0
   }
   process(inputs) {
-    const channel = inputs[0]?.[0]
-    const len = channel ? channel.length : 128
+    const channels = inputs[0]
+    const chCount = channels ? channels.length : 0
+    const len = chCount > 0 ? channels[0].length : 128
     for (let i = 0; i < len; i++) {
-      this._buf[this._n++] = channel ? channel[i] : 0
+      let sample = 0
+      if (chCount === 1) {
+        sample = channels[0][i]
+      } else if (chCount > 1) {
+        for (let ch = 0; ch < chCount; ch++) sample += channels[ch][i]
+        sample /= chCount
+      }
+      this._buf[this._n++] = sample
       if (this._n === this._size) {
         const frame = this._buf.slice(0)
         this.port.postMessage(frame, [frame.buffer])
@@ -72,7 +81,7 @@ async function createWorkletSink(
     channelCount: 1,
     channelCountMode: 'explicit',
     channelInterpretation: 'speakers',
-    processorOptions: { frameSize: opts.frameSamples ?? DEFAULT_FRAME_SAMPLES },
+    processorOptions: { frameSize: opts.frameSamples ?? PCM_FRAME_SAMPLES },
   })
   node.port.onmessage = (event: MessageEvent<Float32Array>) => {
     opts.onFrame(floatTo16(event.data))
@@ -98,6 +107,35 @@ interface AcquiredAudioSource {
   release: () => void
 }
 
+async function getUserMediaWithSignal(constraints: MediaStreamConstraints, signal?: AbortSignal): Promise<MediaStream> {
+  if (signal?.aborted) throw toAbortError(signal)
+  const pending = navigator.mediaDevices.getUserMedia(constraints)
+  if (!signal) return pending
+  const stopStream = (stream: MediaStream): void => {
+    for (const track of stream.getTracks()) track.stop()
+  }
+  return new Promise<MediaStream>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(toAbortError(signal))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    pending.then(
+      stream => {
+        signal.removeEventListener('abort', onAbort)
+        if (signal.aborted) {
+          stopStream(stream)
+          return
+        }
+        resolve(stream)
+      },
+      err => {
+        signal.removeEventListener('abort', onAbort)
+        if (!signal.aborted) reject(err)
+      }
+    )
+  })
+}
+
 async function acquireAudioSource(opts: PcmCaptureOptions): Promise<AcquiredAudioSource> {
   if (opts.deviceId === WEB_AUDIO_DEVICE_ID) {
     const initial = await acquirePageAudio({ signal: opts.signal })
@@ -110,7 +148,6 @@ async function acquireAudioSource(opts: PcmCaptureOptions): Promise<AcquiredAudi
     }
   }
 
-  if (opts.signal?.aborted) throw toAbortError(opts.signal)
   const constraints: MediaStreamConstraints = {
     audio: {
       ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {}),
@@ -121,13 +158,9 @@ async function acquireAudioSource(opts: PcmCaptureOptions): Promise<AcquiredAudi
       channelCount: 1,
     },
   }
-  const stream = await navigator.mediaDevices.getUserMedia(constraints)
+  const stream = await getUserMediaWithSignal(constraints, opts.signal)
   const stopTracks = (): void => {
     for (const track of stream.getTracks()) track.stop()
-  }
-  if (opts.signal?.aborted) {
-    stopTracks()
-    throw toAbortError(opts.signal)
   }
   return {
     connect: (context, destination) => {
@@ -145,11 +178,13 @@ async function acquireAudioSource(opts: PcmCaptureOptions): Promise<AcquiredAudi
 /** Start capturing mono PCM16 frames from the selected microphone or live-player stream. */
 export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCapture> {
   const audioSource = await acquireAudioSource(opts)
-  const context = new AudioContext({ sampleRate: opts.sampleRate ?? PCM_SAMPLE_RATE })
+  let context: AudioContext | null = null
   try {
-    const { node, teardownSink } = await createWorkletSink(context, opts)
-    const teardownSource = audioSource.connect(context, node)
-    void context.resume().catch(() => {})
+    const ctx = new AudioContext({ sampleRate: opts.sampleRate ?? PCM_SAMPLE_RATE })
+    context = ctx
+    const { node, teardownSink } = await createWorkletSink(ctx, opts)
+    const teardownSource = audioSource.connect(ctx, node)
+    void ctx.resume().catch(() => {})
 
     let stopped = false
     return {
@@ -158,12 +193,12 @@ export async function startPcmCapture(opts: PcmCaptureOptions): Promise<PcmCaptu
         stopped = true
         teardownSink()
         teardownSource()
-        void context.close().catch(() => {})
+        void ctx.close().catch(() => {})
       },
     }
   } catch (err) {
     audioSource.release()
-    void context.close().catch(() => {})
+    if (context) void context.close().catch(() => {})
     throw err
   }
 }

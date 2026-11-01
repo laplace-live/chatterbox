@@ -22,6 +22,7 @@ beforeAll(async () => {
       `,
       [captureModule]: `
         export const PCM_SAMPLE_RATE = 16000
+        export const PCM_FRAME_SAMPLES = 4096
         export const captureState = {
           starts: 0,
           stops: 0,
@@ -370,5 +371,24 @@ describe('createSonioxEngine (raw WebSocket + unified startPcmCapture)', () => {
       error: new Error('Soniox 连接在返回最终结果前关闭'),
     })
     expect(midStop.events.some(ev => ev.type === 'finished')).toBe(false)
+  })
+
+  test('retains opening audio across a >8s handshake up to the full 20s connection window', async () => {
+    const h = await load()
+    const engine = h.createSonioxEngine(baseParams(''), () => {})
+    engine.start()
+    await Promise.resolve()
+    const ws = FakeWebSocket.instances[0]
+
+    for (let i = 0; i < 60; i++) {
+      h.captureState.lastOptions?.onFrame(new Int16Array([i]))
+    }
+    ws.open()
+
+    // sent[0] is config JSON; sent[1..60] must preserve every opening frame from 0..59 (~15.4 s).
+    expect(ws.sent).toHaveLength(61)
+    expect((ws.sent[1] as Int16Array)[0]).toBe(0)
+    expect((ws.sent[60] as Int16Array)[0]).toBe(59)
+    engine.cancel()
   })
 })
