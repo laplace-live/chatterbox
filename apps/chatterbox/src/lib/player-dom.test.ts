@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
-import { isNativePlayerStreaming, resolveLivePlayer } from './player-dom'
+import { AUDIO_EL_ID, getAudioOnlyElement, isNativePlayerStreaming, resolveLivePlayer } from './player-dom'
 
 /** Same-origin `Window` stand-in; `parent === self` marks the chain terminator. */
 type FakeWin = { livePlayer?: unknown; parent?: FakeWin }
@@ -17,6 +17,32 @@ describe('isNativePlayerStreaming', () => {
 
   test('empty src (reset / unmounted element) → not streaming', () => {
     expect(isNativePlayerStreaming({ src: '' })).toBe(false)
+  })
+})
+
+describe('getAudioOnlyElement', () => {
+  const originalDocument = globalThis.document
+
+  afterEach(() => {
+    globalThis.document = originalDocument
+  })
+
+  test('returns the #lc-audio-only-stream element only when it is an <audio>', () => {
+    const audio = { id: AUDIO_EL_ID, tagName: 'AUDIO' }
+    globalThis.document = {
+      getElementById: (id: string) => (id === AUDIO_EL_ID ? audio : null),
+    } as unknown as Document
+    expect(getAudioOnlyElement()).toBe(audio as unknown as HTMLAudioElement)
+
+    globalThis.document = {
+      getElementById: () => ({ id: AUDIO_EL_ID, tagName: 'DIV' }),
+    } as unknown as Document
+    expect(getAudioOnlyElement()).toBeNull()
+
+    globalThis.document = {
+      getElementById: () => null,
+    } as unknown as Document
+    expect(getAudioOnlyElement()).toBeNull()
   })
 })
 

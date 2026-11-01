@@ -73,6 +73,7 @@ import { translationCapabilities } from '../lib/stt/capabilities'
 import { fetchDeepgramModels } from '../lib/stt/deepgram-models'
 import { fetchGeminiModels } from '../lib/stt/gemini-models'
 import { reduceChunks } from '../lib/stt/normalize'
+import { WEB_AUDIO_DEVICE_ID } from '../lib/stt/page-audio'
 import { useSttRecording } from '../lib/use-stt-recording'
 import { isHttpUrl, splitTextSmart, stripTrailingPunctuation } from '../lib/utils'
 import { wrapSegment, wrapSplitLen } from '../lib/wrap'
@@ -417,8 +418,9 @@ export function SttTab() {
 
   // Fall back to default if the saved device is gone; the persisted reset is deferred to toggle() to avoid a store write during render.
   const savedDeviceIdForHook = sttAudioDeviceId.value
+  const isWebAudio = savedDeviceIdForHook === WEB_AUDIO_DEVICE_ID
   const deviceStillAvailable =
-    !savedDeviceIdForHook || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
+    !savedDeviceIdForHook || isWebAudio || audioDevices.value.some(d => d.deviceId === savedDeviceIdForHook)
   const effectiveDeviceId = deviceStillAvailable ? savedDeviceIdForHook : ''
 
   const model =
@@ -596,7 +598,7 @@ export function SttTab() {
   // Labels are blank until mic permission is granted, so a non-empty label means "already granted".
   const hasMicLabels = devices.some(d => d.label)
   const savedDeviceId = sttAudioDeviceId.value
-  const savedDeviceMissing = Boolean(savedDeviceId) && !devices.some(d => d.deviceId === savedDeviceId)
+  const savedDeviceMissing = Boolean(savedDeviceId) && !isWebAudio && !devices.some(d => d.deviceId === savedDeviceId)
 
   const knownModels = isGemini
     ? [{ id: GEMINI_DEFAULT_MODEL }, { id: GEMINI_TRANSLATION_MODEL }, ...(modelPicker?.models.value ?? [])]
@@ -753,6 +755,7 @@ export function SttTab() {
               }}
             >
               <option value=''>系统默认</option>
+              <option value={WEB_AUDIO_DEVICE_ID}>获取网页声音</option>
               {devices.map((d, i) => (
                 <option key={d.deviceId || `mic-${i}`} value={d.deviceId}>
                   {d.label || `麦克风 ${i + 1}`}
@@ -760,7 +763,7 @@ export function SttTab() {
               ))}
               {savedDeviceMissing && <option value={savedDeviceId}>(已保存设备不可用)</option>}
             </NativeSelect>
-            {!hasMicLabels && (
+            {!hasMicLabels && !isWebAudio && (
               <Button variant='outline' size='sm' onClick={() => void requestMicPermission()}>
                 授权
               </Button>

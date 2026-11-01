@@ -9,6 +9,15 @@ export const PLAYER_VIDEO_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} video`
 /** The player's top-left watermark overlay: B站 logo plus the viewer's UID. */
 export const PLAYER_WATERMARK_SELECTOR = `${PLAYER_CONTAINER_SELECTOR} .web-player-icon-roomStatus`
 
+/** Hidden `<audio>` mounted by audio-only mode; recreated across refresh/disengage cycles. */
+export const AUDIO_EL_ID = 'lc-audio-only-stream'
+
+/** The active audio-only `<audio>` element, or `null` when none is mounted. */
+export function getAudioOnlyElement(): HTMLAudioElement | null {
+  const el = document.getElementById(AUDIO_EL_ID)
+  return el?.tagName.toUpperCase() === 'AUDIO' ? (el as HTMLAudioElement) : null
+}
+
 /** The native player's `<video>` element, or `null` when not mounted. */
 export function getPlayerVideo(): HTMLVideoElement | null {
   return document.querySelector<HTMLVideoElement>(PLAYER_VIDEO_SELECTOR)
