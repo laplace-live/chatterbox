@@ -650,13 +650,22 @@ describe('bindPageAudio', () => {
     expect(ctx.sources[0].connectedTo).toBe(destination)
     expect(video.captureCalls).toBe(1)
 
-    // Switch to audio-only, mute `<audio>`, then reload native `<video>` during disengage overlap.
-    const audio = new FakeMediaElement({ tagName: 'AUDIO', src: 'blob:https://live.bilibili.com/ao-mute' })
+    // Engaging muted audio-only while `<video>` still overlaps must detach `<video>` immediately without leaking it.
+    const audio = new FakeMediaElement({ tagName: 'AUDIO', src: 'blob:https://live.bilibili.com/ao-mute', muted: true })
     audio.id = AUDIO_EL_ID
     fakeDoc.audioEl = audio
+    audio.dispatchMediaEvent('playing')
+    expect(ctx.sources[0].connectedTo).toBeNull()
+    expect(ctx.sources[0].disconnected).toBe(true)
+    expect(initial.track.readyState).toBe('ended')
+    expect(audio.captureCalls).toBe(0)
+
+    // Unmuting `<audio>` binds it, and re-muting disconnects its node without recapturing.
     video.src = 'https://i0.hdslb.com/bfs/live/poster.mp4'
     video.paused = true
-    audio.dispatchMediaEvent('playing')
+    audio.muted = false
+    audio.dispatchMediaEvent('volumechange')
+    expect(audio.captureCalls).toBe(1)
     expect(ctx.sources).toHaveLength(2)
     expect(ctx.sources[1].stream).toBe(audio.createdStreams[0])
     expect(ctx.sources[1].connectedTo).toBe(destination)
@@ -664,6 +673,7 @@ describe('bindPageAudio', () => {
     audio.muted = true
     audio.dispatchMediaEvent('volumechange')
     expect(ctx.sources[1].connectedTo).toBeNull()
+    expect(audio.captureCalls).toBe(1)
 
     // Native `<video>` reloads unmuted while muted `<audio>` is still active — must stay on disconnected `<audio>`.
     video.src = 'blob:https://live.bilibili.com/v2-overlap'

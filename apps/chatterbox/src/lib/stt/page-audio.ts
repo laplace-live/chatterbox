@@ -310,7 +310,7 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
     warnTimer = setTimeout(() => {
       warnTimer = null
       if (stopped || warnedInterrupted) return
-      const ref = bound?.el ?? candidates[0]
+      const ref = bound?.el ?? candidates.find(el => isPlayable(el) && !isPrerolling(el)) ?? candidates[0]
       warnedInterrupted = true
       if (ref && !isAudible(ref) && !isPrerolling(ref)) {
         onLog?.('⚠️ 网页直播音源已静音，转录暂停输出（取消静音后将自动恢复）')
@@ -371,10 +371,14 @@ export function bindPageAudio(opts: BindPageAudioOptions): PageAudioBinding {
       detachBound()
     }
 
-    // Stop at the active non-prerolling source even if muted so overlap (e.g. audio-only disengage) can't fall back to `<video>`.
+    // Stop at the active non-prerolling source even if muted so overlap can't leak `<video>` audio.
     for (const candidate of candidates) {
       if (!isPlayable(candidate) || isPrerolling(candidate)) continue
-      if (bound?.el === candidate || !isAudible(candidate)) break
+      if (bound?.el === candidate) break
+      if (!isAudible(candidate)) {
+        detachBound()
+        break
+      }
       const captured = captureElement(candidate)
       if (captured) {
         try {
