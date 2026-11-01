@@ -112,8 +112,10 @@ describe('startPcmCapture', () => {
     globalThis.AudioContext = class {
       state: AudioContextState = 'suspended'
       destination = {}
-      constructor() {
+      sampleRate: number
+      constructor(options?: AudioContextOptions) {
         if (contextConstructError) throw contextConstructError
+        this.sampleRate = options?.sampleRate ?? 16000
         lastDestination = this.destination
       }
       audioWorklet = {
