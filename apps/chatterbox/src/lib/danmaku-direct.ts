@@ -32,6 +32,7 @@ const STYLE = `
   gap: 2px;
   opacity: 0;
   transition: opacity .15s;
+  -webkit-user-select: none;
   user-select: none;
 }
 .chat-item.danmaku-item:hover .${MARKER} {
@@ -49,6 +50,8 @@ const STYLE = `
   color: inherit;
   opacity: .35;
   transition: opacity .1s;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .${MARKER} button:hover {
   opacity: 1;
