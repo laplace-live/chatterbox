@@ -75,6 +75,9 @@ export const INVISIBLE_CHAR_PRESETS = [
 /** `invisibleCharPreset` value that selects the user-typed `invisibleCharCustom` instead of a preset. */
 export const INVISIBLE_CHAR_CUSTOM = 'custom'
 
+/** Bilibili's same-text duplicate-filter window (ms); repeats sent after this interval need no dedup char. */
+export const ROAD_RAGE_WINDOW_MS = 5000
+
 /** Half-width units per full-width Chinese character ("字") under Bilibili's `utilDanmuLength`. */
 export const DANMAKU_UNITS_PER_CHAR = 2
 
