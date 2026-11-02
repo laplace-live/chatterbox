@@ -12,6 +12,7 @@ import {
 import { describeLlmGap, isLlmApiConfigured, polishWithLlm } from '../lib/llm-tasks'
 import { appendLog } from '../lib/log'
 import { applyReplacements } from '../lib/replacement'
+import { applyRoadRageOnSend, previewRoadRageText } from '../lib/road-rage'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import {
   aiEvasion,
@@ -25,7 +26,7 @@ import {
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { countDanmakuMessages, insertRandomChar, processDanmakuMessages } from '../lib/utils'
+import { countDanmakuMessages, processDanmakuMessages } from '../lib/utils'
 import { wrapSegment, wrapSplitUnits } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
@@ -34,35 +35,20 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
 
-// 路怒模式 tracking (module-scoped so it survives re-renders): the last text sent via 常规发送 and the
-// grapheme slot the invisible char last landed in, so a repeat varies at a different position each time.
-let lastRoadRageText = ''
-let lastRoadRageIndex: number | undefined
-let pendingRoadRage: { key: string; text: string; index: number } | null = null
-
-function resolveRoadRage(original: string, processed: string): { text: string; index: number } {
-  const char = invisibleChar.value
-  const key = `${original}\0${processed}\0${char}\0${lastRoadRageIndex ?? ''}`
-  if (pendingRoadRage?.key === key) return pendingRoadRage
-  const inserted = insertRandomChar(processed, char, lastRoadRageIndex)
-  pendingRoadRage = { key, ...inserted }
-  return pendingRoadRage
-}
-
+/** Estimate how many danmaku segments `raw` will split into after replacements, Road Rage, and bracket wrapping. */
 function previewNormalSendCount(raw: string): number {
   const trimmed = raw.trim()
   if (!trimmed) return 0
   if (isEmoticonUnique(trimmed) || isUnavailableEmoticon(trimmed)) return 1
-  let preview = applyReplacements(trimmed)
-  const trimmedPreview = preview.trim()
+  const replaced = applyReplacements(trimmed)
+  const trimmedPreview = replaced.trim()
   if (!trimmedPreview) return 0
   if (isEmoticonUnique(trimmedPreview) || isUnavailableEmoticon(trimmedPreview)) return 1
-  if (normalSendRoadRage.value && trimmed === lastRoadRageText) {
-    preview = resolveRoadRage(trimmed, preview).text
-  }
+  const preview = previewRoadRageText(trimmed, replaced, invisibleChar.value, normalSendRoadRage.value)
   return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
 }
 
+/** Manual danmaku send panel (常规发送) with emote picker, AI polish, YOLO mode, and Road Rage dedup. */
 export function NormalSendTab() {
   // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
   const polishing = useSignal(false)
@@ -103,6 +89,7 @@ export function NormalSendTab() {
     }
   }
 
+  /** Validate, apply replacements and Road Rage dedup, split into segments, and enqueue the manual send. */
   const sendMessage = async () => {
     const originalMessage = fasongText.value.trim()
     if (!originalMessage) {
@@ -146,22 +133,6 @@ export function NormalSendTab() {
     const wasReplaced = !wasOriginalEmote && originalMessage !== processedMessage
     fasongText.value = ''
 
-    // 路怒模式: re-sending the exact same text would be dropped by B站's duplicate filter, so vary the
-    // repeat with one invisible char at a slot different from last time. Emotes are left alone (a char
-    // inside the id breaks it). Keyed on the original text so replacements don't mask a repeat.
-    let roadRaged = false
-    if (!isEmote && normalSendRoadRage.value && originalMessage === lastRoadRageText) {
-      const { text, index } = resolveRoadRage(originalMessage, processedMessage)
-      pendingRoadRage = null
-      processedMessage = text
-      lastRoadRageIndex = index
-      roadRaged = true
-    } else {
-      lastRoadRageIndex = undefined
-      pendingRoadRage = null
-    }
-    lastRoadRageText = originalMessage
-
     try {
       const roomId = await ensureRoomId()
       const csrfToken = getCsrfToken()
@@ -169,6 +140,19 @@ export function NormalSendTab() {
         appendLog('❌ 未找到登录信息，请先登录 Bilibili')
         return
       }
+
+      const {
+        text: roadRageMessage,
+        roadRaged,
+        settle: settleRoadRage,
+      } = applyRoadRageOnSend({
+        original: originalMessage,
+        processed: processedMessage,
+        char: invisibleChar.value,
+        enabled: normalSendRoadRage.value,
+        isEmote,
+      })
+      processedMessage = roadRageMessage
 
       // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper units so each segment still fits danmakuMaxUnits.
       const wrap = !isEmote && normalSendWrapBrackets.value
@@ -179,17 +163,24 @@ export function NormalSendTab() {
           )
       const total = segments.length
 
-      for (let i = 0; i < total; i++) {
-        const segment = segments[i]
-        const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'manual')
-        const baseLabel = result.isEmoticon ? '手动表情' : roadRaged ? '手动·路怒' : '手动'
-        const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
-        const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
+      let delivered = false
+      try {
+        for (let i = 0; i < total; i++) {
+          const segment = segments[i]
+          const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'manual')
+          if (result.success) delivered = true
+          const baseLabel = result.isEmoticon ? '手动表情' : roadRaged ? '手动·路怒' : '手动'
+          const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
+          const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
 
-        appendLog(result, label, displayMsg)
-        if (!result.success) {
-          await tryAiEvasion(segment, roomId, csrfToken, '', 'manual')
+          appendLog(result, label, displayMsg)
+          if (!result.success) {
+            const evaded = await tryAiEvasion(segment, roomId, csrfToken, '', 'manual')
+            if (evaded.success) delivered = true
+          }
         }
+      } finally {
+        settleRoadRage(delivered)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
