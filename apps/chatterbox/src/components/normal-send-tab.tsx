@@ -35,6 +35,7 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
 
+/** Estimate how many danmaku segments `raw` will split into after replacements, Road Rage, and bracket wrapping. */
 function previewNormalSendCount(raw: string): number {
   const trimmed = raw.trim()
   if (!trimmed) return 0
@@ -47,6 +48,7 @@ function previewNormalSendCount(raw: string): number {
   return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
 }
 
+/** Manual danmaku send panel (常规发送) with emote picker, AI polish, YOLO mode, and Road Rage dedup. */
 export function NormalSendTab() {
   // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
   const polishing = useSignal(false)
@@ -87,6 +89,7 @@ export function NormalSendTab() {
     }
   }
 
+  /** Validate, apply replacements and Road Rage dedup, split into segments, and enqueue the manual send. */
   const sendMessage = async () => {
     const originalMessage = fasongText.value.trim()
     if (!originalMessage) {
@@ -130,15 +133,6 @@ export function NormalSendTab() {
     const wasReplaced = !wasOriginalEmote && originalMessage !== processedMessage
     fasongText.value = ''
 
-    const { text: roadRageMessage, roadRaged } = applyRoadRageOnSend({
-      original: originalMessage,
-      processed: processedMessage,
-      char: invisibleChar.value,
-      enabled: normalSendRoadRage.value,
-      isEmote,
-    })
-    processedMessage = roadRageMessage
-
     try {
       const roomId = await ensureRoomId()
       const csrfToken = getCsrfToken()
@@ -146,6 +140,19 @@ export function NormalSendTab() {
         appendLog('❌ 未找到登录信息，请先登录 Bilibili')
         return
       }
+
+      const {
+        text: roadRageMessage,
+        roadRaged,
+        settle: settleRoadRage,
+      } = applyRoadRageOnSend({
+        original: originalMessage,
+        processed: processedMessage,
+        char: invisibleChar.value,
+        enabled: normalSendRoadRage.value,
+        isEmote,
+      })
+      processedMessage = roadRageMessage
 
       // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper units so each segment still fits danmakuMaxUnits.
       const wrap = !isEmote && normalSendWrapBrackets.value
@@ -156,17 +163,24 @@ export function NormalSendTab() {
           )
       const total = segments.length
 
-      for (let i = 0; i < total; i++) {
-        const segment = segments[i]
-        const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'manual')
-        const baseLabel = result.isEmoticon ? '手动表情' : roadRaged ? '手动·路怒' : '手动'
-        const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
-        const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
+      let delivered = false
+      try {
+        for (let i = 0; i < total; i++) {
+          const segment = segments[i]
+          const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'manual')
+          if (result.success) delivered = true
+          const baseLabel = result.isEmoticon ? '手动表情' : roadRaged ? '手动·路怒' : '手动'
+          const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
+          const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
 
-        appendLog(result, label, displayMsg)
-        if (!result.success) {
-          await tryAiEvasion(segment, roomId, csrfToken, '', 'manual')
+          appendLog(result, label, displayMsg)
+          if (!result.success) {
+            const evaded = await tryAiEvasion(segment, roomId, csrfToken, '', 'manual')
+            if (evaded.success) delivered = true
+          }
         }
+      } finally {
+        settleRoadRage(delivered)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
