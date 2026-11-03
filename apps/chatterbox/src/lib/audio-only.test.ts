@@ -13,6 +13,10 @@ const source = await Bun.file(new URL('./audio-only.ts', import.meta.url)).text(
 const transpiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source)
 let moduleId = 0
 
+const PRIMARY_HOST = 'd1--ov-gotcha07.bilivideo.com'
+const BACKUP_HOST = 'd1--ov-gotcha07b.bilivideo.com'
+
+/** Build a `RoomPlayInfoResponse` fixture wrapping the given FLV codec entries. */
 function makePlayInfo(
   codec: Array<{
     current_qn?: number
@@ -43,6 +47,7 @@ function makePlayInfo(
 interface LoadAudioOnlyOptions {
   playInfoResponse?: unknown
   playImpl?: (url: string) => Promise<void>
+  fakeTimers?: boolean
 }
 
 interface FakeMpegtsPlayer {
@@ -71,11 +76,96 @@ interface FakeAudioElement {
   toggleAttribute: (name: string, force?: boolean) => boolean
 }
 
+interface ScheduledTimer {
+  id: number
+  dueAt: number
+  delay: number
+  fn: () => void
+}
+
+/** Load an isolated `audio-only` module instance with mocked DOM, fetch, timers, and `mpegts.js`. */
 async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
   const logs: string[] = []
+  const logListeners = new Set<() => void>()
   const createdPlayers: FakeMpegtsPlayer[] = []
+  const playerListeners = new Set<() => void>()
   let activeUrl = ''
   let pendingPlayReject: ((err: unknown) => void) | null = null
+
+  let nowMs = 1_000_000
+  let nextTimerId = 1
+  const scheduledTimers = new Map<number, ScheduledTimer>()
+
+  const fakeDate = {
+    now: () => (opts.fakeTimers ? nowMs : Date.now()),
+  }
+
+  const fakeSetTimeout = ((fn: () => void, ms = 0): unknown => {
+    if (!opts.fakeTimers || ms <= 0) {
+      return setTimeout(fn, ms)
+    }
+    const id = nextTimerId++
+    scheduledTimers.set(id, { id, dueAt: nowMs + ms, delay: ms, fn })
+    return id
+  }) as typeof setTimeout
+
+  const fakeClearTimeout = ((id: unknown): void => {
+    if (typeof id === 'number' && scheduledTimers.delete(id)) return
+    clearTimeout(id as ReturnType<typeof setTimeout>)
+  }) as typeof clearTimeout
+
+  async function flushMicrotasks(ticks = 6): Promise<void> {
+    for (let i = 0; i < ticks; i++) {
+      await Promise.resolve()
+    }
+  }
+
+  async function advanceTimersBy(deltaMs: number): Promise<void> {
+    const targetMs = nowMs + deltaMs
+    while (true) {
+      await flushMicrotasks()
+      let earliest: ScheduledTimer | undefined
+      for (const timer of scheduledTimers.values()) {
+        if (timer.dueAt <= targetMs && (!earliest || timer.dueAt < earliest.dueAt)) {
+          earliest = timer
+        }
+      }
+      if (!earliest) break
+      scheduledTimers.delete(earliest.id)
+      nowMs = earliest.dueAt
+      earliest.fn()
+    }
+    nowMs = targetMs
+    await flushMicrotasks()
+  }
+
+  function waitForLog(predicate: (msg: string) => boolean): Promise<string> {
+    const existing = logs.find(predicate)
+    if (existing !== undefined) return Promise.resolve(existing)
+    return new Promise(resolve => {
+      const check = () => {
+        const match = logs.find(predicate)
+        if (match !== undefined) {
+          logListeners.delete(check)
+          resolve(match)
+        }
+      }
+      logListeners.add(check)
+    })
+  }
+
+  function waitForPlayers(count: number): Promise<void> {
+    if (createdPlayers.length >= count) return Promise.resolve()
+    return new Promise(resolve => {
+      const check = () => {
+        if (createdPlayers.length >= count) {
+          playerListeners.delete(check)
+          resolve()
+        }
+      }
+      playerListeners.add(check)
+    })
+  }
 
   const stopPlayback = mock(() => {})
   const livePlayer = {
@@ -169,6 +259,7 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
         },
       }
       createdPlayers.push(player)
+      for (const notify of playerListeners) notify()
       return player
     },
   }
@@ -183,8 +274,8 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
             is_pushing: true,
             base_url: '/live-bvc/123/live_1_2.flv?',
             url_info: [
-              { host: 'http://d1--ov-gotcha07.bilivideo.com', extra: 'ptype=1&order=1' },
-              { host: 'http://d1--ov-gotcha07b.bilivideo.com', extra: 'ptype=1&order=2' },
+              { host: `http://${PRIMARY_HOST}`, extra: 'ptype=1&order=1' },
+              { host: `http://${BACKUP_HOST}`, extra: 'ptype=1&order=2' },
             ],
           },
         ])
@@ -203,7 +294,12 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
     './audio-only-volume': audioOnlyVolume,
     './const': constants,
     './load-script': { loadUmdScript: async () => mpegts },
-    './log': { appendLog: (msg: string) => logs.push(msg) },
+    './log': {
+      appendLog: (msg: string) => {
+        logs.push(msg)
+        for (const notify of logListeners) notify()
+      },
+    },
     './page-visibility': { isTabHidden: () => false },
     './player-dom': {
       ...playerDom,
@@ -220,12 +316,19 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
   }
 
   const key = `__audioOnlyTest${++moduleId}`
-  Reflect.set(globalThis, key, { fetch: fetchMock, document: fakeDocument, dependencies })
+  Reflect.set(globalThis, key, {
+    fetch: fetchMock,
+    document: fakeDocument,
+    Date: fakeDate,
+    setTimeout: fakeSetTimeout,
+    clearTimeout: fakeClearTimeout,
+    dependencies,
+  })
   const injected = transpiled.replace(/import\s*\{([^}]+)\}\s*from\s*["']([^"']+)["'];?/g, (_match, names, path) => {
     if (!(path in dependencies)) throw new Error(`Unmocked import: ${path}`)
     return `const {${names}} = globalThis[${JSON.stringify(key)}].dependencies[${JSON.stringify(path)}];`
   })
-  const code = `const { fetch, document } = globalThis[${JSON.stringify(key)}];\n${injected}`
+  const code = `const { fetch, document, Date, setTimeout, clearTimeout } = globalThis[${JSON.stringify(key)}];\n${injected}`
   try {
     const mod: typeof import('./audio-only') = await import(
       `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
@@ -238,6 +341,11 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
       stopPlayback,
       audioOnlyMode,
       audioOnlyActive,
+      advanceTimersBy,
+      flushMicrotasks,
+      waitForLog,
+      waitForPlayers,
+      getNowMs: () => nowMs,
       setPendingPlayReject(reject: (err: unknown) => void) {
         pendingPlayReject = reject
       },
@@ -259,8 +367,8 @@ describe('extractAudioOnlyStreamInfo', async () => {
           is_pushing: true,
           base_url: '/live-bvc/750834/live_2159091008_41443140.flv?',
           url_info: [
-            { host: 'http://d1--ov-gotcha07.bilivideo.com', extra: 'ptype=1&order=1' },
-            { host: 'http://d1--ov-gotcha07b.bilivideo.com', extra: 'ptype=1&order=2' },
+            { host: `http://${PRIMARY_HOST}`, extra: 'ptype=1&order=1' },
+            { host: `http://${BACKUP_HOST}`, extra: 'ptype=1&order=2' },
           ],
         },
       ])
@@ -268,13 +376,13 @@ describe('extractAudioOnlyStreamInfo', async () => {
 
     expect(result).toEqual({
       urls: [
-        'https://d1--ov-gotcha07.bilivideo.com/live-bvc/750834/live_2159091008_41443140.flv?ptype=1&order=1',
-        'https://d1--ov-gotcha07b.bilivideo.com/live-bvc/750834/live_2159091008_41443140.flv?ptype=1&order=2',
+        `https://${PRIMARY_HOST}/live-bvc/750834/live_2159091008_41443140.flv?ptype=1&order=1`,
+        `https://${BACKUP_HOST}/live-bvc/750834/live_2159091008_41443140.flv?ptype=1&order=2`,
       ],
     })
   })
 
-  test('orders hostname CDN edges ahead of raw-IP edges and deduplicates', () => {
+  test('orders hostname CDN edges ahead of raw-IP edges across active codec slots and deduplicates', () => {
     const result = mod.extractAudioOnlyStreamInfo(
       makePlayInfo([
         {
@@ -288,12 +396,20 @@ describe('extractAudioOnlyStreamInfo', async () => {
             { host: 'https://cn-jsnt-ct-01-32.bilivideo.com:4463', extra: 'ptype=1&order=2' },
           ],
         },
+        {
+          current_qn: 250,
+          accept_qn: [10000, 250],
+          is_pushing: true,
+          base_url: '/live-bvc/111/live_1_1_1500_prohevc.flv?',
+          url_info: [{ host: 'http://cn-jsnt-ct-01-32.bilivideo.com:4463', extra: 'ptype=1&order=1' }],
+        },
       ])
     )
 
     expect(result).toEqual({
       urls: [
         'https://cn-jsnt-ct-01-32.bilivideo.com:4463/live-bvc/111/live_1_1_1500.flv?ptype=1&order=2',
+        'https://cn-jsnt-ct-01-32.bilivideo.com:4463/live-bvc/111/live_1_1_1500_prohevc.flv?ptype=1&order=1',
         'https://114.230.222.34:4463/live-bvc/111/live_1_1_1500.flv?ptype=1&order=1',
       ],
     })
@@ -357,7 +473,7 @@ describe('engageAudioOnly candidate failover', () => {
     let loadedModule: Awaited<ReturnType<typeof loadAudioOnly>> | null = null
     loadedModule = await loadAudioOnly({
       playImpl(url) {
-        if (url.includes('gotcha07.bilivideo.com')) {
+        if (new URL(url).hostname === PRIMARY_HOST) {
           return new Promise<void>((_resolve, reject) => {
             loadedModule?.setPendingPlayReject(reject)
             const current = loadedModule?.createdPlayers.at(-1)
@@ -370,21 +486,154 @@ describe('engageAudioOnly candidate failover', () => {
       },
     })
 
-    const { mod, createdPlayers, stopPlayback, logs, audioOnlyMode, audioOnlyActive } = loadedModule
+    const { mod, createdPlayers, stopPlayback, logs, audioOnlyMode, audioOnlyActive, waitForLog } = loadedModule
     audioOnlyMode.value = 'on'
     audioOnlyActive.value = true
     mod.startAudioOnly()
 
-    await Bun.sleep(30)
+    await waitForLog(msg => msg.includes('已开启仅音频模式'))
 
     expect(createdPlayers.map(p => p.url)).toEqual([
-      'https://d1--ov-gotcha07.bilivideo.com/live-bvc/123/live_1_2.flv?ptype=1&order=1',
-      'https://d1--ov-gotcha07b.bilivideo.com/live-bvc/123/live_1_2.flv?ptype=1&order=2',
+      `https://${PRIMARY_HOST}/live-bvc/123/live_1_2.flv?ptype=1&order=1`,
+      `https://${BACKUP_HOST}/live-bvc/123/live_1_2.flv?ptype=1&order=2`,
     ])
     expect(createdPlayers[0]?.destroyed).toBe(true)
     expect(createdPlayers[1]?.destroyed).toBe(false)
     expect(stopPlayback).toHaveBeenCalledTimes(1)
     expect(logs).toContain('🎧 已开启仅音频模式')
+
+    mod.stopAudioOnly()
+  })
+
+  test('falls back to backup CDN host when primary host hangs past its attempt timeout', async () => {
+    let loadedModule: Awaited<ReturnType<typeof loadAudioOnly>> | null = null
+    loadedModule = await loadAudioOnly({
+      fakeTimers: true,
+      playImpl(url) {
+        if (new URL(url).hostname === PRIMARY_HOST) {
+          return new Promise<void>((_resolve, reject) => {
+            loadedModule?.setPendingPlayReject(reject)
+          })
+        }
+        return Promise.resolve()
+      },
+    })
+
+    const { mod, createdPlayers, stopPlayback, logs, audioOnlyMode, audioOnlyActive, waitForPlayers, advanceTimersBy } =
+      loadedModule
+    audioOnlyMode.value = 'on'
+    audioOnlyActive.value = true
+    mod.startAudioOnly()
+
+    await waitForPlayers(1)
+    expect(createdPlayers).toHaveLength(1)
+    expect(createdPlayers[0]?.destroyed).toBe(false)
+
+    // 2 candidates share the 10_000ms SWAP_TIMEOUT_MS budget → primary times out at 5000ms.
+    await advanceTimersBy(5000)
+
+    expect(createdPlayers.map(p => p.url)).toEqual([
+      `https://${PRIMARY_HOST}/live-bvc/123/live_1_2.flv?ptype=1&order=1`,
+      `https://${BACKUP_HOST}/live-bvc/123/live_1_2.flv?ptype=1&order=2`,
+    ])
+    expect(createdPlayers[0]?.destroyed).toBe(true)
+    expect(createdPlayers[1]?.destroyed).toBe(false)
+    expect(stopPlayback).toHaveBeenCalledTimes(1)
+    expect(logs).toContain('🎧 已开启仅音频模式')
+
+    mod.stopAudioOnly()
+  })
+
+  test('destroys all candidate players and fails within SWAP_TIMEOUT_MS when all hosts hang', async () => {
+    let loadedModule: Awaited<ReturnType<typeof loadAudioOnly>> | null = null
+    loadedModule = await loadAudioOnly({
+      fakeTimers: true,
+      playImpl() {
+        return new Promise<void>((_resolve, reject) => {
+          loadedModule?.setPendingPlayReject(reject)
+        })
+      },
+    })
+
+    const {
+      mod,
+      createdPlayers,
+      stopPlayback,
+      logs,
+      audioOnlyMode,
+      audioOnlyActive,
+      waitForPlayers,
+      advanceTimersBy,
+      getNowMs,
+    } = loadedModule
+    const startMs = getNowMs()
+    audioOnlyMode.value = 'on'
+    audioOnlyActive.value = true
+    mod.startAudioOnly()
+
+    await waitForPlayers(1)
+    await advanceTimersBy(5000)
+    expect(createdPlayers).toHaveLength(2)
+    expect(createdPlayers[0]?.destroyed).toBe(true)
+    expect(createdPlayers[1]?.destroyed).toBe(false)
+
+    await advanceTimersBy(5000)
+    expect(getNowMs() - startMs).toBeLessThanOrEqual(10_000)
+    expect(createdPlayers[1]?.destroyed).toBe(true)
+    expect(stopPlayback).not.toHaveBeenCalled()
+    expect(logs).toContain('⚠️ 仅音频模式启动失败：仅音频流未能开始播放')
+
+    mod.stopAudioOnly()
+  })
+
+  test('does not advance to backup candidate when stopAudioOnly runs mid-preroll', async () => {
+    let loadedModule: Awaited<ReturnType<typeof loadAudioOnly>> | null = null
+    loadedModule = await loadAudioOnly({
+      playImpl() {
+        return new Promise<void>((_resolve, reject) => {
+          loadedModule?.setPendingPlayReject(reject)
+        })
+      },
+    })
+
+    const { mod, createdPlayers, stopPlayback, audioOnlyMode, audioOnlyActive, waitForPlayers, flushMicrotasks } =
+      loadedModule
+    audioOnlyMode.value = 'on'
+    audioOnlyActive.value = true
+    mod.startAudioOnly()
+
+    await waitForPlayers(1)
+    expect(createdPlayers).toHaveLength(1)
+
+    mod.stopAudioOnly()
+    await flushMicrotasks()
+
+    expect(createdPlayers).toHaveLength(1)
+    expect(createdPlayers[0]?.destroyed).toBe(true)
+    expect(stopPlayback).not.toHaveBeenCalled()
+  })
+
+  test('rotates away from the failed primary CDN host when recovering from a mid-stream drop', async () => {
+    const loadedModule = await loadAudioOnly({ fakeTimers: true })
+    const { mod, createdPlayers, logs, audioOnlyMode, audioOnlyActive, waitForLog, advanceTimersBy } = loadedModule
+
+    audioOnlyMode.value = 'on'
+    audioOnlyActive.value = true
+    mod.startAudioOnly()
+
+    await waitForLog(msg => msg.includes('已开启仅音频模式'))
+    expect(createdPlayers).toHaveLength(1)
+    expect(new URL(createdPlayers[0]?.url ?? '').hostname).toBe(PRIMARY_HOST)
+
+    for (const fn of createdPlayers[0]?.listeners.error ?? []) {
+      fn('NetworkError', 'UnrecoverableEarlyEof')
+    }
+    expect(logs.some(msg => msg.includes('第 1/20 次重连'))).toBe(true)
+
+    await advanceTimersBy(2000)
+
+    expect(createdPlayers).toHaveLength(2)
+    expect(new URL(createdPlayers[1]?.url ?? '').hostname).toBe(BACKUP_HOST)
 
     mod.stopAudioOnly()
   })

@@ -254,6 +254,9 @@ export function extractAudioOnlyStreamInfo(data: RoomPlayInfoResponse): AudioStr
   }
 
   // Prefer FLV — mpegts.js demuxes it directly; HLS would need hls.js.
+  // Prefer non-IP hosts across all active codec slots: `*.bilivideo.com` certs omit raw IPs from SANs.
+  const hostUrls: string[] = []
+  const ipUrls: string[] = []
   const streams = data.data?.playurl_info?.playurl?.stream ?? []
   for (const stream of streams) {
     if (stream.protocol_name !== 'http_stream') continue
@@ -263,25 +266,22 @@ export function extractAudioOnlyStreamInfo(data: RoomPlayInfoResponse): AudioStr
         // CDN edges strip video tags via ptype=1 even on qn=10000 raw streams; only is_pushing:false marks a dead slot.
         if (!codec?.base_url || !codec.url_info?.length || codec.is_pushing === false) continue
 
-        // Prefer non-IP hosts: `*.bilivideo.com` certs omit raw IPs from SANs, failing browser TLS.
-        const hostUrls: string[] = []
-        const ipUrls: string[] = []
         for (const info of codec.url_info) {
           if (!info?.host) continue
           const full = `${info.host}${codec.base_url}${info.extra ?? ''}`.replace(/^http:\/\//, 'https://')
           const bucket = isIpHost(info.host) ? ipUrls : hostUrls
           if (!bucket.includes(full)) bucket.push(full)
         }
-        const urls = [...hostUrls, ...ipUrls]
-        if (urls.length > 0) return { urls }
       }
     }
   }
-  return { urls: [], unavailable: true }
+  const urls = [...hostUrls, ...ipUrls]
+  return urls.length > 0 ? { urls } : { urls: [], unavailable: true }
 }
 
-// Needs matching mobi_app/platform/appkey/build/device params or bilibili rejects with `argument illegal`.
+/** Query the Android `getRoomPlayInfo` endpoint for audio-only FLV stream candidates. */
 async function fetchAudioOnlyStreamUrl(roomId: number): Promise<AudioStreamInfo> {
+  // Needs matching mobi_app/platform/appkey/build/device params or bilibili rejects with `argument illegal`.
   const params = new URLSearchParams({
     appkey: 'iVGUTjsxvpLeuDCf',
     build: '6215200',
@@ -337,6 +337,7 @@ let prerolling = false
 /** In-flight hand-back to the native player; settles once ours is dropped. */
 let handoff: Promise<void> | null = null
 let lastAttachError: string | null = null
+let lastFailedStreamKey: string | null = null
 
 function clearStreamRefreshTimer(): void {
   if (streamRefreshTimer !== null) {
@@ -466,6 +467,7 @@ async function handOffToNativePlayer(volume: number, muted: boolean): Promise<vo
   v.muted = muted
 }
 
+/** Stop, unload, detach, and destroy the active `mpegts.js` player instance. */
 function destroyMpegtsPlayer(): void {
   const player = mpegtsPlayer
   if (!player) return
@@ -578,6 +580,7 @@ async function attachMpegtsPlayer(
       audioEl?.pause()
       return
     }
+    lastFailedStreamKey = url.split('?')[0]
     scheduleStreamRecovery(roomId, gen, reason)
   }
 
@@ -645,19 +648,26 @@ async function attachFirstPlayableStream(
   totalTimeoutMs = SWAP_TIMEOUT_MS
 ): Promise<boolean> {
   lastAttachError = null
+  const orderedUrls = lastFailedStreamKey
+    ? [
+        ...urls.filter(u => u.split('?')[0] !== lastFailedStreamKey),
+        ...urls.filter(u => u.split('?')[0] === lastFailedStreamKey),
+      ]
+    : urls
   const deadline = Date.now() + totalTimeoutMs
-  for (let i = 0; i < urls.length; i++) {
+  for (let i = 0; i < orderedUrls.length; i++) {
     if (gen !== engagementGen) return false
     const remainingBudget = Math.max(0, deadline - Date.now())
-    const attemptTimeout = Math.ceil(remainingBudget / (urls.length - i))
+    const attemptTimeout = Math.ceil(remainingBudget / (orderedUrls.length - i))
     if (attemptTimeout <= 0) return false
-    const playing = await attachMpegtsPlayer(urls[i], mpegts, roomId, gen, attemptTimeout)
+    const playing = await attachMpegtsPlayer(orderedUrls[i], mpegts, roomId, gen, attemptTimeout)
     if (gen !== engagementGen) return false
     if (playing) return true
   }
   return false
 }
 
+/** Schedule the periodic signed-URL refresh timer before the current stream URL expires. */
 function scheduleStreamRefresh(roomId: number, gen: number): void {
   clearStreamRefreshTimer()
   streamRefreshTimer = setTimeout(() => {
@@ -668,6 +678,7 @@ function scheduleStreamRefresh(roomId: number, gen: number): void {
   }, STREAM_REFRESH_MS)
 }
 
+/** Re-fetch stream candidates and re-attach `mpegts.js` for periodic refresh or stream recovery. */
 async function refreshStream(roomId: number, gen: number): Promise<void> {
   try {
     const [{ urls, unavailable }, mpegts] = await Promise.all([fetchAudioOnlyStreamUrl(roomId), loadMpegts()])
@@ -733,6 +744,7 @@ async function engageAudioOnly(gen: number): Promise<void> {
 
   // Fresh engage, not a reconnect — start the backoff ladder from the top.
   streamRecoveryAttempts = 0
+  lastFailedStreamKey = null
   prerolling = true
   const playing = await attachFirstPlayableStream(info.urls, mpegts, roomId, gen)
   if (gen !== engagementGen) {
@@ -931,13 +943,16 @@ export function startAudioOnly(): void {
   ]
 }
 
+/** Tear down all audio-only effects, timers, and pipeline state on unmount. */
 export function stopAudioOnly(): void {
+  engagementGen++
   for (const dispose of effectDisposers) dispose()
   effectDisposers = []
   document.removeEventListener('visibilitychange', syncAudioOnlyActive)
   clearAutoEngageTimer()
   clearPendingApply()
   destroyAudioPipeline()
+  lastFailedStreamKey = null
   // Clear so a later `startAudioOnly()` (HMR remount) doesn't owe a reload.
   nativePlayerStopped = false
   document.documentElement.classList.remove(HTML_FLAG_CLASS)
