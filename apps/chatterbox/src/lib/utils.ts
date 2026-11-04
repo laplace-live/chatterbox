@@ -44,13 +44,13 @@ export function trimText(text: string, maxLength: number): string[] {
 }
 
 /**
- * Bilibili's `utilDanmuLength` weight: printable ASCII (`0x20..0x7E`) = 1, BMP non-ASCII = 2, astral surrogate pair = 4.
- * Matched against `getInfoByUser`'s `data.property.danmu.length` (`80` = 40 CJK chars / 80 ASCII chars / 20 emojis).
+ * Bilibili `/msg/send` unit weight per Unicode code point: printable ASCII (`0x20..0x7E`) = 1, any other code point (CJK, symbol, or astral emoji) = 2.
+ * Matched against `getInfoByUser`'s `data.property.danmu.length` (`80` = 40 CJK/emoji chars or 80 ASCII chars; B站 web `utilDanmuLength` multiplies by UTF-16 `ch.length`, over-counting astral emojis as 4).
  */
 export function getDanmakuUnits(text: string): number {
   let units = 0
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i)
+  for (const ch of text) {
+    const code = ch.charCodeAt(0)
     units += code >= 0x20 && code <= 0x7e ? 1 : 2
   }
   return units
@@ -58,8 +58,7 @@ export function getDanmakuUnits(text: string): number {
 
 /**
  * Splits `text` into chunks whose {@link getDanmakuUnits} stay within `maxUnits`, keeping grapheme clusters intact
- * unless a single cluster exceeds `maxUnits` (fallen back to code-point cuts; an indivisible single code point wider than
- * `maxUnits`, such as a 4-unit astral emoji under a 2-unit `1 字` override, is emitted whole rather than splitting UTF-16 surrogates).
+ * unless a single cluster exceeds `maxUnits` (fallen back to code-point cuts; a 2-unit code point wider than `maxUnits = 1` is emitted whole).
  */
 export function trimDanmakuByUnits(text: string, maxUnits: number): string[] {
   if (!text || maxUnits <= 0) return [text]

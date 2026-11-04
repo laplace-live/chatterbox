@@ -26,7 +26,7 @@ import {
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { countDanmakuMessages, processDanmakuMessages } from '../lib/utils'
+import { countDanmakuMessages, getGraphemes, processDanmakuMessages } from '../lib/utils'
 import { wrapSegment, wrapSplitUnits } from '../lib/wrap'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
@@ -60,6 +60,7 @@ export function NormalSendTab() {
   const showPromptPicker = isLlmApiConfigured() && llmPromptsNormalSend.value.length > 0
 
   const msgCount = previewNormalSendCount(fasongText.value)
+  const charCount = getGraphemes(fasongText.value).length
 
   /** Polish the textarea content in place; returns whether it succeeded. */
   const polishCurrentInput = async (): Promise<boolean> => {
@@ -232,7 +233,7 @@ export function NormalSendTab() {
             className='h-14'
           />
           <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>
-            {msgCount > 1 ? `${msgCount} 条 · ${fasongText.value.length}` : fasongText.value.length}
+            {msgCount > 1 ? `${msgCount} 条 · ${charCount}` : charCount}
           </div>
         </div>
 

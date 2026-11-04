@@ -347,36 +347,36 @@ describe('insertRandomChar', () => {
   })
 })
 
-/** Matches Bilibili's `utilDanmuLength`: printable ASCII = 1, BMP non-ASCII = 2, astral surrogate pair = 4. */
+/** Matches Bilibili `/msg/send` unit weighting: printable ASCII = 1, any non-ASCII code point (including astral emoji) = 2. */
 describe('getDanmakuUnits & trimDanmakuByUnits', () => {
-  test('weights ASCII, CJK, invisible chars, and emojis identically to Bilibili utilDanmuLength', () => {
+  test('weights ASCII as 1 and CJK, invisible chars, and astral emoji code points as 2', () => {
     expect(getDanmakuUnits('a ~')).toBe(3)
     expect(getDanmakuUnits('你好')).toBe(4)
     expect(getDanmakuUnits('【】')).toBe(4)
     expect(getDanmakuUnits('\u200B')).toBe(2)
-    expect(getDanmakuUnits('😀')).toBe(4)
-    expect(getDanmakuUnits('👍🏽')).toBe(8)
+    expect(getDanmakuUnits('😀')).toBe(2)
+    expect(getDanmakuUnits('👍🏽')).toBe(4)
   })
 
-  test('fits 40 CJK chars or 80 ASCII chars or 20 emojis into 80 units and splits past 80', () => {
+  test('fits 40 CJK/emoji chars or 80 ASCII chars into 80 units and splits past 80', () => {
     expect(trimDanmakuByUnits('好'.repeat(40), 80)).toEqual(['好'.repeat(40)])
     expect(trimDanmakuByUnits('好'.repeat(41), 80)).toEqual(['好'.repeat(40), '好'])
     expect(trimDanmakuByUnits('a'.repeat(80), 80)).toEqual(['a'.repeat(80)])
     expect(trimDanmakuByUnits('a'.repeat(81), 80)).toEqual(['a'.repeat(80), 'a'])
     expect(trimDanmakuByUnits(`${'a'.repeat(79)}好`, 80)).toEqual(['a'.repeat(79), '好'])
-    expect(trimDanmakuByUnits('😀'.repeat(20), 80)).toEqual(['😀'.repeat(20)])
-    expect(trimDanmakuByUnits('😀'.repeat(21), 80)).toEqual(['😀'.repeat(20), '😀'])
+    expect(trimDanmakuByUnits('😀'.repeat(40), 80)).toEqual(['😀'.repeat(40)])
+    expect(trimDanmakuByUnits('😀'.repeat(41), 80)).toEqual(['😀'.repeat(40), '😀'])
   })
 
   test('keeps multi-codepoint grapheme clusters intact unless a single cluster exceeds maxUnits', () => {
-    // 10 * 8 = 80 units; 11th skin-tone emoji moves whole to chunk 2.
-    expect(trimDanmakuByUnits('👍🏽'.repeat(11), 80)).toEqual(['👍🏽'.repeat(10), '👍🏽'])
-    // Oversized ZWJ cluster (22 units) falls back to code-point cuts when maxUnits = 10.
-    const chunks = trimDanmakuByUnits('👨‍👩‍👧‍👦', 10)
+    // 20 * 4 = 80 units; 21st skin-tone emoji moves whole to chunk 2.
+    expect(trimDanmakuByUnits('👍🏽'.repeat(21), 80)).toEqual(['👍🏽'.repeat(20), '👍🏽'])
+    // Oversized ZWJ cluster (7 code points = 14 units) falls back to code-point cuts when maxUnits = 6.
+    const chunks = trimDanmakuByUnits('👨‍👩‍👧‍👦', 6)
     expect(chunks.length).toBeGreaterThan(1)
-    for (const chunk of chunks) expect(getDanmakuUnits(chunk)).toBeLessThanOrEqual(10)
-    // Indivisible single astral code point (4 units) stays whole under a 1-字 (2-unit) override without tearing UTF-16 surrogates.
-    expect(trimDanmakuByUnits('😀你好', 2)).toEqual(['😀', '你', '好'])
+    for (const chunk of chunks) expect(getDanmakuUnits(chunk)).toBeLessThanOrEqual(6)
+    // Indivisible single 2-unit code point stays whole when maxUnits = 1 without tearing UTF-16 surrogates.
+    expect(trimDanmakuByUnits('😀你好', 1)).toEqual(['😀', '你', '好'])
   })
 
   test('processDanmakuMessages accounts for inserted invisible char (2 units) before splitting', () => {
