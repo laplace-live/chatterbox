@@ -15,15 +15,6 @@ describe('buildGeminiLiveUrl', () => {
     expect(buildGeminiLiveUrl('https://generativelanguage.googleapis.com/v1beta/openai/', 'k1')).toBe(`${LIVE}?key=k1`)
   })
 
-  test('maps any Cloudflare AI Gateway URL onto its Google realtime route', () => {
-    const route = 'wss://gateway.ai.cloudflare.com/v1/acct/gw/google?api_key=k1'
-    expect(buildGeminiLiveUrl('https://gateway.ai.cloudflare.com/v1/acct/gw', 'k1')).toBe(route)
-    expect(
-      buildGeminiLiveUrl('https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/openai', 'k1')
-    ).toBe(route)
-    expect(buildGeminiLiveUrl('https://gateway.ai.cloudflare.com/v1/acct/gw/compat/', 'k1')).toBe(route)
-  })
-
   test('appends the Live path to a reverse-proxy root, keeping its scheme', () => {
     expect(buildGeminiLiveUrl('https://proxy.example.com/gemini/', 'k1')).toBe(
       'wss://proxy.example.com/gemini/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=k1'
@@ -49,7 +40,7 @@ describe('buildGeminiLiveUrl', () => {
   })
 
   test('rejects non-URLs and non-web schemes', () => {
-    expect(() => buildGeminiLiveUrl('gateway.ai.cloudflare.com/v1/acct/gw', 'k1')).toThrow('接口地址无效')
+    expect(() => buildGeminiLiveUrl('proxy.example.com/gemini', 'k1')).toThrow('接口地址无效')
     expect(() => buildGeminiLiveUrl('ftp://example.com', 'k1')).toThrow('接口地址须以 https:// 或 http:// 开头')
   })
 })
@@ -57,8 +48,8 @@ describe('buildGeminiLiveUrl', () => {
 describe('buildGeminiModelsUrl', () => {
   test('lists from the same root as the Live socket', () => {
     expect(buildGeminiModelsUrl('')).toBe('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000')
-    expect(buildGeminiModelsUrl('https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/openai')).toBe(
-      'https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/models?pageSize=1000'
+    expect(buildGeminiModelsUrl('https://proxy.example.com/gemini/')).toBe(
+      'https://proxy.example.com/gemini/v1beta/models?pageSize=1000'
     )
     expect(buildGeminiModelsUrl('wss://proxy.example.com/gemini/')).toBe(
       'https://proxy.example.com/gemini/v1beta/models?pageSize=1000'

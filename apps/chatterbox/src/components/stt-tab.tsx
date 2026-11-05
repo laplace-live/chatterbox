@@ -724,9 +724,8 @@ export function SttTab() {
               </a>{' '}
               {isGemini ? (
                 <>
-                  获取 API Key。接口地址留空即直连 Google；无法直连时可填 Cloudflare AI Gateway 网关地址（如{' '}
-                  <code>https://gateway.ai.cloudflare.com/v1/账户ID/网关名</code>
-                  ，需关闭网关的身份验证）或反向代理地址
+                  获取 API Key。接口地址留空即直连 Google；无法直连时可填反向代理地址（如转发至{' '}
+                  <code>generativelanguage.googleapis.com</code> 的 Cloudflare Worker）
                 </>
               ) : (
                 '注册账号并获取 API Key'

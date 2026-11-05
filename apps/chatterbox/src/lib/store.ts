@@ -301,7 +301,7 @@ export const gladiaTranslationTarget = gmSignal('gladiaTranslationTarget', 'en')
 
 // --- Gemini Live (provider-specific) ---
 export const geminiApiKey = gmSignal('geminiApiKey', '')
-// '' = Google directly; otherwise a Cloudflare AI Gateway or reverse-proxy root, for networks that can't reach Google.
+// '' = Google directly; otherwise a reverse-proxy root, for networks that can't reach Google.
 export const geminiBaseUrl = gmSignal('geminiBaseUrl', '')
 // Typed freely; `geminiModels` caches compatible Live models as a picker shortcut.
 export const geminiModel = gmSignal('geminiModel', GEMINI_DEFAULT_MODEL)
