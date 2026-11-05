@@ -6,9 +6,9 @@ const load = () => loadWithFakeGm<typeof import('./gemini-models')>(new URL('./g
 
 test('lists Live transcription models through the configured root, keying with the trimmed header', async () => {
   const gemini = await load()
-  const pending = gemini.fetchGeminiModels(' key ', 'https://gateway.ai.cloudflare.com/v1/acct/gw')
+  const pending = gemini.fetchGeminiModels(' key ', 'https://proxy.example.com/gemini')
   expect(gemini.requests[0].options).toMatchObject({
-    url: 'https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/models?pageSize=1000',
+    url: 'https://proxy.example.com/gemini/v1beta/models?pageSize=1000',
     headers: { 'x-goog-api-key': 'key' },
     timeout: 15_000,
   })

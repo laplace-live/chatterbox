@@ -38,7 +38,6 @@ export default defineConfig({
         connect: [
           'api.deepgram.com',
           'generativelanguage.googleapis.com',
-          'gateway.ai.cloudflare.com',
           'api.typesafe.ai',
           'openrouter.ai',
           'api.openai.com',

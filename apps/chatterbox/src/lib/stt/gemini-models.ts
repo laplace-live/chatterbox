@@ -1,4 +1,4 @@
-/** List Gemini Live transcription and translation models through gateway-compatible `gmFetch`. */
+/** List Gemini Live transcription and translation models through the configured API root. */
 
 import type { SttModelOption } from './types'
 
