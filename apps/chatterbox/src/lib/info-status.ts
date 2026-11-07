@@ -1,5 +1,5 @@
 /**
- * Read-only metadata aggregator for the info button popover.
+ * Read-only metadata aggregator for the status bar's info items.
  *
  * Cached per-uid for the page lifetime, never persisted (stale opinionated data
  * misleads across days; reload re-fetches). 404 = "no data" (null, no error),
@@ -10,12 +10,11 @@ import type { LaplaceInternal } from '@laplace.live/internal'
 import { signal } from '@preact/signals'
 
 import { BASE_URL } from './const'
-import { infoFertilityEnabled, infoGuildEnabled, infoMcnEnabled } from './store'
 
 export type FertilityData = LaplaceInternal.HTTPS.Workers.FertilityUserResponse
 export type BilibiliUserData = LaplaceInternal.HTTPS.Workers.BilibiliUser
 
-/** Uid currently being displayed by the info popover (null until resolved). */
+/** Uid currently being displayed by the info items (null until resolved). */
 export const infoCurrentUid = signal<number | null>(null)
 
 /**
@@ -112,11 +111,14 @@ async function fetchBilibiliUser(uid: number): Promise<void> {
   return p
 }
 
-/** Fan out enabled fetches for `uid`; safe to call repeatedly (deduped), no-op when null. */
-export function ensureInfoData(uid: number | null): void {
-  if (uid === null) return
-  if (infoFertilityEnabled.value) void fetchFertility(uid)
-  if (infoGuildEnabled.value || infoMcnEnabled.value) void fetchBilibiliUser(uid)
+/** Load 魔法期 data for `uid`; safe to call repeatedly (deduped), no-op when null. */
+export function ensureFertilityData(uid: number | null): void {
+  if (uid !== null) void fetchFertility(uid)
+}
+
+/** Load the BilibiliUser record behind 公会 and MCN; safe to call repeatedly (deduped), no-op when null. */
+export function ensureBilibiliUserData(uid: number | null): void {
+  if (uid !== null) void fetchBilibiliUser(uid)
 }
 
 /** Clear visible signals on uid change; caches preserved so revisits stay instant. */
@@ -149,9 +151,7 @@ export function getFertilityDisplay(status: FertilityStatus): FertilityDisplay {
   return FERTILITY_DISPLAY[status]
 }
 
-/** Emoji for the info button face; null (not a placeholder) when no fertility data. */
-export function getFertilityButtonEmoji(): string | null {
-  const data = fertilityData.value
-  if (!data) return null
-  return FERTILITY_DISPLAY[data.status].emoji
+/** Whether the status is projected from a stale observation (shown as 推测) rather than observed. */
+export function isFertilityProjected(data: FertilityData): boolean {
+  return data.cyclesElapsedSinceObservation > 0
 }

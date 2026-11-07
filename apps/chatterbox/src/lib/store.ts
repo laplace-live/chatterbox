@@ -79,7 +79,7 @@ export const autoSeekWhenHidden = gmSignal('autoSeekWhenHidden', false)
 // Auto-quality (自动原画): one-shot switch to 原画 (qn=10000) on page load, so later manual picks stay respected. Inert when `audioOnlyActive` (avoids ping-pong with its stopPlayback watchdog). See `lib/auto-quality.ts`.
 export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 
-// Info button popover sections (魔法期 / 公会 / MCN from Laplace workers), each independently gated. Toggles gate only the SECTIONS; the button stays visible for the local 用户备注 editor. See `InfoButton`.
+// Status bar info items (魔法期 / 公会 / MCN from Laplace workers), each independently gated; the local 用户备注 item always shows. See `InfoItems`.
 export const infoFertilityEnabled = gmSignal('infoFertilityEnabled', false)
 export const infoGuildEnabled = gmSignal('infoGuildEnabled', false)
 export const infoMcnEnabled = gmSignal('infoMcnEnabled', false)

@@ -5,7 +5,7 @@ import { cn } from 'cn'
  * LAPLACE ICU (https://laplace.icu), keyed by BV id via `https://laplace.icu/v/:bvid`.
  *
  * Plain anchor (no live-room machinery); opens in a new tab to keep the user's place.
- * Layout (fixed corner, z-index, spacing) is owned by `<CornerCluster />`.
+ * Layout (fixed corner, z-index, spacing) is owned by `<StatusBar />`.
  */
 export function ArchiveButton({ bvid }: { bvid: string }) {
   return (
