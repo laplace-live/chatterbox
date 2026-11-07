@@ -6,11 +6,7 @@ import { deleteUserNote, getUserNote, setUserNote } from '../lib/user-notes'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
 
-/**
- * Local-only note editor for `uid`. Auto-saves on a 1.5s debounce, flushed on
- * blur and on unmount (popover close); the `[uid]` cleanup captures its uid so
- * drafts land under the right uid across nav. `setUserNote` trim-deletes on empty.
- */
+/** Local note editor for `uid`; autosaves after 1.5s idle and flushes on blur or unmount under the uid it was typed for. */
 export function UserNoteEditor({ uid }: { uid: number }) {
   const stored = getUserNote(uid)
   const draft = useSignal(stored?.note ?? '')

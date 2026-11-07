@@ -12,9 +12,8 @@ import { STATUS_BAR_BUTTON_CLASS, StatusBarCollapsible, useStatusBarCompact } fr
 const UNMUTE_FALLBACK_VOLUME = 0.5
 
 /**
- * Audio-only mute toggle plus a volume slider, inline beside it or (compact bar) floating vertically
- * above it on hover, so the mute target never moves. Lives in our bar because `stopPlayback()` tears
- * down bilibili's native controls; pure signal I/O into `audioOnlyVolume`/`audioOnlyMuted` (never the audio element).
+ * Audio-only mute toggle and volume slider (a vertical popup when compact), replacing the
+ * controls `stopPlayback()` removes; writes only the volume/mute signals, never the audio element.
  */
 export function AudioOnlyControls() {
   const compact = useStatusBarCompact()
@@ -39,7 +38,6 @@ export function AudioOnlyControls() {
   const onSlide = (nextPercent: number) => {
     const next = nextPercent / 100
     audioOnlyVolume.value = next
-    // Any positive value unmutes; dragging to 0 mutes.
     audioOnlyMuted.value = next <= 0
   }
 
