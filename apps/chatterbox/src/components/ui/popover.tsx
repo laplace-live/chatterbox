@@ -125,7 +125,8 @@ export function PopoverContent({
   }, [open])
 
   // Measure and place the fixed box, re-running on scroll (capture phase so the
-  // dialog's inner panel scroll counts too), resize, and content resize.
+  // dialog's inner panel scroll counts too), resize, and content resize, plus
+  // trigger/parent resize since a sibling changing width (status bar) moves the trigger.
   // useLayoutEffect so the first placement lands before paint.
   useLayoutEffect(() => {
     if (!open) {
@@ -169,6 +170,9 @@ export function PopoverContent({
     document.addEventListener('scroll', schedule, true)
     const observer = new ResizeObserver(schedule)
     if (contentRef.current) observer.observe(contentRef.current)
+    const wrapper = wrapperRef.current
+    if (wrapper) observer.observe(wrapper)
+    if (wrapper?.parentElement) observer.observe(wrapper.parentElement)
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', schedule)
