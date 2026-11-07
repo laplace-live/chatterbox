@@ -109,17 +109,25 @@ interface InfoChipProps {
   panelClass: string
   /** Header content beside the title. */
   headerExtra?: (uid: number) => ComponentChildren
+  /** Runs when the popover opens; data items re-run their fetch so a failed load retries. */
+  onOpen?: () => void
   children: (uid: number) => ComponentChildren
 }
 
 /** Bar chip summarizing one topic in a line, with the full section in its popover. */
-function InfoChip({ id, topic, icon, face, panelClass, headerExtra, children }: InfoChipProps) {
+function InfoChip({ id, topic, icon, face, panelClass, headerExtra, onOpen, children }: InfoChipProps) {
   const open = useSignal(false)
   const uid = infoCurrentUid.value
   const name = `${topic}：${face.detail}`
 
   return (
-    <Popover open={open.value} onOpenChange={v => (open.value = v)}>
+    <Popover
+      open={open.value}
+      onOpenChange={v => {
+        open.value = v
+        if (v) onOpen?.()
+      }}
+    >
       <PopoverTrigger>
         <button
           type='button'
@@ -208,6 +216,7 @@ function FertilityItem() {
       panelClass='w-96'
       // Shown regardless of data state so viewers can contribute when there's no data yet.
       headerExtra={uid => <ContributeLink uid={uid} />}
+      onOpen={() => ensureFertilityData(uid)}
     >
       {() => (result.state === 'ready' ? <FertilityCard data={result.data} /> : <PanelStatus status={result} />)}
     </InfoChip>
@@ -294,7 +303,14 @@ function AffiliationItem({ id, topic, icon, noneLabel, noneDetail, selectHistory
   else face = { label: noneLabel, detail: noneDetail, tone: 'dim' }
 
   return (
-    <InfoChip id={id} topic={topic} icon={icon} face={face} panelClass='w-80'>
+    <InfoChip
+      id={id}
+      topic={topic}
+      icon={icon}
+      face={face}
+      panelClass='w-80'
+      onOpen={() => ensureBilibiliUserData(uid)}
+    >
       {() =>
         result.state === 'ready' ? (
           <HistoryList entries={history} noneDetail={noneDetail} />
