@@ -11,6 +11,7 @@ import {
   extractOpusPubDate,
   formatCodePoints,
   formatDanmakuError,
+  formatRelativeDate,
   getDanmakuUnits,
   insertRandomChar,
   isHttpUrl,
@@ -114,6 +115,31 @@ describe('extractOpusPubDate', () => {
         detail: { modules: [{ module_type: 'MODULE_TYPE_AUTHOR', module_author: { pub_ts: '0' } }] },
       })
     ).toBeUndefined()
+  })
+})
+
+describe('formatRelativeDate', () => {
+  const DAY = 86_400_000
+  const daysAgo = (days: number) => formatRelativeDate(Date.now() - days * DAY)
+
+  test('day and month buckets', () => {
+    expect(daysAgo(0)).toBe('今天')
+    expect(daysAgo(29)).toBe('29 天前')
+    expect(daysAgo(30)).toBe('1 个月前')
+  })
+
+  // 30-day months reach 12 at day 360; years must not start until 365 or this reads "0 年前".
+  test('switches from months to years at 365 days', () => {
+    expect(daysAgo(359)).toBe('11 个月前')
+    expect(daysAgo(360)).toBe('12 个月前')
+    expect(daysAgo(364)).toBe('12 个月前')
+    expect(daysAgo(365)).toBe('1 年前')
+  })
+
+  test('invalid and future timestamps', () => {
+    expect(formatRelativeDate(0)).toBe('未知')
+    expect(formatRelativeDate(Number.NaN)).toBe('未知')
+    expect(formatRelativeDate(Date.now() + DAY)).toBe('未来')
   })
 })
 

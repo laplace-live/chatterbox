@@ -22,7 +22,7 @@ import {
 } from '../lib/info-status'
 import { cachedStreamerUid, infoFertilityEnabled, infoGuildEnabled, infoMcnEnabled } from '../lib/store'
 import { getUserNote } from '../lib/user-notes'
-import { buildOvuContributeUrl, getGraphemes, trimText } from '../lib/utils'
+import { buildOvuContributeUrl, formatRelativeDate, getGraphemes, trimText } from '../lib/utils'
 import { STATUS_BAR_BUTTON_CLASS, StatusBarCollapsible } from './status-bar'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { UserNoteEditor } from './user-note-editor'
@@ -346,22 +346,4 @@ function NoteItem() {
       {uid => <UserNoteEditor uid={uid} />}
     </InfoChip>
   )
-}
-
-/**
- * Compact "X 天前/月前/年前" for Unix-ms timestamps; day granularity since
- * the data isn't real-time (finer precision would mislead).
- */
-function formatRelativeDate(ts: number): string {
-  if (!Number.isFinite(ts) || ts <= 0) return '未知'
-  const diff = Date.now() - ts
-  if (diff < 0) return '未来'
-  const day = 86400_000
-  const days = Math.floor(diff / day)
-  if (days < 1) return '今天'
-  if (days < 30) return `${days} 天前`
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months} 个月前`
-  const years = Math.floor(days / 365)
-  return `${years} 年前`
 }
