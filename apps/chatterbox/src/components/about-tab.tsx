@@ -124,7 +124,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     name: '主播公会 / MCN 信息',
     host: 'workers.vrp.moe',
     url: 'https://laplace.live/chatterbox/streamer-info',
-    trigger: '在设置中开启「显示公会」或「显示 MCN」后，打开主播信息面板时',
+    trigger: '在设置中开启「显示公会信息」或「显示 MCN 信息」后，右下角状态栏显示对应信息时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID，获取该主播在 bilibili 的历史公会与 MCN 归属记录。两个开关共享同一个接口，开启其中任意一个即会触发请求。数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
   },
@@ -132,7 +132,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
     name: '主播魔法期数据',
     host: 'workers.vrp.moe',
     url: 'https://laplace.live/chatterbox/streamer-info',
-    trigger: '在设置中开启「显示魔法期」后，打开主播信息面板时',
+    trigger: '在设置中开启「显示魔法期」后，右下角状态栏显示对应信息时',
     description:
       '向 LAPLACE Live! 服务发送当前主播的 UID（直播间页面为主播 UID，个人空间页面为页面 UID），获取该主播的魔法期记录与预测。仅在开启对应开关后才会请求，数据按 UID 在页面内存中缓存，刷新页面后会重新获取。',
   },

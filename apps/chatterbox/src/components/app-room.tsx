@@ -24,8 +24,8 @@ import { AudioOnlyControls } from './audio-only-controls'
 import { AudioOnlyModeSelect } from './audio-only-mode-select'
 import { Configurator, clampWidth } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
-import { CornerCluster } from './corner-cluster'
-import { InfoButton } from './info-button'
+import { InfoItems } from './info-items'
+import { StatusBar } from './status-bar'
 import { AlertDialog } from './ui/alert-dialog'
 
 export function AppRoom() {
@@ -136,12 +136,12 @@ export function AppRoom() {
 
   return (
     <>
-      <CornerCluster>
-        <InfoButton />
+      <StatusBar>
+        <InfoItems />
         <AudioOnlyControls />
         <AudioOnlyModeSelect />
         <ConfiguratorButton />
-      </CornerCluster>
+      </StatusBar>
       <Configurator />
       <AlertDialog />
     </>

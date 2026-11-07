@@ -267,6 +267,24 @@ export function extractOpusPubDate(initialState: unknown): string | undefined {
 }
 
 /**
+ * Compact "X 天前/月前/年前" for Unix-ms timestamps; day granularity since
+ * the data isn't real-time (finer precision would mislead).
+ */
+export function formatRelativeDate(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return '未知'
+  const diff = Date.now() - ts
+  if (diff < 0) return '未来'
+  const day = 86400_000
+  const days = Math.floor(diff / day)
+  if (days < 1) return '今天'
+  if (days < 30) return `${days} 天前`
+  const months = Math.floor(days / 30)
+  if (days < 365) return `${months} 个月前`
+  const years = Math.floor(days / 365)
+  return `${years} 年前`
+}
+
+/**
  * Builds the laplace.live /ovu contribution link: `?uid=<uid>[&source=<url>][&date=<YYYY-MM-DD>]`.
  * `source` and `date` are only known on `/opus/*` pages, so they're optional.
  */

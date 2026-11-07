@@ -29,12 +29,6 @@ export function getUserNote(uid: number | string | null | undefined): UserNote |
   return note ?? null
 }
 
-/** True if `uid` has a non-empty stored note. Whitespace-only counts as empty. */
-export function hasUserNote(uid: number | string | null | undefined): boolean {
-  const n = getUserNote(uid)
-  return n !== null && n.note.trim().length > 0
-}
-
 /**
  * Upsert the note for `uid`. Empty / whitespace-only `note` deletes the
  * entry instead of storing a blank, so the indicator stays accurate.

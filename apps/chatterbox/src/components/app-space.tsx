@@ -1,5 +1,5 @@
-import { CornerCluster } from './corner-cluster'
-import { InfoButton } from './info-button'
+import { InfoItems } from './info-items'
+import { StatusBar } from './status-bar'
 
 /**
  * Minimal app surface for `space.bilibili.com`.
@@ -10,8 +10,8 @@ import { InfoButton } from './info-button'
  */
 export function AppSpace() {
   return (
-    <CornerCluster>
-      <InfoButton />
-    </CornerCluster>
+    <StatusBar>
+      <InfoItems />
+    </StatusBar>
   )
 }

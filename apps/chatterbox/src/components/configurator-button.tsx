@@ -1,10 +1,11 @@
 import { cn } from 'cn'
 
 import { dialogOpen, sendMsg } from '../lib/store'
+import { STATUS_BAR_BUTTON_CLASS } from './status-bar'
 
 /**
  * Toggle that opens the floating configurator. Live-page only: its settings
- * tab reads live-room state absent on space pages. Layout owned by `<CornerCluster />`.
+ * tab reads live-room state absent on space pages. Layout owned by `<StatusBar />`.
  */
 export function ConfiguratorButton() {
   const toggle = () => {
@@ -16,12 +17,7 @@ export function ConfiguratorButton() {
       type='button'
       id='laplace-chatterbox-toggle'
       onClick={toggle}
-      class={cn(
-        'appearance-none border-none outline-none',
-        'cursor-pointer select-none',
-        'h-8 rounded px-2 text-white',
-        sendMsg.value ? 'bg-brand' : 'bg-ga6'
-      )}
+      class={cn(STATUS_BAR_BUTTON_CLASS, sendMsg.value ? 'bg-brand' : 'bg-ga6')}
     >
       直播助手
     </button>

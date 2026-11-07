@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import { AUTO_ENGAGE_DELAY_MS } from '../lib/audio-only'
 import { type AudioOnlyMode, audioOnlyActive, audioOnlyMode } from '../lib/store'
+import { STATUS_BAR_BUTTON_CLASS } from './status-bar'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 interface ModeOption {
@@ -82,10 +83,8 @@ export function AudioOnlyModeSelect() {
           aria-haspopup='listbox'
           aria-expanded={open.value}
           class={cn(
-            'appearance-none border-none outline-none',
-            'cursor-pointer select-none',
-            'h-8 rounded px-2 text-white',
-            'inline-flex items-center gap-0.5',
+            STATUS_BAR_BUTTON_CLASS,
+            'gap-0.5',
             // Pink only while engaged (自动音频 stays gray in the foreground); gray keeps `直播助手` primary.
             audioOnlyActive.value ? 'bg-[#FF6699]' : 'bg-ga6'
           )}

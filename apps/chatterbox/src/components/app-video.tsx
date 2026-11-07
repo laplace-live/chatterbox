@@ -1,11 +1,11 @@
 import { ArchiveButton } from './archive-button'
-import { CornerCluster } from './corner-cluster'
+import { StatusBar } from './status-bar'
 
 /** Minimal app surface for `www.bilibili.com/video/*` pages: archive entry point only. */
 export function AppVideo({ bvid }: { bvid: string }) {
   return (
-    <CornerCluster>
+    <StatusBar>
       <ArchiveButton bvid={bvid} />
-    </CornerCluster>
+    </StatusBar>
   )
 }

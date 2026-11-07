@@ -46,7 +46,7 @@ export function Configurator() {
     <div
       id='laplace-chatterbox-dialog'
       // Visible+optimized: flex column, overflow-hidden (children opt back into scroll). Non-optimized: legacy block growing to viewport height.
-      // z-index sits one below the corner cluster so InfoButton's popover (trapped in the cluster's stacking context) can render over this dialog.
+      // z-index sits one below the status bar so its popovers (trapped in the bar's stacking context) can render over this dialog.
       className={cn(
         'fixed right-1 bottom-[calc(34px)] z-2147483646 text-[13px]',
         'min-w-12.5 rounded bg-bg1 shadow-md ring ring-ga6/30',
