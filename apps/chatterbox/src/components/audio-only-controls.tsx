@@ -72,13 +72,15 @@ export function AudioOnlyControls() {
       </button>
       {compact && (
         // Follows the button in tab order; `:active` keeps it up mid-drag and the hide delay bridges brief exits.
+        // Touch has no hover or focus-visible, so there a tapped (focused) control keeps it up instead.
         <div
           class={cn(
             'absolute bottom-full left-0 flex w-8 justify-center pb-1',
             'invisible opacity-0 transition-[opacity,visibility] delay-150',
             'group-hover/volume:visible group-hover/volume:opacity-100 group-hover/volume:delay-0',
             'group-has-focus-visible/volume:visible group-has-focus-visible/volume:opacity-100 group-has-focus-visible/volume:delay-0',
-            'group-has-active/volume:visible group-has-active/volume:opacity-100'
+            'group-has-active/volume:visible group-has-active/volume:opacity-100',
+            'pointer-coarse:group-focus-within/volume:visible pointer-coarse:group-focus-within/volume:opacity-100 pointer-coarse:group-focus-within/volume:delay-0'
           )}
         >
           <div class='flex flex-col items-center gap-1.5 rounded bg-ga6 px-1 pt-2 pb-1.5 shadow-md'>
