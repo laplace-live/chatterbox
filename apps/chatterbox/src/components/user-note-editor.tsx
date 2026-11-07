@@ -18,7 +18,6 @@ export function UserNoteEditor({ uid }: { uid: number }) {
   const lastLoadedUpdatedAt = useSignal<number | null>(null)
   const saveStatus = useSignal<'idle' | 'saving' | 'saved'>('idle')
 
-  // Refs, not signals: imperative timer handles, not rendered state.
   const debounceTimer = useRef<number | null>(null)
   const savedTimer = useRef<number | null>(null)
 
