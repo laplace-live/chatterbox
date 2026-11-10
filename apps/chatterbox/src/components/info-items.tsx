@@ -20,10 +20,16 @@ import {
   infoOpusMeta,
   isFertilityProjected,
 } from '../lib/info-status'
-import { cachedStreamerUid, infoFertilityEnabled, infoGuildEnabled, infoMcnEnabled } from '../lib/store'
+import {
+  cachedStreamerUid,
+  infoFertilityEnabled,
+  infoGuildEnabled,
+  infoMcnEnabled,
+  statusBarInfoCollapsed,
+} from '../lib/store'
 import { getUserNote } from '../lib/user-notes'
 import { buildOvuContributeUrl, formatRelativeDate, getGraphemes, trimText } from '../lib/utils'
-import { STATUS_BAR_BUTTON_CLASS, StatusBarCollapsible } from './status-bar'
+import { STATUS_BAR_BUTTON_CLASS, StatusBarCollapsible, StatusBarFold } from './status-bar'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { UserNoteEditor } from './user-note-editor'
 
@@ -60,6 +66,19 @@ export function InfoItems() {
       )}
       <NoteItem />
     </>
+  )
+}
+
+/** `InfoItems` with the live-room fold toggle; the fold state carries over across rooms. */
+export function FoldableInfoItems() {
+  const collapsed = statusBarInfoCollapsed.value
+  return (
+    <StatusBarFold
+      collapsed={collapsed}
+      onToggle={() => (statusBarInfoCollapsed.value = !statusBarInfoCollapsed.value)}
+    >
+      <InfoItems />
+    </StatusBarFold>
   )
 }
 

@@ -1,3 +1,4 @@
+import { IconChevronsRight } from '@tabler/icons-preact'
 import { cn } from 'cn'
 import { type ComponentChildren, createContext } from 'preact'
 import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks'
@@ -84,5 +85,81 @@ export function StatusBarCollapsible({ children }: { children: ComponentChildren
     <span data-status-bar-collapsible='' inert={compact} class={cn('flex', compact && 'w-0 overflow-hidden')}>
       <span class='flex w-max items-center'>{children}</span>
     </span>
+  )
+}
+
+/**
+ * User-toggled group that folds its content away to the right; the chevron stays put as the
+ * anchor. State is caller-owned so it can persist.
+ */
+export function StatusBarFold({
+  collapsed,
+  onToggle,
+  children,
+}: {
+  collapsed: boolean
+  onToggle: () => void
+  children: ComponentChildren
+}) {
+  const groupRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Width read right before a toggle, so an interrupted fold continues from where it is.
+  const fromWidth = useRef(0)
+  const mounted = useRef(false)
+
+  // Width can't transition to/from `auto`, so pin the start width for the animation, then hand
+  // the resting width back to the class (`w-0` / `w-auto`).
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true
+      return
+    }
+    const group = groupRef.current
+    const content = contentRef.current
+    if (!group || !content) return
+    const to = collapsed ? 0 : content.offsetWidth
+    group.style.transition = 'none'
+    group.style.width = `${fromWidth.current}px`
+    void group.offsetWidth
+    group.style.transition = 'width 200ms ease-out'
+    group.style.width = `${to}px`
+    const settle = (e: TransitionEvent) => {
+      if (e.target !== group || e.propertyName !== 'width') return
+      group.style.transition = ''
+      group.style.width = ''
+    }
+    group.addEventListener('transitionend', settle)
+    return () => group.removeEventListener('transitionend', settle)
+  }, [collapsed])
+
+  const toggle = () => {
+    fromWidth.current = groupRef.current?.getBoundingClientRect().width ?? contentRef.current?.offsetWidth ?? 0
+    onToggle()
+  }
+
+  return (
+    <>
+      <div ref={groupRef} inert={collapsed} class={cn('min-w-0 overflow-hidden', collapsed ? 'w-0' : 'w-auto')}>
+        <div ref={contentRef} class='flex w-max items-center gap-1'>
+          {children}
+        </div>
+      </div>
+      <button
+        type='button'
+        id='laplace-status-bar-fold'
+        onClick={toggle}
+        title={collapsed ? '展开主播信息' : '折叠主播信息'}
+        aria-label={collapsed ? '展开主播信息' : '折叠主播信息'}
+        aria-expanded={!collapsed}
+        class={cn(STATUS_BAR_BUTTON_CLASS, 'w-7 justify-center px-0', 'bg-ga6')}
+      >
+        <IconChevronsRight
+          size={16}
+          stroke={2}
+          aria-hidden='true'
+          class={cn('transition-transform duration-200', collapsed && 'rotate-180')}
+        />
+      </button>
+    </>
   )
 }
