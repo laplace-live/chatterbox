@@ -29,13 +29,13 @@ On Windows, double-click `kakashi-server-windows-x64.exe`. Keep the console wind
 kakashi-server [--port 9697] [--host 127.0.0.1] [--token <token>] [--allow-origin <origin>] [--debug]
 ```
 
-| Flag             | Env                     | Default     | Notes                                                     |
-| ---------------- | ----------------------- | ----------- | --------------------------------------------------------- |
-| `--port`         | `KAKASHI_PORT`          | `9697`      |                                                           |
-| `--host`         | `KAKASHI_HOST`          | `127.0.0.1` | Anything but loopback requires `--token`                  |
-| `--token`        | `KAKASHI_TOKEN`         | (none)      | Every tab must send it (Chatterbox → 忍者 → 令牌)         |
-| `--allow-origin` | `KAKASHI_ALLOW_ORIGINS` | (none)      | Extra WebSocket origins; repeatable or comma-separated    |
-| `--debug`        | `DEBUG=1`               | off         | Logs every copy result and follow                         |
+| Flag             | Env                     | Default     | Notes                                                  |
+| ---------------- | ----------------------- | ----------- | ------------------------------------------------------ |
+| `--port`         | `KAKASHI_PORT`          | `9697`      |                                                        |
+| `--host`         | `KAKASHI_HOST`          | `127.0.0.1` | Anything but loopback requires `--token`               |
+| `--token`        | `KAKASHI_TOKEN`         | (none)      | Every tab must send it (Chatterbox → 忍者 → 令牌)      |
+| `--allow-origin` | `KAKASHI_ALLOW_ORIGINS` | (none)      | Extra WebSocket origins; repeatable or comma-separated |
+| `--debug`        | `DEBUG=1`               | off         | Logs every copy result and follow                      |
 
 Then, in each browser, open a Bilibili live room → Chatterbox → **忍者** tab:
 
