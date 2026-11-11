@@ -24,7 +24,7 @@
     "mpegts.js": "1.8.2",
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.7",
+    "vite": "^8.3.8",
     "vite-plugin-monkey": "^8.1.1"
   }
 }
