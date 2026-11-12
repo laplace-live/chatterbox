@@ -11,7 +11,7 @@
     },
     "apps/chatterbox": {
       "name": "laplace-chatterbox",
-      "version": "4.10.0",
+      "version": "4.11.0",
       "dependencies": {
         "@preact/signals": "^2.11.4",
         "@tabler/icons-preact": "^3.49.0",
