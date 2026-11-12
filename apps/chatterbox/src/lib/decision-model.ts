@@ -39,6 +39,7 @@ export const DECISION_PROVIDER_DEFAULTS: Record<DecisionProtocol, { apiBase: str
 
 const REQUEST_TIMEOUT_MS = 8_000
 const GOOGLE_HOST = new URL(GEMINI_API_BASE).hostname
+const LOOPBACK_HOST = /^(?:(?:.+\.)?localhost|127(?:\.\d{1,3}){3}|\[::1\])$/
 // Only the default hosts require a key; custom bases may be keyless local services.
 const KEY_REQUIRED_HOSTS = Object.values(DECISION_PROVIDER_DEFAULTS).map(({ apiBase }) => new URL(apiBase).hostname)
 
@@ -67,7 +68,11 @@ export function describeDecisionConnectionGap(provider: DecisionProviderProfile)
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
     return '决策模型 API 地址须为不含认证信息、查询参数或片段的 HTTP(S) 地址'
   }
-  if (KEY_REQUIRED_HOSTS.includes(base.hostname) && !provider.apiKey.trim()) return '请填写决策模型 API Key'
+  const hasKey = provider.apiKey.trim().length > 0
+  if (KEY_REQUIRED_HOSTS.includes(base.hostname) && !hasKey) return '请填写决策模型 API Key'
+  if (base.protocol === 'http:' && hasKey && !LOOPBACK_HOST.test(base.hostname)) {
+    return '携带 API Key 时，非本机决策模型 API 地址须使用 HTTPS'
+  }
   return null
 }
 
@@ -77,7 +82,7 @@ function endpoint(provider: DecisionProviderProfile, action: 'evaluate' | 'model
   const base = new URL(provider.apiBase.trim())
   let path = base.pathname.replace(/\/+$/, '')
   if (provider.protocol === 'gemini') {
-    path = base.hostname === GOOGLE_HOST ? '' : path.replace(/\/v1beta$/, '')
+    path = base.hostname === GOOGLE_HOST ? '' : path.replace(/\/v1beta(?:\/openai)?$/, '')
     path += action === 'evaluate' ? '/v1beta/decisions' : '/v1beta/models'
     if (action === 'models') base.search = '?pageSize=1000'
   } else if (provider.protocol === 'openrouter') {

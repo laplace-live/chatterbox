@@ -162,6 +162,8 @@ describe('evaluateDecision', () => {
     ],
     ['https://proxy.example.com/gemini/', 'https://proxy.example.com/gemini/v1beta/decisions'],
     ['https://proxy.example.com/gemini/v1beta/', 'https://proxy.example.com/gemini/v1beta/decisions'],
+    ['https://proxy.example.com/gemini/v1beta/openai/', 'https://proxy.example.com/gemini/v1beta/decisions'],
+    ['https://proxy.example.com/v1beta/openai', 'https://proxy.example.com/v1beta/decisions'],
   ])('normalizes Gemini base %s', async (apiBase, expectedUrl) => {
     const client = await harness()
     const pending = client.evaluateDecision({
@@ -197,6 +199,33 @@ describe('evaluateDecision', () => {
     expect(client.requests[0].options.headers?.authorization).toBeUndefined()
     client.respond({ answers: { send: { type: 'noul', noul: 0.4 } } })
     await expect(pending).resolves.toEqual({ sendProbability: 0.4 })
+  })
+
+  test('rejects keyed non-loopback plain HTTP bases across protocols while keeping keyless HTTP and keyed loopback valid', async () => {
+    const client = await harness()
+    for (const remoteHttp of ['http://proxy.example.com/gemini', 'http://192.168.1.10:8080']) {
+      await expect(
+        client.evaluateDecision({
+          provider: { ...geminiProvider, apiBase: remoteHttp, apiKey: 'secret' },
+          preset,
+          state,
+        })
+      ).rejects.toThrow('HTTPS')
+      await expect(
+        client.evaluateDecision({ provider: { ...provider, apiBase: remoteHttp, apiKey: 'secret' }, preset, state })
+      ).rejects.toThrow('HTTPS')
+    }
+    expect(client.requests).toHaveLength(0)
+
+    for (const allowed of [
+      { ...geminiProvider, apiBase: 'http://192.168.1.10:8080', apiKey: '' },
+      { ...geminiProvider, apiBase: 'http://localhost:8080', apiKey: 'secret' },
+      { ...geminiProvider, apiBase: 'http://gemini.localhost:8080', apiKey: 'secret' },
+      { ...geminiProvider, apiBase: 'http://127.0.0.1:8080', apiKey: 'secret' },
+      { ...geminiProvider, apiBase: 'http://[::1]:8080', apiKey: 'secret' },
+    ]) {
+      expect(client.describeDecisionConnectionGap(allowed)).toBeNull()
+    }
   })
 
   test.each([
