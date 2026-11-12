@@ -3,7 +3,7 @@ import { cn } from 'cn'
 import { type ComponentChildren, createContext } from 'preact'
 import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
-import { expandedStatusBarWidth, shouldCompactStatusBar, type StatusBarSlotWidth } from '../lib/status-bar-layout'
+import { expandedStatusBarWidth, type StatusBarSlotWidth, shouldCompactStatusBar } from '../lib/status-bar-layout'
 
 const COLLAPSIBLE_SELECTOR = '[data-status-bar-collapsible]'
 const FOLD_SELECTOR = '[data-status-bar-fold]'
