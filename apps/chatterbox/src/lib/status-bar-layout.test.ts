@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { STATUS_BAR_EDGE_MARGIN, STATUS_BAR_EXPAND_HYSTERESIS, shouldCompactStatusBar } from './status-bar-layout'
+import {
+  expandedStatusBarWidth,
+  STATUS_BAR_EDGE_MARGIN,
+  STATUS_BAR_EXPAND_HYSTERESIS,
+  shouldCompactStatusBar,
+} from './status-bar-layout'
 
 const VIEWPORT = 1000
 const FITS_EXACTLY = VIEWPORT - STATUS_BAR_EDGE_MARGIN
@@ -22,5 +27,29 @@ describe('shouldCompactStatusBar', () => {
 
   test('expands once there is room past the hysteresis band', () => {
     expect(shouldCompactStatusBar(FITS_EXACTLY - STATUS_BAR_EXPAND_HYSTERESIS, VIEWPORT, true)).toBe(false)
+  })
+})
+
+describe('expandedStatusBarWidth', () => {
+  test('adds compact-hidden label widths to the measured bar', () => {
+    expect(expandedStatusBarWidth(100, [{ contentWidth: 80, slotWidth: 20, folded: false }])).toBe(160)
+  })
+
+  test('skips labels inside a manually folded group', () => {
+    expect(expandedStatusBarWidth(100, [{ contentWidth: 80, slotWidth: 20, folded: true }])).toBe(100)
+  })
+
+  test('handles folded and expanded labels together', () => {
+    expect(
+      expandedStatusBarWidth(300, [
+        { contentWidth: 80, slotWidth: 20, folded: true },
+        { contentWidth: 60, slotWidth: 24, folded: false },
+        { contentWidth: 40, slotWidth: 16, folded: false },
+      ])
+    ).toBe(360)
+  })
+
+  test('returns the measured width for no slots', () => {
+    expect(expandedStatusBarWidth(250, [])).toBe(250)
   })
 })
