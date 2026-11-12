@@ -44,7 +44,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   },
   {
     name: '决策模型 API',
-    host: 'api.typesafe.ai / openrouter.ai（默认，可自定义）',
+    host: 'generativelanguage.googleapis.com / api.typesafe.ai / openrouter.ai（默认，可自定义）',
     trigger:
       '在「自动融入」中勾选「决策模型判断是否发送」后弹幕达到触发条件时，或在设置「决策模型」中点击「刷新列表」时',
     description:

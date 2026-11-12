@@ -3,7 +3,12 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import type { DecisionPreset, DecisionProviderProfile } from '../lib/decision-model'
 
-import { DECISION_PROVIDER_DEFAULTS, fetchDecisionModels, isDecisionProtocol } from '../lib/decision-model'
+import {
+  DECISION_PROVIDER_DEFAULTS,
+  fetchDecisionModels,
+  isDecisionProtocol,
+  normalizeDecisionModelId,
+} from '../lib/decision-model'
 import {
   activeDecisionPreset,
   activeDecisionProvider,
@@ -14,6 +19,7 @@ import {
   decisionPresets,
   decisionProviders,
   removeDecisionProvider,
+  resetDecisionPresets,
   settingsDecisionOpen,
   updateDecisionProvider,
 } from '../lib/decision-settings'
@@ -27,6 +33,7 @@ import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
+/** Accordion section configuring decision providers, structured presets, and the send threshold. */
 export function DecisionModelSettings() {
   const keyVisible = useSignal(false)
   const fetchState = useSignal<{ kind: 'loading' | 'done' | 'failed'; text: string } | null>(null)
@@ -97,7 +104,8 @@ export function DecisionModelSettings() {
       <AccordionTrigger>决策模型</AccordionTrigger>
       <AccordionContent className='pt-2 pb-2'>
         <div class='mb-2 text-ga6'>
-          判断自动融入候选弹幕是否发送。可保存多个服务商配置，当前支持 Jev，API 地址与模型 ID 均可自定义。
+          判断自动融入候选弹幕是否发送。可保存多个服务商配置，支持 Google AI Studio（Gemini Decision 1）、TypeSafe 与
+          OpenRouter Decisions，API 地址与模型 ID 均可自定义。
         </div>
         <div class='mb-2 flex flex-wrap items-center gap-2'>
           <Label htmlFor='decisionProvider'>服务商</Label>
@@ -169,6 +177,7 @@ export function DecisionModelSettings() {
                     updateConnection({ protocol, ...DECISION_PROVIDER_DEFAULTS[protocol], apiKey: '' })
                 }}
               >
+                <option value='gemini'>Google AI Studio (Gemini Decisions)</option>
                 <option value='typesafe'>TypeSafe</option>
                 <option value='openrouter'>OpenRouter Decisions</option>
               </NativeSelect>
@@ -183,7 +192,6 @@ export function DecisionModelSettings() {
                 onInput={e => updateConnection({ apiBase: e.currentTarget.value })}
               />
             </div>
-            <div class='text-ga6'>自定义地址须兼容所选决策 API 协议。</div>
             <div class='flex flex-wrap items-center gap-2'>
               <Label htmlFor='decisionApiKey'>API Key</Label>
               <Input
@@ -205,6 +213,20 @@ export function DecisionModelSettings() {
                 {keyVisible.value ? '隐藏' : '显示'}
               </Button>
             </div>
+            <div class='text-ga6'>
+              {provider.protocol === 'gemini' ? (
+                <>
+                  前往{' '}
+                  <a href='https://aistudio.google.com/apikey' target='_blank' class='text-link' rel='noopener'>
+                    Google AI Studio
+                  </a>{' '}
+                  免费获取 API Key；无法直连 Google 时，可将「API 地址」改为转发至{' '}
+                  <code>generativelanguage.googleapis.com</code> 的反向代理地址。
+                </>
+              ) : (
+                '自定义地址须兼容所选决策 API 协议。'
+              )}
+            </div>
             <div class='flex flex-wrap items-center gap-2'>
               <Label htmlFor='decisionModel'>模型 ID</Label>
               <Input
@@ -220,7 +242,7 @@ export function DecisionModelSettings() {
                 id='decisionModelPicker'
                 title='从模型列表选择'
                 className='min-w-25 flex-1'
-                value={provider.model}
+                value={normalizeDecisionModelId(provider.protocol, provider.model)}
                 options={provider.models.map(model => ({ value: model.id, label: model.name || model.id }))}
                 onChange={model => updateDecisionProvider(provider.id, { model })}
                 placeholder='从模型列表选择'
@@ -264,6 +286,16 @@ export function DecisionModelSettings() {
           >
             添加预设
           </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              if (!confirm('确定恢复默认判断预设？当前自定义预设与修改将被覆盖。')) return
+              resetDecisionPresets()
+            }}
+          >
+            恢复默认
+          </Button>
           {preset && (
             <Button
               variant='outline'
@@ -284,23 +316,55 @@ export function DecisionModelSettings() {
           )}
         </div>
         {preset && (
-          <div class='flex flex-col gap-2'>
-            <Input
-              aria-label='判断预设名称'
-              placeholder='预设名称，例如：串子'
-              value={preset.name}
-              onInput={e => patchPreset(preset.id, { name: e.currentTarget.value })}
-            />
-            <Textarea
-              aria-label={`「${preset.name || '未命名'}」的发送条件`}
-              rows={4}
-              placeholder='描述哪些情况下应该发送候选弹幕，哪些情况下应该跳过'
-              value={preset.instructions}
-              onInput={e => patchPreset(preset.id, { instructions: e.currentTarget.value })}
-            />
+          <div class='mb-2 flex flex-col gap-2'>
+            <div class='flex flex-wrap items-center gap-2'>
+              <Label htmlFor='decisionPresetName'>预设名称</Label>
+              <Input
+                id='decisionPresetName'
+                className='min-w-25 flex-1'
+                placeholder='例如：串子'
+                value={preset.name}
+                onInput={e => patchPreset(preset.id, { name: e.currentTarget.value })}
+              />
+            </div>
+            <div class='flex flex-col items-start gap-1'>
+              <Label htmlFor='decisionPresetInstructions'>核心判断问题</Label>
+              <Textarea
+                id='decisionPresetInstructions'
+                rows={2}
+                placeholder='用肯定句聚焦单一判断条件，例如：候选弹幕是否在真诚地表达关心或鼓励？'
+                value={preset.instructions}
+                onInput={e => patchPreset(preset.id, { instructions: e.currentTarget.value })}
+              />
+            </div>
+            <div class='flex flex-col items-start gap-1'>
+              <Label htmlFor='decisionPresetTrueCriteria'>应该发送（可选，是 / True 边界）</Label>
+              <Textarea
+                id='decisionPresetTrueCriteria'
+                rows={2}
+                placeholder='具体说明哪些特征应判为发送（自动映射至协议原生 criteria）'
+                value={preset.trueCriteria ?? ''}
+                onInput={e => patchPreset(preset.id, { trueCriteria: e.currentTarget.value })}
+              />
+            </div>
+            <div class='flex flex-col items-start gap-1'>
+              <Label htmlFor='decisionPresetFalseCriteria'>应该跳过（可选，否 / False 边界）</Label>
+              <Textarea
+                id='decisionPresetFalseCriteria'
+                rows={2}
+                placeholder='列出形似但应排除的反例，例如：阴阳怪气的反话夸奖、无关刷屏'
+                value={preset.falseCriteria ?? ''}
+                onInput={e => patchPreset(preset.id, { falseCriteria: e.currentTarget.value })}
+              />
+            </div>
           </div>
         )}
-        {decisionPresets.value.length === 0 && <div class='text-ga4'>暂无预设，点击「添加预设」创建发送条件</div>}
+        {decisionPresets.value.length === 0 && <div class='mb-2 text-ga4'>暂无预设，点击「添加预设」创建发送条件</div>}
+        <div class='mb-2 text-ga6'>
+          编写建议（适用于 Google AI Studio、TypeSafe 与 OpenRouter
+          Decisions）：「核心判断问题」请用肯定句聚焦单一条件，避免双重否定或宽泛形容词；正例特征与易混反例请分别写入「应该发送
+          / 应该跳过」（将作为协议原生 <code>criteria</code> 发送，勿塞进同一段）。
+        </div>
         <div class='my-2 flex flex-wrap items-center gap-2'>
           <Label htmlFor='decisionThreshold'>发送概率阈值</Label>
           <Input
@@ -319,7 +383,10 @@ export function DecisionModelSettings() {
           />
           <span>%</span>
         </div>
-        <div class='text-ga6'>模型判断应该发送的概率达到阈值才发送。提高阈值会更谨慎。</div>
+        <div class='text-ga6'>
+          模型判断应该发送的概率达到阈值才发送，提高阈值会更谨慎。注意：Gemini Decision 1 的是/否概率范围为 1%–99%（
+          <code>0.01–0.99</code>），上限为 99%，设为 100% 时将始终不会发送。
+        </div>
       </AccordionContent>
     </AccordionItem>
   )
