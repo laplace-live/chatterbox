@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { join } from 'node:path'
-import type { BunPlugin } from 'bun'
 
 import type { DecisionPreset } from './decision-model'
 
-const TARGET = join(import.meta.dir, 'decision-settings.ts')
-const PLACEHOLDER = '__DECISION_SETTINGS_GM_KEY__'
+import { loadWithFakeGm } from '../testing/fake-gm'
 
 const V1_PRESETS: DecisionPreset[] = [
   {
@@ -28,53 +25,8 @@ const V1_PRESETS: DecisionPreset[] = [
   },
 ]
 
-let bundledCode: Promise<string> | undefined
-let loadCount = 0
-
-const gmShimPlugin: BunPlugin = {
-  name: 'decision-settings-gm-shim',
-  setup(build) {
-    build.onResolve({ filter: /^\$$/ }, () => ({ path: '$', namespace: 'gm-shim' }))
-    build.onLoad({ filter: /.*/, namespace: 'gm-shim' }, () => ({
-      loader: 'js',
-      contents: [
-        `const store = globalThis[${JSON.stringify(PLACEHOLDER)}]`,
-        'export const GM_getValue = (key, fallback) => (store.has(key) ? store.get(key) : fallback)',
-        'export const GM_setValue = (key, value) => { store.set(key, value) }',
-        'export const GM_deleteValue = key => { store.delete(key) }',
-        'export const GM_addValueChangeListener = () => {}',
-        'export const GM_xmlhttpRequest = () => ({ abort() {} })',
-      ].join('\n'),
-    }))
-  },
-}
-
-async function bundleDecisionSettings(): Promise<string> {
-  const result = await Bun.build({
-    entrypoints: [TARGET],
-    plugins: [gmShimPlugin],
-    target: 'bun',
-  })
-  if (!result.success) throw new AggregateError(result.logs, 'Failed to bundle decision-settings')
-  return result.outputs[0].text()
-}
-
-/** Load an isolated `decision-settings` instance backed by a per-call GM storage map. */
-async function loadDecisionSettings(seed: Iterable<readonly [string, unknown]> = []) {
-  const store = new Map<string, unknown>(seed)
-  bundledCode ??= bundleDecisionSettings()
-  const key = `__decisionSettingsGm_${++loadCount}`
-  Reflect.set(globalThis, key, store)
-  try {
-    const code = (await bundledCode).replaceAll(PLACEHOLDER, key)
-    const mod: typeof import('./decision-settings') = await import(
-      `data:text/javascript;base64,${Buffer.from(`${code}\n// load ${loadCount}`).toString('base64')}`
-    )
-    return { ...mod, store }
-  } finally {
-    Reflect.deleteProperty(globalThis, key)
-  }
-}
+const loadDecisionSettings = (seed: Iterable<readonly [string, unknown]> = []) =>
+  loadWithFakeGm<typeof import('./decision-settings')>(new URL('./decision-settings.ts', import.meta.url), seed)
 
 describe('decisionPresets seeding and v2 migration', () => {
   test('fresh load seeds all 4 structured DEFAULT_DECISION_PRESETS as clones and marks decisionPresetsSeededV2', async () => {
@@ -257,6 +209,11 @@ describe('decision providers and configuration validation', () => {
     settings.autoBlendDecisionPresetId.value = 'missing'
     expect(settings.describeDecisionGap()).toBe('请先选择一个决策预设')
 
+    settings.decisionPresets.value = [{ id: 'incomplete', name: '未完成', instructions: '   ', trueCriteria: '有正例' }]
+    settings.autoBlendDecisionPresetId.value = 'incomplete'
+    expect(settings.describeDecisionGap()).toBe('请在「设置 → 决策模型」中补全所选预设的名称与核心判断问题')
+
+    settings.resetDecisionPresets()
     settings.autoBlendDecisionPresetId.value = 'troll'
     settings.autoBlendDecisionThreshold.value = 0
     expect(settings.describeDecisionGap()).toBe('发送概率阈值须大于 0% 且不超过 100%')

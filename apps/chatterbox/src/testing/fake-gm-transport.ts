@@ -15,6 +15,34 @@ export interface FakeGmRequest {
 
 export const requests: FakeGmRequest[] = []
 
+const seededStore: unknown = Reflect.get(globalThis, '__FAKE_GM_SEED_KEY__')
+export const store: Map<string, unknown> = seededStore instanceof Map ? seededStore : new Map()
+
+/** Stand-in for `GM_getValue`: reads from the isolated in-memory `store`. */
+export function GM_getValue<T = unknown>(key: string, defaultValue?: T): T {
+  return (store.has(key) ? store.get(key) : defaultValue) as T
+}
+
+/** Stand-in for `GM_setValue`: writes to the isolated in-memory `store`. */
+export function GM_setValue(key: string, value: unknown): void {
+  store.set(key, value)
+}
+
+/** Stand-in for `GM_deleteValue`: removes `key` from the isolated in-memory `store`. */
+export function GM_deleteValue(key: string): void {
+  store.delete(key)
+}
+
+/** Stand-in for `GM_listValues`: lists keys in the isolated in-memory `store`. */
+export function GM_listValues(): string[] {
+  return [...store.keys()]
+}
+
+/** No-op stand-in for `GM_addValueChangeListener`. */
+export function GM_addValueChangeListener(): string {
+  return ''
+}
+
 function event(status: number, body = '', responseHeaders = ''): GmResponseEventBase<'text'> {
   return {
     status,

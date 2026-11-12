@@ -446,5 +446,8 @@ describe('DECISION_PROVIDER_DEFAULTS', () => {
     expect(client.isDecisionProtocol('typesafe')).toBe(true)
     expect(client.isDecisionProtocol('openrouter')).toBe(true)
     expect(client.isDecisionProtocol('toString')).toBe(false)
+    expect(client.normalizeDecisionModelId('gemini', ' models/gemini-decision-1 ')).toBe('gemini-decision-1')
+    expect(client.normalizeDecisionModelId('gemini', ' models/ ')).toBe('')
+    expect(client.normalizeDecisionModelId('openrouter', ' models/custom ')).toBe('models/custom')
   })
 })

@@ -3,7 +3,12 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import type { DecisionPreset, DecisionProviderProfile } from '../lib/decision-model'
 
-import { DECISION_PROVIDER_DEFAULTS, fetchDecisionModels, isDecisionProtocol } from '../lib/decision-model'
+import {
+  DECISION_PROVIDER_DEFAULTS,
+  fetchDecisionModels,
+  isDecisionProtocol,
+  normalizeDecisionModelId,
+} from '../lib/decision-model'
 import {
   activeDecisionPreset,
   activeDecisionProvider,
@@ -237,7 +242,7 @@ export function DecisionModelSettings() {
                 id='decisionModelPicker'
                 title='从模型列表选择'
                 className='min-w-25 flex-1'
-                value={provider.model}
+                value={normalizeDecisionModelId(provider.protocol, provider.model)}
                 options={provider.models.map(model => ({ value: model.id, label: model.name || model.id }))}
                 onChange={model => updateDecisionProvider(provider.id, { model })}
                 placeholder='从模型列表选择'

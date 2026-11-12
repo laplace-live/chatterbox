@@ -153,7 +153,7 @@ export function resolveDecisionConfig():
   const preset = activeDecisionPreset.value
   if (!preset) return '请先选择一个决策预设'
   if (!preset.name.trim() || !preset.instructions.trim()) {
-    return '请在「设置 → 决策模型」中补全所选预设的名称与发送条件'
+    return '请在「设置 → 决策模型」中补全所选预设的名称与核心判断问题'
   }
   const threshold = autoBlendDecisionThreshold.value
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) return '发送概率阈值须大于 0% 且不超过 100%'
