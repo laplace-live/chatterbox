@@ -95,10 +95,7 @@ export function StatusBarCollapsible({ children }: { children: ComponentChildren
   )
 }
 
-/**
- * User-toggled group that folds its content away to the right; the chevron stays put as the
- * anchor. State is caller-owned so it can persist.
- */
+/** User-toggled group that folds its content away to the right while keeping the chevron anchored. */
 export function StatusBarFold({
   collapsed,
   onToggle,
@@ -124,10 +121,8 @@ export function StatusBarFold({
     const group = groupRef.current
     const content = contentRef.current
     if (!group || !content) return
-    if (collapsed) {
-      // A pointer click on the toggle already closes popovers via their document mousedown listener;
-      // keyboard and cross-tab folds don't, so replay one to avoid leaving a fixed-position popover
-      // visible inside the now-inert group.
+    if (collapsed && group.querySelector('[role="dialog"]')) {
+      // Non-pointer folds (e.g. keyboard) skip Popover's outside-mousedown listener, leaving it visible while inert.
       document.dispatchEvent(new MouseEvent('mousedown'))
     }
     const from = fromWidth.current
@@ -145,10 +140,14 @@ export function StatusBarFold({
     let target = to
     let timer: ReturnType<typeof setTimeout> | undefined
     let observer: ResizeObserver | undefined
-    const settle = (e?: TransitionEvent) => {
-      if (e && (e.target !== group || e.propertyName !== 'width')) return
+    const cleanup = () => {
       clearTimeout(timer)
       observer?.disconnect()
+      group.removeEventListener('transitionend', settle)
+    }
+    const settle = (e?: TransitionEvent) => {
+      if (e && (e.target !== group || e.propertyName !== 'width')) return
+      cleanup()
       group.style.transition = ''
       group.style.width = ''
     }
@@ -171,11 +170,7 @@ export function StatusBarFold({
       observer.observe(content)
     }
     group.addEventListener('transitionend', settle)
-    return () => {
-      clearTimeout(timer)
-      observer?.disconnect()
-      group.removeEventListener('transitionend', settle)
-    }
+    return cleanup
   }, [collapsed])
 
   const toggle = () => {

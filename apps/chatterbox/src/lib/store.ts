@@ -83,7 +83,7 @@ export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 export const infoFertilityEnabled = gmSignal('infoFertilityEnabled', false)
 export const infoGuildEnabled = gmSignal('infoGuildEnabled', false)
 export const infoMcnEnabled = gmSignal('infoMcnEnabled', false)
-// Live-room fold: whether the info items above are tucked away to the right of the bar. Persisted so the last choice survives reloads and rooms.
+/** Whether the live-room status bar's 主播信息 items are folded away. */
 export const statusBarInfoCollapsed = gmSignal('statusBarInfoCollapsed', false)
 
 export const activeTab = gmSignal('activeTab', 'fasong')

@@ -7,7 +7,7 @@ export const STATUS_BAR_EXPAND_HYSTERESIS = 8
 export interface StatusBarSlotWidth {
   /** Width of the compact-hidden label content inside the slot. */
   contentWidth: number
-  /** Width the slot occupies while compact. */
+  /** Width the slot currently occupies in `barWidth`. */
   slotWidth: number
   /** Inside a manually folded group, which isn't part of the bar's expanded width. */
   folded: boolean
