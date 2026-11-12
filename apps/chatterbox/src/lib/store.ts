@@ -83,6 +83,8 @@ export const autoQualityEnabled = gmSignal('autoQualityEnabled', false)
 export const infoFertilityEnabled = gmSignal('infoFertilityEnabled', false)
 export const infoGuildEnabled = gmSignal('infoGuildEnabled', false)
 export const infoMcnEnabled = gmSignal('infoMcnEnabled', false)
+/** Whether the live-room status bar's 主播信息 items are folded away. */
+export const statusBarInfoCollapsed = gmSignal('statusBarInfoCollapsed', false)
 
 export const activeTab = gmSignal('activeTab', 'fasong')
 export const msgTemplates = gmSignal<string[]>('MsgTemplates', [])
