@@ -1,5 +1,11 @@
 # laplace-chatterbox
 
+## 4.12.1
+
+### Patch Changes
+
+- 937e977: Reuse `FoldableInfoItems` in `AppSpace` (`space.bilibili.com`) and `AppOpus` (`www.bilibili.com/opus/*`) so the status bar's 主播信息 items fold away to the right on space and opus pages too, sharing the remembered fold state with live rooms.
+
 ## 4.12.0
 
 ### Minor Changes
