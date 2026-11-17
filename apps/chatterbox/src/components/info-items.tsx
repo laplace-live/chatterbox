@@ -69,7 +69,7 @@ export function InfoItems() {
   )
 }
 
-/** `InfoItems` with the live-room fold toggle; the fold state carries over across rooms. */
+/** `InfoItems` with the fold toggle; the fold state carries over across pages and reloads. */
 export function FoldableInfoItems() {
   const collapsed = statusBarInfoCollapsed.value
   return (

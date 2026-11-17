@@ -1,4 +1,4 @@
-import { InfoItems } from './info-items'
+import { FoldableInfoItems } from './info-items'
 import { StatusBar } from './status-bar'
 
 /**
@@ -11,7 +11,7 @@ import { StatusBar } from './status-bar'
 export function AppSpace() {
   return (
     <StatusBar>
-      <InfoItems />
+      <FoldableInfoItems />
     </StatusBar>
   )
 }
