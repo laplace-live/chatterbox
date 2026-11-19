@@ -78,7 +78,7 @@ export function AppRoom() {
     return () => stopUserBlacklistHijack()
   }, [])
 
-  // Signal-driven and idempotent; mounted unconditionally so the 视频/仅音频/自动音频 picker always works.
+  // Signal-driven and idempotent; mounted unconditionally so the 视频/仅音频/自适应音频 picker always works.
   useEffect(() => {
     startAudioOnly()
     return () => stopAudioOnly()

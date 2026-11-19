@@ -66,7 +66,7 @@ export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
 // Audio-only mode: `livePlayer.stopPlayback()` halts the native HLS pull, then a true audio-only FLV stream (`only_audio=1` from the app endpoint — web endpoint ignores it) plays via hidden `<audio>` + mpegts.js. ~180 vs ~1700 kbps. See `lib/audio-only.ts`.
-/** 'off' = 视频, 'on' = 仅音频, 'auto' = 自动音频 (audio-only just while the tab is hidden). */
+/** 'off' = 视频, 'on' = 仅音频, 'auto' = 自适应音频 (audio-only just while the tab is hidden). */
 export type AudioOnlyMode = 'off' | 'on' | 'auto'
 migrateGmKey('audioOnlyEnabled', 'audioOnlyMode', (v): AudioOnlyMode => (v === true ? 'on' : 'off'))
 export const audioOnlyMode = gmSignal<AudioOnlyMode>('audioOnlyMode', 'off')

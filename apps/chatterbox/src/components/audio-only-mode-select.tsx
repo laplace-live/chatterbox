@@ -19,13 +19,13 @@ const MODE_OPTIONS: ModeOption[] = [
   { value: 'on', label: '仅音频', hint: '只播放音频，节省约 90% 带宽' },
   {
     value: 'auto',
-    label: '自动音频',
+    label: '自适应音频',
     hint: `页面在后台 ${AUTO_ENGAGE_DELAY_MS / 1000} 秒后切换为仅音频，回到前台立即恢复视频`,
   },
 ]
 
 /**
- * 视频 / 仅音频 / 自动音频 picker.
+ * 视频 / 仅音频 / 自适应音频 picker.
  * Lives in our DOM, not the player controls: `stopPlayback()` destroys the controller subtree.
  */
 export function AudioOnlyModeSelect() {
@@ -79,13 +79,13 @@ export function AudioOnlyModeSelect() {
           ref={triggerRef}
           type='button'
           id='laplace-audio-only-toggle'
-          title='播放模式：视频 / 仅音频 / 自动音频'
+          title='播放模式：视频 / 仅音频 / 自适应音频'
           aria-haspopup='listbox'
           aria-expanded={open.value}
           class={cn(
             STATUS_BAR_BUTTON_CLASS,
             'gap-0.5',
-            // Pink only while engaged (自动音频 stays gray in the foreground); gray keeps `直播助手` primary.
+            // Pink only while engaged (自适应音频 stays gray in the foreground); gray keeps `直播助手` primary.
             audioOnlyActive.value ? 'bg-[#FF6699]' : 'bg-ga6'
           )}
         >

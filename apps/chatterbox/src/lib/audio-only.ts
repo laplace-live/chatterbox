@@ -54,7 +54,7 @@ const STREAM_REFRESH_MS = 50 * 60 * 1000
 const STREAM_RECOVERY_DELAYS_MS = [2000, 4000, 8000, 15000, 30000]
 const STREAM_RECOVERY_MAX_ATTEMPTS = 20
 
-/** How long the tab must stay hidden before 自动音频 engages, so a quick glance away keeps video. */
+/** How long the tab must stay hidden before 自适应音频 engages, so a quick glance away keeps video. */
 export const AUTO_ENGAGE_DELAY_MS = 3000
 
 // Max wait for the incoming stream to start playing before a swap gives up on overlapping.
@@ -878,7 +878,7 @@ function applyAudioOnlyActive(active: boolean): void {
         }
       }
       // Revert to video; the effect re-run strips the hide-video class instead of stranding a blank frame.
-      // 仅音频 drops back to 视频; 自动音频 stays armed and retries on the next hide.
+      // 仅音频 drops back to 视频; 自适应音频 stays armed and retries on the next hide.
       if (audioOnlyMode.value === 'on') audioOnlyMode.value = 'off'
       audioOnlyActive.value = false
     }
