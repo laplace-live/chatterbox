@@ -13,7 +13,7 @@ import {
   type ViewportSize,
 } from '../lib/floating-input-rect'
 import { describeLlmGap } from '../lib/llm-tasks'
-import { normalSendPolishing, normalSendPreview, polishNormalSendInput, submitNormalSend } from '../lib/normal-send'
+import { handleNormalSendKeyDown, normalSendPolishing, normalSendPreview } from '../lib/normal-send'
 import { startPointerDrag } from '../lib/pointer-drag'
 import { fasongText, floatingInputMinimized, floatingInputRect, normalSendYolo } from '../lib/store'
 import { EmoteSelector } from './emote-selector'
@@ -44,8 +44,6 @@ export function FloatingInputBox() {
   const minimized = floatingInputMinimized.value
   const polishing = normalSendPolishing.value
   const [viewport, setViewport] = useState<ViewportSize>(getViewportSize)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const refocusAfterPolishRef = useRef(false)
   const activeDragCancelRef = useRef<(() => void) | null>(null)
 
   const cancelActiveDrag = () => {
@@ -61,6 +59,11 @@ export function FloatingInputBox() {
     []
   )
 
+  // The status bar toggle can hide the box mid-drag.
+  useEffect(() => {
+    if (minimized) cancelActiveDrag()
+  }, [minimized])
+
   useEffect(() => {
     const sync = () => {
       const next = getViewportSize()
@@ -75,12 +78,6 @@ export function FloatingInputBox() {
       window.removeEventListener('resize', sync)
     }
   }, [])
-
-  useEffect(() => {
-    if (polishing || !refocusAfterPolishRef.current) return
-    refocusAfterPolishRef.current = false
-    textareaRef.current?.focus()
-  }, [polishing])
 
   if (minimized) return null
 
@@ -132,7 +129,6 @@ export function FloatingInputBox() {
       <button
         type='button'
         onClick={() => {
-          cancelActiveDrag()
           floatingInputMinimized.value = true
         }}
         title='最小化输入框'
@@ -164,29 +160,17 @@ export function FloatingInputBox() {
       <div class='flex h-full min-w-0 flex-1 flex-col gap-1 py-1 pr-1.5 pl-4'>
         <div class='relative min-h-0 flex-1'>
           <textarea
-            ref={textareaRef}
             value={fasongText.value}
-            disabled={polishing}
+            readOnly={polishing}
+            aria-busy={polishing}
             onInput={e => {
               fasongText.value = e.currentTarget.value
             }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing) {
-                e.preventDefault()
-                if (normalSendYolo.value) refocusAfterPolishRef.current = true
-                void submitNormalSend()
-                if (!normalSendPolishing.peek()) refocusAfterPolishRef.current = false
-              } else if (e.key === 'Enter' && e.altKey && !e.isComposing && llmReady) {
-                e.preventDefault()
-                refocusAfterPolishRef.current = true
-                void polishNormalSendInput()
-                if (!normalSendPolishing.peek()) refocusAfterPolishRef.current = false
-              }
-            }}
+            onKeyDown={handleNormalSendKeyDown}
             placeholder={normalSendYolo.value && llmReady ? 'YOLO：Enter 润色发送' : '发送弹幕…'}
             class={cn(
               'h-full w-full resize-none border-none bg-transparent px-0 py-0.5 text-[12px] leading-snug text-inherit outline-none',
-              'placeholder:text-ga5 disabled:cursor-not-allowed disabled:opacity-60'
+              'placeholder:text-ga5 read-only:cursor-not-allowed read-only:opacity-60'
             )}
           />
           {charCount > 0 && (
@@ -204,17 +188,19 @@ export function FloatingInputBox() {
   )
 }
 
-/** Icon-only status bar button that restores the minimized box. */
-export function FloatingInputRestoreButton() {
+/** Icon-only status bar toggle that shows or hides the box; dimmed while hidden. */
+export function FloatingInputToggleButton() {
+  const hidden = floatingInputMinimized.value
   return (
     <button
       type='button'
       onClick={() => {
-        floatingInputMinimized.value = false
+        floatingInputMinimized.value = !hidden
       }}
-      title='恢复悬浮输入框'
-      aria-label='恢复悬浮输入框'
-      class={cn(STATUS_BAR_BUTTON_CLASS, 'w-7 justify-center px-0', 'bg-ga6')}
+      title={hidden ? '显示悬浮输入框' : '隐藏悬浮输入框'}
+      aria-label='悬浮输入框'
+      aria-pressed={!hidden}
+      class={cn(STATUS_BAR_BUTTON_CLASS, 'w-7 justify-center px-0', 'bg-ga6', hidden && 'opacity-50')}
     >
       <IconMessage size={16} stroke={2} aria-hidden='true' />
     </button>

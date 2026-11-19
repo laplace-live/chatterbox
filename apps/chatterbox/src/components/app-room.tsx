@@ -17,7 +17,6 @@ import {
   dialogOpen,
   dialogWidth,
   floatingInputEnabled,
-  floatingInputMinimized,
   hideUidWatermark,
   optimizeLayout,
 } from '../lib/store'
@@ -26,7 +25,7 @@ import { AudioOnlyControls } from './audio-only-controls'
 import { AudioOnlyModeSelect } from './audio-only-mode-select'
 import { Configurator, clampWidth } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
-import { FloatingInputBox, FloatingInputRestoreButton } from './floating-input-box'
+import { FloatingInputBox, FloatingInputToggleButton } from './floating-input-box'
 import { FoldableInfoItems } from './info-items'
 import { StatusBar } from './status-bar'
 import { AlertDialog } from './ui/alert-dialog'
@@ -144,7 +143,7 @@ export function AppRoom() {
         <FoldableInfoItems />
         <AudioOnlyControls />
         <AudioOnlyModeSelect />
-        {floatingInputEnabled.value && floatingInputMinimized.value && <FloatingInputRestoreButton />}
+        {floatingInputEnabled.value && <FloatingInputToggleButton />}
         <ConfiguratorButton />
       </StatusBar>
       <Configurator />

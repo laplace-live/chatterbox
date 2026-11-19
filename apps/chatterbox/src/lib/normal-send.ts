@@ -175,6 +175,8 @@ async function sendNormalDanmaku(): Promise<void> {
 
 /** Enter-key / manual submit handler; in YOLO mode polishes first and aborts if the LLM is unusable. */
 export async function submitNormalSend(): Promise<void> {
+  // Composers stay focused (read-only) while polishing, so Enter still lands here; sending now would race the polish.
+  if (normalSendPolishing.value) return
   if (normalSendYolo.value) {
     const llmGap = describeLlmGap('normalSend')
     if (llmGap !== null) {
@@ -185,4 +187,11 @@ export async function submitNormalSend(): Promise<void> {
     if (!ok) return
   }
   await sendNormalDanmaku()
+}
+
+/** Shared composer keys: Enter sends (YOLO polishes first), Alt+Enter polishes in place, Shift+Enter breaks the line. */
+export function handleNormalSendKeyDown(e: KeyboardEvent): void {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
+  e.preventDefault()
+  void (e.altKey ? polishNormalSendInput() : submitNormalSend())
 }

@@ -1,5 +1,10 @@
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
-import { normalSendPolishing, normalSendPreview, polishNormalSendInput, submitNormalSend } from '../lib/normal-send'
+import {
+  handleNormalSendKeyDown,
+  normalSendPolishing,
+  normalSendPreview,
+  polishNormalSendInput,
+} from '../lib/normal-send'
 import {
   aiEvasion,
   fasongText,
@@ -40,23 +45,19 @@ export function NormalSendTab() {
         <div class='relative my-2'>
           <Textarea
             value={fasongText.value}
-            // Locked during polish so the completing write can't clobber fresh keystrokes.
-            disabled={normalSendPolishing.value}
+            // Read-only (not disabled, which drops focus) during polish so the completing write can't clobber fresh keystrokes.
+            readOnly={normalSendPolishing.value}
+            aria-busy={normalSendPolishing.value}
             onInput={e => {
               fasongText.value = e.currentTarget.value
             }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-                e.preventDefault()
-                void submitNormalSend()
-              }
-            }}
+            onKeyDown={handleNormalSendKeyDown}
             placeholder={
               normalSendYolo.value && llmReady
                 ? 'YOLO 模式：输入后 Enter 会自动 AI 润色并发送'
                 : '输入弹幕内容… (Enter 发送)'
             }
-            className='h-14'
+            className='h-14 read-only:cursor-not-allowed read-only:opacity-60'
           />
           <div class='pointer-events-none absolute right-2 bottom-1.5 text-ga6'>
             {msgCount > 1 ? `${msgCount} 条 · ${charCount}` : charCount}
@@ -69,6 +70,7 @@ export function NormalSendTab() {
           <Button
             variant='outline'
             size='sm'
+            title='AI 润色（Alt+Enter）'
             disabled={!llmReady || normalSendPolishing.value || !fasongText.value.trim()}
             onClick={() => void polishNormalSendInput()}
           >
