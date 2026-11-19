@@ -98,3 +98,23 @@ export interface FavoriteEmote {
   emoji: string
   descript?: string
 }
+
+/** Normalized Bilibili live fans medal entry across `fansMedal/panel` and `getInfoByUser`. */
+export interface FansMedal {
+  medalId: number
+  medalName: string
+  level: number
+  targetId: number
+  targetName: string
+  roomId: number
+  colorStart: string
+  colorEnd: string
+  colorBorder: string
+  colorText: string
+  /** Guard (大航海) icon URL from the medal payload, empty unless the medal is lit and guarded. */
+  guardIcon: string
+  isLighted: boolean
+  guardLevel: number
+  todayFeed: number
+  dayLimit: number
+}

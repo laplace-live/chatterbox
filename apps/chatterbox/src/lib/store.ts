@@ -1,6 +1,7 @@
 import { computed, effect, signal } from '@preact/signals'
 
 import type { BilibiliEmoticonPackage, FavoriteEmote } from '../types'
+import type { FloatingRect } from './floating-input-rect'
 import type { LlmModel } from './llm'
 import type { SonioxModel } from './soniox-models'
 import type { SttModelOption, SttProvider, SttTranslationApi } from './stt/types'
@@ -58,6 +59,9 @@ export const autoSendYolo = gmSignal('autoSendYolo', false)
 export const forceScrollDanmaku = gmSignal('forceScrollDanmaku', false)
 export const optimizeLayout = gmSignal('optimizeLayout', false)
 export const hideUidWatermark = gmSignal('hideUidWatermark', false)
+export const floatingInputEnabled = gmSignal('floatingInputEnabled', false)
+/** Floating input box rect, remembered across reloads; `null` until first moved or resized. */
+export const floatingInputRect = gmSignal<FloatingRect | null>('floatingInputRect', null)
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
@@ -450,3 +454,6 @@ export const favoriteEmotes = gmSignal<FavoriteEmote[]>('favoriteEmotes', [])
 
 // Fasong tab shared text
 export const fasongText = signal('')
+
+/** Runtime minimize state for the floating danmaku input box (resets on page load; not persisted). */
+export const floatingInputMinimized = signal(false)

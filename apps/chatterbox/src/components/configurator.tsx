@@ -1,6 +1,7 @@
 import { cn } from 'cn'
 import type { TargetedPointerEvent } from 'preact'
 
+import { startPointerDrag } from '../lib/pointer-drag'
 import { activeTab, dialogOpen, dialogWidth, optimizeLayout } from '../lib/store'
 import { AboutTab } from './about-tab'
 import { AiChatSection } from './ai-chat-section'
@@ -96,47 +97,23 @@ export function Configurator() {
   )
 }
 
-/**
- * Drag handle on the left edge of the right-anchored dialog (drag left grows, right shrinks).
- * - `setPointerCapture` keeps events flowing when the cursor outpaces the narrow strip mid-drag.
- * - Toggles `document.body` cursor/userSelect during the drag so the cursor stays `ew-resize` and fast drags don't select page text.
- */
+/** Drag handle on the left edge of the right-anchored dialog (drag left grows, right shrinks). */
 function ResizeHandle() {
   const onPointerDown = (e: TargetedPointerEvent<HTMLDivElement>) => {
     // Block click-through into the dialog and the host page's own drag/select gesture.
     e.preventDefault()
     e.stopPropagation()
 
-    const target = e.currentTarget
     const startX = e.clientX
     // Anchor on the rendered width, not the raw persisted value, or a clamped stored width makes the first px of drag a no-op.
     const startWidth = clampWidth(dialogWidth.value)
-
-    target.setPointerCapture(e.pointerId)
-
-    const previousCursor = document.body.style.cursor
-    const previousUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'ew-resize'
-    document.body.style.userSelect = 'none'
-
-    const onMove = (ev: PointerEvent) => {
-      // Right-anchored: leftward motion increases width, hence `startX - currentX`.
-      const delta = startX - ev.clientX
-      dialogWidth.value = clampWidth(startWidth + delta)
-    }
-
-    const onEnd = (ev: PointerEvent) => {
-      target.releasePointerCapture(ev.pointerId)
-      target.removeEventListener('pointermove', onMove)
-      target.removeEventListener('pointerup', onEnd)
-      target.removeEventListener('pointercancel', onEnd)
-      document.body.style.cursor = previousCursor
-      document.body.style.userSelect = previousUserSelect
-    }
-
-    target.addEventListener('pointermove', onMove)
-    target.addEventListener('pointerup', onEnd)
-    target.addEventListener('pointercancel', onEnd)
+    startPointerDrag(e.currentTarget, e.pointerId, {
+      cursor: 'ew-resize',
+      onMove: ev => {
+        // Right-anchored: leftward motion increases width, hence `startX - currentX`.
+        dialogWidth.value = clampWidth(startWidth + startX - ev.clientX)
+      },
+    })
   }
 
   return (

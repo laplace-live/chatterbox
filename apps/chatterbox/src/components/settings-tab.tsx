@@ -24,6 +24,7 @@ import {
   danmakuDirectAlwaysShow,
   danmakuDirectConfirm,
   danmakuDirectMode,
+  floatingInputEnabled,
   forceScrollDanmaku,
   hideUidWatermark,
   infoFertilityEnabled,
@@ -1001,6 +1002,14 @@ export function SettingsTab() {
                 hideUidWatermark.value = e.currentTarget.checked
               }}
               label='隐藏UID标记水印'
+            />
+            <Checkbox
+              id='floatingInputEnabled'
+              checked={floatingInputEnabled.value}
+              onInput={e => {
+                floatingInputEnabled.value = e.currentTarget.checked
+              }}
+              label='开启悬浮弹幕输入框（复用常规发送、粉丝牌切换与表情包）'
             />
           </div>
 

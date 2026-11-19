@@ -16,6 +16,7 @@ import {
   danmakuDirectMode,
   dialogOpen,
   dialogWidth,
+  floatingInputEnabled,
   hideUidWatermark,
   optimizeLayout,
 } from '../lib/store'
@@ -24,6 +25,7 @@ import { AudioOnlyControls } from './audio-only-controls'
 import { AudioOnlyModeSelect } from './audio-only-mode-select'
 import { Configurator, clampWidth } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
+import { FloatingInputBox, FloatingInputToggleButton } from './floating-input-box'
 import { FoldableInfoItems } from './info-items'
 import { StatusBar } from './status-bar'
 import { AlertDialog } from './ui/alert-dialog'
@@ -136,10 +138,12 @@ export function AppRoom() {
 
   return (
     <>
+      {floatingInputEnabled.value && <FloatingInputBox />}
       <StatusBar>
         <FoldableInfoItems />
         <AudioOnlyControls />
         <AudioOnlyModeSelect />
+        {floatingInputEnabled.value && <FloatingInputToggleButton />}
         <ConfiguratorButton />
       </StatusBar>
       <Configurator />

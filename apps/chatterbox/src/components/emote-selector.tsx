@@ -18,17 +18,14 @@ import { cachedEmoticonPackages, favoriteEmotes } from '../lib/store'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
-/**
- * Emote picker for the 常规发送 tab: a popover of per-package tabs (收藏 pinned
- * first). Image click sends (B站 requires the message be exactly the
- * `emoticon_unique`, so no textarea compose); name click copies the id and
- * keeps the popover open. Send closes it.
- */
-
 // String sentinel can't collide with the numeric `pkg_id`s real packages use.
 const FAVORITES_TAB = 'favorites' as const
 
-export function EmoteSelector() {
+/**
+ * Emote picker: image click sends (B站 needs the exact `emoticon_unique`, so no textarea compose), name copies, star favorites.
+ * `contentClassName` replaces the default width, which tracks the Configurator dialog's.
+ */
+export function EmoteSelector({ contentClassName }: { contentClassName?: string } = {}) {
   const open = useSignal(false)
   const copiedId = useSignal<string | null>(null)
   // Hold the id, not the index, so a cache refresh that reorders/drops packages
@@ -116,10 +113,12 @@ export function EmoteSelector() {
         // Open UP so the picker doesn't push the AI Evasion checkbox past the
         // dialog's clipped bottom edge.
         side='top'
-        align='start'
-        // Fits the default dialog width; a narrower resized dialog clips it via
+        // Default fits the dialog width; a narrower resized dialog clips it via
         // overflow-hidden (same caveat as Combobox).
-        className='w-[calc(var(--laplace-chatterbox-dialog-width)-20px)]'
+        className={cn(
+          'flex flex-col',
+          contentClassName ?? 'w-[calc(var(--laplace-chatterbox-dialog-width,320px)-20px)]'
+        )}
       >
         {isLoading ? (
           <div class='p-2 text-ga6'>表情数据加载中…</div>
@@ -187,10 +186,10 @@ export function EmoteSelector() {
                 )
               })}
             </div>
-            {/* Keyed by tab so switching remounts and resets scroll to the top. */}
+            {/* Fixed height keeps the popover top stationary across tabs; keyed so switching resets scroll. */}
             <div
               key={showingFavorites ? FAVORITES_TAB : activePkg?.pkg_id}
-              class='max-h-[min(320px,40vh)] overflow-y-auto p-2'
+              class='h-[min(240px,38vh)] overflow-y-auto p-2'
             >
               {showingFavorites ? (
                 favorites.length === 0 ? (
