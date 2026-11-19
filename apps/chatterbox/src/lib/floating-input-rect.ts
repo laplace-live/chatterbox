@@ -10,6 +10,13 @@ export interface ViewportSize {
   height: number
 }
 
+export interface AnchorBox {
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
 export type ResizeEdge = 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se'
 
 export const FLOATING_INPUT_MIN_WIDTH = 180
@@ -44,6 +51,38 @@ export function defaultFloatingRect(): FloatingRect {
     width: FLOATING_INPUT_DEFAULT_WIDTH,
     height: FLOATING_INPUT_DEFAULT_HEIGHT,
   }
+}
+
+/** Anchor the default floating rect to B站's visible chat control panel, falling back to `defaultFloatingRect()`. */
+export function resolveDefaultFloatingRect(viewport: ViewportSize, anchor?: AnchorBox | null): FloatingRect {
+  const base = defaultFloatingRect()
+  if (
+    !anchor ||
+    anchor.width < FLOATING_INPUT_MIN_WIDTH ||
+    anchor.height < FLOATING_INPUT_MIN_HEIGHT ||
+    anchor.bottom < FLOATING_INPUT_DEFAULT_HEIGHT + FLOATING_INPUT_DEFAULT_BOTTOM ||
+    anchor.bottom > viewport.height + 4 ||
+    anchor.right > viewport.width + 4
+  ) {
+    return base
+  }
+  const width = clamp(
+    Math.round(anchor.width - FLOATING_INPUT_DEFAULT_RIGHT),
+    FLOATING_INPUT_MIN_WIDTH,
+    FLOATING_INPUT_DEFAULT_WIDTH
+  )
+  if (anchor.right < width + FLOATING_INPUT_DEFAULT_RIGHT) return base
+  const rightGap = Math.max(0, viewport.width - anchor.right)
+  const bottomGap = Math.max(0, viewport.height - anchor.bottom)
+  return clampFloatingRect(
+    {
+      right: rightGap + FLOATING_INPUT_DEFAULT_RIGHT,
+      bottom: bottomGap + FLOATING_INPUT_DEFAULT_BOTTOM,
+      width,
+      height: FLOATING_INPUT_DEFAULT_HEIGHT,
+    },
+    viewport
+  )
 }
 
 /** Translate `startRect` by `(dx, dy)`, keeping its size unchanged and inside `viewport`. */

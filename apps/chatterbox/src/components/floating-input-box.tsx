@@ -4,12 +4,15 @@ import type { TargetedMouseEvent, TargetedPointerEvent } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import {
+  type AnchorBox,
   clampFloatingRect,
-  defaultFloatingRect,
+  FLOATING_INPUT_MIN_HEIGHT,
+  FLOATING_INPUT_MIN_WIDTH,
   type FloatingRect,
   moveFloatingRect,
   type ResizeEdge,
   resizeFloatingRect,
+  resolveDefaultFloatingRect,
   type ViewportSize,
 } from '../lib/floating-input-rect'
 import { describeLlmGap } from '../lib/llm-tasks'
@@ -34,6 +37,13 @@ const RESIZE_HANDLES: Array<{ edge: ResizeEdge; className: string; cursor: strin
   { edge: 'se', className: 'bottom-0 right-0 size-2.5', cursor: 'nwse-resize', title: '拖动调整大小' },
 ]
 
+const CHAT_ANCHOR_SELECTORS = [
+  '#chat-control-panel-vm',
+  '.control-panel-ctnr',
+  '#aside-area-vm',
+  '.aside-area',
+] as const
+
 function getViewportSize(): ViewportSize {
   return {
     width: document.documentElement.clientWidth || window.innerWidth,
@@ -41,15 +51,45 @@ function getViewportSize(): ViewportSize {
   }
 }
 
+function findChatAnchorElement(): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  for (const selector of CHAT_ANCHOR_SELECTORS) {
+    const el = document.querySelector<HTMLElement>(selector)
+    if (!el) continue
+    const rect = el.getBoundingClientRect()
+    if (rect.width >= FLOATING_INPUT_MIN_WIDTH && rect.height >= FLOATING_INPUT_MIN_HEIGHT) {
+      return el
+    }
+  }
+  return null
+}
+
+function readChatAnchorBox(el: HTMLElement | null): AnchorBox | null {
+  if (!el?.isConnected) return null
+  const r = el.getBoundingClientRect()
+  return { right: r.right, bottom: r.bottom, width: r.width, height: r.height }
+}
+
+function sameRect(a: FloatingRect, b: FloatingRect): boolean {
+  return a.right === b.right && a.bottom === b.bottom && a.width === b.width && a.height === b.height
+}
+
+function sameViewport(a: ViewportSize, b: ViewportSize): boolean {
+  return a.width === b.width && a.height === b.height
+}
+
 /**
  * Floating danmaku input box sitting at the lowest plugin layer (below Configurator and StatusBar).
- * Initializes once per page load and stays anchored to the bottom-right across layout changes.
+ * Auto-anchors to B站's visible chat control panel until the user moves or resizes it.
  */
 export function FloatingInputBox() {
   const enabled = floatingInputEnabled.value
   const minimized = floatingInputMinimized.value
   const polishing = normalSendPolishing.value
-  const [rect, setRect] = useState<FloatingRect | null>(null)
+  const [customRect, setCustomRect] = useState<FloatingRect | null>(null)
+  const [autoRect, setAutoRect] = useState<FloatingRect>(() =>
+    resolveDefaultFloatingRect(getViewportSize(), readChatAnchorBox(findChatAnchorElement()))
+  )
   const [viewport, setViewport] = useState<ViewportSize>(getViewportSize)
   const boxRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -62,7 +102,10 @@ export function FloatingInputBox() {
   }
 
   useEffect(() => {
-    const onResize = () => setViewport(getViewportSize())
+    const onResize = () => {
+      const vp = getViewportSize()
+      setViewport(prev => (sameViewport(prev, vp) ? prev : vp))
+    }
     window.addEventListener('resize', onResize)
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null
     observer?.observe(document.documentElement)
@@ -76,12 +119,77 @@ export function FloatingInputBox() {
   useEffect(() => {
     if (!enabled) {
       cancelActiveDrag()
-      setRect(null)
+      setCustomRect(null)
       floatingInputMinimized.value = false
-      return
     }
-    setRect(prev => prev ?? defaultFloatingRect())
   }, [enabled])
+
+  useEffect(() => {
+    if (!enabled || customRect !== null) return
+
+    let raf = 0
+    let observedAnchor: HTMLElement | null = null
+    let observedAppBody: HTMLElement | null = null
+    let watchingSubtree = false
+    let observingBody = false
+
+    const scheduleSync = () => {
+      if (!raf) raf = requestAnimationFrame(syncAnchor)
+    }
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleSync) : null
+    resizeObserver?.observe(document.documentElement)
+
+    const mutationObserver = typeof MutationObserver !== 'undefined' ? new MutationObserver(scheduleSync) : null
+
+    const syncAnchor = () => {
+      raf = 0
+      const vp = getViewportSize()
+      setViewport(prev => (sameViewport(prev, vp) ? prev : vp))
+
+      const nextAnchor = findChatAnchorElement()
+      if (nextAnchor !== observedAnchor) {
+        if (observedAnchor) resizeObserver?.unobserve(observedAnchor)
+        observedAnchor = nextAnchor
+        if (observedAnchor) resizeObserver?.observe(observedAnchor)
+      }
+
+      const appBody = document.querySelector<HTMLElement>('.app-body')
+      if (appBody !== observedAppBody) {
+        if (observedAppBody) resizeObserver?.unobserve(observedAppBody)
+        observedAppBody = appBody
+        if (observedAppBody) resizeObserver?.observe(observedAppBody)
+      }
+
+      if (mutationObserver && document.body) {
+        if (!observedAnchor && (!observingBody || !watchingSubtree)) {
+          mutationObserver.disconnect()
+          mutationObserver.observe(document.body, { childList: true, subtree: true })
+          observingBody = true
+          watchingSubtree = true
+        } else if (observedAnchor && (!observingBody || watchingSubtree)) {
+          // Drop subtree observation once mounted so chat message insertions never wake syncAnchor.
+          mutationObserver.disconnect()
+          mutationObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] })
+          observingBody = true
+          watchingSubtree = false
+        }
+      }
+
+      const next = resolveDefaultFloatingRect(vp, readChatAnchorBox(observedAnchor))
+      setAutoRect(prev => (sameRect(prev, next) ? prev : next))
+    }
+
+    window.addEventListener('resize', scheduleSync)
+    syncAnchor()
+
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', scheduleSync)
+      resizeObserver?.disconnect()
+      mutationObserver?.disconnect()
+    }
+  }, [enabled, customRect])
 
   useEffect(() => {
     if (!enabled || minimized) cancelActiveDrag()
@@ -98,9 +206,9 @@ export function FloatingInputBox() {
     }
   }, [polishing, enabled, minimized])
 
-  if (!enabled || !rect) return null
+  if (!enabled) return null
 
-  const renderRect = clampFloatingRect(rect, viewport)
+  const renderRect = clampFloatingRect(customRect ?? autoRect, viewport)
   const llmReady = describeLlmGap('normalSend') === null
   const msgCount = previewNormalSendCount(fasongText.value)
   const charCount = getGraphemes(fasongText.value).length
@@ -121,7 +229,7 @@ export function FloatingInputBox() {
     activeDragCancelRef.current = startPointerDrag(e.currentTarget, e, {
       cursor,
       onMove: ev => {
-        setRect(resizeFloatingRect(startRect, edge, ev.clientX - startX, ev.clientY - startY, getViewportSize()))
+        setCustomRect(resizeFloatingRect(startRect, edge, ev.clientX - startX, ev.clientY - startY, getViewportSize()))
       },
     })
   }
@@ -137,7 +245,7 @@ export function FloatingInputBox() {
     activeDragCancelRef.current = startPointerDrag(e.currentTarget, e, {
       cursor: 'grabbing',
       onMove: ev => {
-        setRect(moveFloatingRect(startRect, ev.clientX - startX, ev.clientY - startY, getViewportSize()))
+        setCustomRect(moveFloatingRect(startRect, ev.clientX - startX, ev.clientY - startY, getViewportSize()))
       },
     })
   }
