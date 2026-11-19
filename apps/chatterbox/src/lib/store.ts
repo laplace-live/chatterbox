@@ -58,6 +58,7 @@ export const autoSendYolo = gmSignal('autoSendYolo', false)
 export const forceScrollDanmaku = gmSignal('forceScrollDanmaku', false)
 export const optimizeLayout = gmSignal('optimizeLayout', false)
 export const hideUidWatermark = gmSignal('hideUidWatermark', false)
+export const floatingInputEnabled = gmSignal('floatingInputEnabled', false)
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
@@ -450,3 +451,6 @@ export const favoriteEmotes = gmSignal<FavoriteEmote[]>('favoriteEmotes', [])
 
 // Fasong tab shared text
 export const fasongText = signal('')
+
+/** Runtime minimize state for the floating danmaku input box (reset per room session). */
+export const floatingInputMinimized = signal(false)

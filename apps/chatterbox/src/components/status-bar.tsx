@@ -99,10 +99,12 @@ export function StatusBarCollapsible({ children }: { children: ComponentChildren
 export function StatusBarFold({
   collapsed,
   onToggle,
+  hoverAction,
   children,
 }: {
   collapsed: boolean
   onToggle: () => void
+  hoverAction?: ComponentChildren
   children: ComponentChildren
 }) {
   const groupRef = useRef<HTMLDivElement>(null)
@@ -190,22 +192,25 @@ export function StatusBarFold({
           {children}
         </div>
       </div>
-      <button
-        type='button'
-        id='laplace-status-bar-fold'
-        onClick={toggle}
-        title={collapsed ? '展开主播信息' : '折叠主播信息'}
-        aria-label={collapsed ? '展开主播信息' : '折叠主播信息'}
-        aria-expanded={!collapsed}
-        class={cn(STATUS_BAR_BUTTON_CLASS, 'w-7 justify-center px-0', 'bg-ga6')}
-      >
-        <IconChevronsRight
-          size={16}
-          stroke={2}
-          aria-hidden='true'
-          class={cn('transition-transform duration-200', collapsed && 'rotate-180')}
-        />
-      </button>
+      <div class='group/fold relative inline-flex'>
+        <button
+          type='button'
+          id='laplace-status-bar-fold'
+          onClick={toggle}
+          title={collapsed ? '展开主播信息' : '折叠主播信息'}
+          aria-label={collapsed ? '展开主播信息' : '折叠主播信息'}
+          aria-expanded={!collapsed}
+          class={cn(STATUS_BAR_BUTTON_CLASS, 'relative z-10 w-7 justify-center px-0', 'bg-ga6')}
+        >
+          <IconChevronsRight
+            size={16}
+            stroke={2}
+            aria-hidden='true'
+            class={cn('transition-transform duration-200', collapsed && 'rotate-180')}
+          />
+        </button>
+        {hoverAction}
+      </div>
     </>
   )
 }

@@ -1,6 +1,7 @@
 import { unsafeWindow } from '$'
 import { applyGetInfoByUserDanmakuLength } from './danmaku-limit'
 import { createDeferredNode } from './deferred-node'
+import { applyGetInfoByUserMedal } from './fans-medal-room'
 import { createLiveBlockPill } from './live-block-pill'
 
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
@@ -111,6 +112,7 @@ function applyTransforms(url: string, data: any): void {
   if (url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
     applyGetInfoByUserDanmakuLength(data, { url })
+    applyGetInfoByUserMedal(data, { url })
     // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
     liveBlockPill.remove()
     const forbid = data?.data?.forbid_live

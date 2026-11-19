@@ -1,24 +1,13 @@
-import { useSignal } from '@preact/signals'
-
-import { tryAiEvasion } from '../lib/ai-evasion'
-import { ensureRoomId, getCsrfToken } from '../lib/api'
+import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
 import {
-  formatLockedEmoticonReject,
-  formatUnavailableEmoticonReject,
-  isEmoticonUnique,
-  isLockedEmoticon,
-  isUnavailableEmoticon,
-} from '../lib/emoticon'
-import { describeLlmGap, isLlmApiConfigured, polishWithLlm } from '../lib/llm-tasks'
-import { appendLog } from '../lib/log'
-import { applyReplacements } from '../lib/replacement'
-import { applyRoadRageOnSend, previewRoadRageText } from '../lib/road-rage'
-import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
+  normalSendPolishing,
+  polishNormalSendInput,
+  previewNormalSendCount,
+  submitNormalSend,
+} from '../lib/normal-send'
 import {
   aiEvasion,
-  danmakuMaxUnits,
   fasongText,
-  invisibleChar,
   llmActivePromptNormalSend,
   llmPromptsNormalSend,
   normalSendPanelOpen,
@@ -26,8 +15,7 @@ import {
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { countDanmakuMessages, getGraphemes, processDanmakuMessages } from '../lib/utils'
-import { wrapSegment, wrapSplitUnits } from '../lib/wrap'
+import { getGraphemes } from '../lib/utils'
 import { EmoteSelector } from './emote-selector'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
@@ -35,24 +23,8 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
 
-/** Estimate how many danmaku segments `raw` will split into after replacements, Road Rage, and bracket wrapping. */
-function previewNormalSendCount(raw: string): number {
-  const trimmed = raw.trim()
-  if (!trimmed) return 0
-  if (isEmoticonUnique(trimmed) || isUnavailableEmoticon(trimmed)) return 1
-  const replaced = applyReplacements(trimmed)
-  const trimmedPreview = replaced.trim()
-  if (!trimmedPreview) return 0
-  if (isEmoticonUnique(trimmedPreview) || isUnavailableEmoticon(trimmedPreview)) return 1
-  const preview = previewRoadRageText(trimmed, replaced, invisibleChar.value, normalSendRoadRage.value)
-  return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
-}
-
 /** Manual danmaku send panel (常规发送) with emote picker, AI polish, YOLO mode, and Road Rage dedup. */
 export function NormalSendTab() {
-  // Disables the textarea so keystrokes can't be clobbered by the completing polish write.
-  const polishing = useSignal(false)
-
   const llmGap = describeLlmGap('normalSend')
   const llmReady = llmGap === null
 
@@ -61,146 +33,6 @@ export function NormalSendTab() {
 
   const msgCount = previewNormalSendCount(fasongText.value)
   const charCount = getGraphemes(fasongText.value).length
-
-  /** Polish the textarea content in place; returns whether it succeeded. */
-  const polishCurrentInput = async (): Promise<boolean> => {
-    if (polishing.value) return false
-    const original = fasongText.value.trim()
-    if (!original) {
-      appendLog('⚠️ 消息内容不能为空')
-      return false
-    }
-    polishing.value = true
-    try {
-      const polished = await polishWithLlm('normalSend', original)
-      if (!polished) {
-        appendLog('⚠️ AI 返回为空，已保留原文')
-        return false
-      }
-      // Write to the signal so the textarea visibly shows the polished result before send.
-      fasongText.value = polished
-      appendLog(`✨ AI 润色：${original} → ${polished}`)
-      return true
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      appendLog(`❌ AI 润色失败：${msg}`)
-      return false
-    } finally {
-      polishing.value = false
-    }
-  }
-
-  /** Validate, apply replacements and Road Rage dedup, split into segments, and enqueue the manual send. */
-  const sendMessage = async () => {
-    const originalMessage = fasongText.value.trim()
-    if (!originalMessage) {
-      appendLog('⚠️ 消息内容不能为空')
-      return
-    }
-
-    if (isLockedEmoticon(originalMessage)) {
-      appendLog(formatLockedEmoticonReject(originalMessage, '手动表情'))
-      fasongText.value = ''
-      return
-    }
-
-    // Cross-room emote ID (e.g. `room_..._...`): B站 echoes it back as plain text, so reject.
-    if (isUnavailableEmoticon(originalMessage)) {
-      appendLog(formatUnavailableEmoticonReject(originalMessage, '手动表情'))
-      fasongText.value = ''
-      return
-    }
-
-    const wasOriginalEmote = isEmoticonUnique(originalMessage)
-    let processedMessage = wasOriginalEmote ? originalMessage : applyReplacements(originalMessage)
-    const trimmedProcessed = processedMessage.trim()
-    if (!trimmedProcessed) {
-      appendLog(`⚠️ 消息替换后为空，未发送：${originalMessage}`)
-      fasongText.value = ''
-      return
-    }
-    if (!wasOriginalEmote && isLockedEmoticon(trimmedProcessed)) {
-      appendLog(formatLockedEmoticonReject(trimmedProcessed, '手动表情'))
-      fasongText.value = ''
-      return
-    }
-    if (!wasOriginalEmote && isUnavailableEmoticon(trimmedProcessed)) {
-      appendLog(formatUnavailableEmoticonReject(trimmedProcessed, '手动表情'))
-      fasongText.value = ''
-      return
-    }
-    const isEmote = wasOriginalEmote || isEmoticonUnique(trimmedProcessed)
-    if (isEmote) processedMessage = trimmedProcessed
-    const wasReplaced = !wasOriginalEmote && originalMessage !== processedMessage
-    fasongText.value = ''
-
-    try {
-      const roomId = await ensureRoomId()
-      const csrfToken = getCsrfToken()
-      if (!csrfToken) {
-        appendLog('❌ 未找到登录信息，请先登录 Bilibili')
-        return
-      }
-
-      const {
-        text: roadRageMessage,
-        roadRaged,
-        settle: settleRoadRage,
-      } = applyRoadRageOnSend({
-        original: originalMessage,
-        processed: processedMessage,
-        char: invisibleChar.value,
-        enabled: normalSendRoadRage.value,
-        isEmote,
-      })
-      processedMessage = roadRageMessage
-
-      // Never wrap emotes (【】 breaks the ID); for text, reserve wrapper units so each segment still fits danmakuMaxUnits.
-      const wrap = !isEmote && normalSendWrapBrackets.value
-      const segments = isEmote
-        ? [processedMessage]
-        : processDanmakuMessages(processedMessage, wrapSplitUnits(danmakuMaxUnits.value, wrap)).map(s =>
-            wrapSegment(s, wrap)
-          )
-      const total = segments.length
-
-      let delivered = false
-      try {
-        for (let i = 0; i < total; i++) {
-          const segment = segments[i]
-          const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'manual')
-          if (result.success) delivered = true
-          const baseLabel = result.isEmoticon ? '手动表情' : roadRaged ? '手动·路怒' : '手动'
-          const label = total > 1 ? `${baseLabel} [${i + 1}/${total}]` : baseLabel
-          const displayMsg = wasReplaced && total === 1 ? `${originalMessage} → ${segment}` : segment
-
-          appendLog(result, label, displayMsg)
-          if (!result.success) {
-            const evaded = await tryAiEvasion(segment, roomId, csrfToken, '', 'manual')
-            if (evaded.success) delivered = true
-          }
-        }
-      } finally {
-        settleRoadRage(delivered)
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      appendLog(`🔴 发送出错：${msg}`)
-    }
-  }
-
-  /** Enter-key handler; in YOLO mode polishes first and refuses to send if the LLM is unusable. */
-  const handleSubmit = async () => {
-    if (normalSendYolo.value) {
-      if (!llmReady) {
-        appendLog(`❌ YOLO 模式已开启，但 ${llmGap}。请检查配置或先关闭 YOLO 模式。`)
-        return
-      }
-      const ok = await polishCurrentInput()
-      if (!ok) return
-    }
-    await sendMessage()
-  }
 
   return (
     <AccordionItem
@@ -215,14 +47,14 @@ export function NormalSendTab() {
           <Textarea
             value={fasongText.value}
             // Locked during polish so the completing write can't clobber fresh keystrokes.
-            disabled={polishing.value}
+            disabled={normalSendPolishing.value}
             onInput={e => {
               fasongText.value = e.currentTarget.value
             }}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault()
-                void handleSubmit()
+                void submitNormalSend()
               }
             }}
             placeholder={
@@ -242,10 +74,10 @@ export function NormalSendTab() {
           <Button
             variant='outline'
             size='sm'
-            disabled={!llmReady || polishing.value || !fasongText.value.trim()}
-            onClick={() => void polishCurrentInput()}
+            disabled={!llmReady || normalSendPolishing.value || !fasongText.value.trim()}
+            onClick={() => void polishNormalSendInput()}
           >
-            {polishing.value ? '润色中…' : 'AI 润色'}
+            {normalSendPolishing.value ? '润色中…' : 'AI 润色'}
           </Button>
           <Button
             variant={normalSendYolo.value ? 'default' : 'outline'}

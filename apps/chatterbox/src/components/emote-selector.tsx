@@ -1,6 +1,8 @@
 import { useSignal } from '@preact/signals'
 import { IconMoodSmile, IconStar, IconStarFilled } from '@tabler/icons-preact'
 import { cn } from 'cn'
+import type { TargetedPointerEvent, TargetedWheelEvent } from 'preact'
+import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 
 import type { BilibiliEmoticon, FavoriteEmote } from '../types'
 
@@ -13,27 +15,85 @@ import {
   isUnavailableEmoticon,
 } from '../lib/emoticon'
 import { appendLog } from '../lib/log'
+import { startPointerDrag } from '../lib/pointer-drag'
 import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { cachedEmoticonPackages, favoriteEmotes } from '../lib/store'
 import { Button } from './ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Popover, type PopoverAlign, PopoverContent, type PopoverSide, PopoverTrigger } from './ui/popover'
 
 /**
- * Emote picker for the 常规发送 tab: a popover of per-package tabs (收藏 pinned
- * first). Image click sends (B站 requires the message be exactly the
- * `emoticon_unique`, so no textarea compose); name click copies the id and
- * keeps the popover open. Send closes it.
+ * Emote picker shared by 常规发送 and the floating input box: a popover of
+ * per-package tabs (收藏 pinned first) with a horizontal tab slider and a
+ * fixed-height grid with a vertical slider. Image click sends; name click
+ * copies the id; star click toggles favorite.
  */
 
 // String sentinel can't collide with the numeric `pkg_id`s real packages use.
 const FAVORITES_TAB = 'favorites' as const
 
-export function EmoteSelector() {
+interface SliderState {
+  visible: boolean
+  size: number
+  offset: number
+}
+
+const HIDDEN_SLIDER: SliderState = { visible: false, size: 0, offset: 0 }
+
+function computeSliderThumb(
+  scrollPos: number,
+  clientSize: number,
+  scrollSize: number,
+  trackSize: number,
+  minThumb = 28
+): SliderState {
+  const maxScroll = scrollSize - clientSize
+  if (maxScroll <= 1 || scrollSize <= 0 || trackSize <= 0) {
+    return HIDDEN_SLIDER
+  }
+  const size = Math.min(trackSize, Math.max(minThumb, Math.round(trackSize * (clientSize / scrollSize))))
+  const maxOffset = Math.max(0, trackSize - size)
+  const clampedScroll = Math.max(0, Math.min(scrollPos, maxScroll))
+  const offset =
+    maxScroll - clampedScroll <= 1
+      ? maxOffset
+      : Math.min(maxOffset, Math.round((clampedScroll / maxScroll) * maxOffset))
+  return { visible: true, size, offset }
+}
+
+function sameSlider(a: SliderState, b: SliderState): boolean {
+  return a.visible === b.visible && a.size === b.size && a.offset === b.offset
+}
+
+export interface EmoteSelectorProps {
+  /** Icon-only trigger button for tight layouts like the floating input box. */
+  compact?: boolean
+  side?: PopoverSide
+  align?: PopoverAlign
+  contentClassName?: string
+  triggerClassName?: string
+}
+
+export function EmoteSelector({
+  compact = false,
+  side = 'top',
+  align = 'start',
+  contentClassName,
+  triggerClassName,
+}: EmoteSelectorProps = {}) {
   const open = useSignal(false)
   const copiedId = useSignal<string | null>(null)
   // Hold the id, not the index, so a cache refresh that reorders/drops packages
   // (room switch) can't strand the selection — we re-resolve by id every render.
   const activePkgId = useSignal<number | typeof FAVORITES_TAB | null>(null)
+  const tabListRef = useRef<HTMLDivElement>(null)
+  const hTrackRef = useRef<HTMLDivElement>(null)
+  const gridListRef = useRef<HTMLDivElement>(null)
+  const gridContentRef = useRef<HTMLDivElement>(null)
+  const vTrackRef = useRef<HTMLDivElement>(null)
+  const hDragCancelRef = useRef<(() => void) | null>(null)
+  const vDragCancelRef = useRef<(() => void) | null>(null)
+  const [hSlider, setHSlider] = useState<SliderState>(HIDDEN_SLIDER)
+  const [vSlider, setVSlider] = useState<SliderState>(HIDDEN_SLIDER)
   const packages = cachedEmoticonPackages.value
   const favorites = favoriteEmotes.value
   const hasFavorites = favorites.length > 0
@@ -45,7 +105,133 @@ export function EmoteSelector() {
   // Also falls back to favorites when the selected package can't resolve yet
   // (mid room-switch) but favorites exist.
   const showingFavorites = activeId === FAVORITES_TAB || !activePkg
+  const resolvedTabKey = showingFavorites ? FAVORITES_TAB : (activePkg?.pkg_id ?? null)
   const isLoading = !hasFavorites && packages.length === 0
+
+  const syncHSlider = () => {
+    const list = tabListRef.current
+    const track = hTrackRef.current
+    if (!list || !track) return
+    const next = computeSliderThumb(
+      list.scrollLeft,
+      list.clientWidth,
+      list.scrollWidth,
+      track.clientWidth || list.clientWidth
+    )
+    setHSlider(prev => (sameSlider(prev, next) ? prev : next))
+  }
+
+  const syncVSlider = () => {
+    const list = gridListRef.current
+    const track = vTrackRef.current
+    if (!list || !track) return
+    const next = computeSliderThumb(
+      list.scrollTop,
+      list.clientHeight,
+      list.scrollHeight,
+      track.clientHeight || list.clientHeight
+    )
+    setVSlider(prev => (sameSlider(prev, next) ? prev : next))
+  }
+
+  useLayoutEffect(() => {
+    if (!open.value) return
+    if (gridListRef.current) gridListRef.current.scrollTop = 0
+    syncVSlider()
+  }, [open.value, resolvedTabKey])
+
+  useLayoutEffect(() => {
+    if (!open.value) {
+      hDragCancelRef.current?.()
+      hDragCancelRef.current = null
+      vDragCancelRef.current?.()
+      vDragCancelRef.current = null
+      return
+    }
+    syncHSlider()
+    syncVSlider()
+    const observer = new ResizeObserver(() => {
+      syncHSlider()
+      syncVSlider()
+    })
+    if (tabListRef.current) observer.observe(tabListRef.current)
+    if (hTrackRef.current) observer.observe(hTrackRef.current)
+    if (gridListRef.current) observer.observe(gridListRef.current)
+    if (gridContentRef.current) observer.observe(gridContentRef.current)
+    if (vTrackRef.current) observer.observe(vTrackRef.current)
+    return () => {
+      observer.disconnect()
+      hDragCancelRef.current?.()
+      hDragCancelRef.current = null
+      vDragCancelRef.current?.()
+      vDragCancelRef.current = null
+    }
+  }, [open.value, packages, favorites.length])
+
+  const handleTabWheel = (e: TargetedWheelEvent<HTMLDivElement>) => {
+    const list = tabListRef.current
+    if (!list || list.scrollWidth <= list.clientWidth) return
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault()
+      e.stopPropagation()
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+      list.scrollLeft += delta
+    }
+  }
+
+  const handleGridWheel = (e: TargetedWheelEvent<HTMLDivElement>) => {
+    const list = gridListRef.current
+    if (!list || list.scrollHeight <= list.clientHeight) return
+    e.preventDefault()
+    e.stopPropagation()
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+    list.scrollTop += delta
+  }
+
+  const startSliderDrag = (
+    axis: 'x' | 'y',
+    list: HTMLDivElement | null,
+    track: HTMLDivElement | null,
+    e: TargetedPointerEvent<HTMLDivElement>,
+    thumbAttr: 'emoteSliderThumb' | 'emoteVsliderThumb',
+    cancelRef: { current: (() => void) | null }
+  ) => {
+    if (e.button !== 0 || !list || !track) return
+    const clientSize = axis === 'x' ? list.clientWidth : list.clientHeight
+    const scrollSize = axis === 'x' ? list.scrollWidth : list.scrollHeight
+    const maxScroll = scrollSize - clientSize
+    if (maxScroll <= 1) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    const trackRect = track.getBoundingClientRect()
+    const trackSize = axis === 'x' ? trackRect.width : trackRect.height
+    if (trackSize <= 0) return
+    const thumbSize = Math.min(trackSize, Math.max(28, Math.round(trackSize * (clientSize / scrollSize))))
+    const maxThumbOffset = Math.max(1, trackSize - thumbSize)
+    const isThumb = (e.target as HTMLElement | null)?.dataset[thumbAttr] === 'true'
+
+    if (!isThumb) {
+      const pointerPos = axis === 'x' ? e.clientX - trackRect.left : e.clientY - trackRect.top
+      const clickOffset = Math.max(0, Math.min(pointerPos - thumbSize / 2, maxThumbOffset))
+      const nextScroll = (clickOffset / maxThumbOffset) * maxScroll
+      if (axis === 'x') list.scrollLeft = nextScroll
+      else list.scrollTop = nextScroll
+    }
+
+    const startPointer = axis === 'x' ? e.clientX : e.clientY
+    const startScroll = axis === 'x' ? list.scrollLeft : list.scrollTop
+    cancelRef.current?.()
+    cancelRef.current = startPointerDrag(track, e, {
+      cursor: 'grabbing',
+      onMove: ev => {
+        const delta = (axis === 'x' ? ev.clientX : ev.clientY) - startPointer
+        const nextScroll = startScroll + (delta / maxThumbOffset) * maxScroll
+        if (axis === 'x') list.scrollLeft = nextScroll
+        else list.scrollTop = nextScroll
+      },
+    })
+  }
 
   const handleSend = async (unique: string) => {
     open.value = false
@@ -106,20 +292,41 @@ export function EmoteSelector() {
       }}
     >
       <PopoverTrigger>
-        {/* Variant flip lights the button up while the picker is open. */}
-        <Button variant={open.value ? 'default' : 'outline'} size='sm' title='表情' className='flex items-center'>
-          <IconMoodSmile size={14} aria-hidden='true' />
-          表情
-        </Button>
+        {compact ? (
+          <button
+            type='button'
+            title='表情'
+            aria-label='表情'
+            aria-expanded={open.value}
+            class={cn(
+              'm-0 flex size-[36px] shrink-0 items-center justify-center rounded-full border-none p-0 transition',
+              'cursor-pointer select-none',
+              open.value ? 'bg-brand text-white' : 'bg-transparent text-ga5 hover:bg-ga2 hover:text-inherit',
+              triggerClassName
+            )}
+          >
+            <IconMoodSmile size={26} stroke={1.75} aria-hidden='true' />
+          </button>
+        ) : (
+          /* Variant flip lights the button up while the picker is open. */
+          <Button
+            variant={open.value ? 'default' : 'outline'}
+            size='sm'
+            title='表情'
+            className={cn('flex items-center', triggerClassName)}
+          >
+            <IconMoodSmile size={14} aria-hidden='true' />
+            表情
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent
-        // Open UP so the picker doesn't push the AI Evasion checkbox past the
-        // dialog's clipped bottom edge.
-        side='top'
-        align='start'
-        // Fits the default dialog width; a narrower resized dialog clips it via
-        // overflow-hidden (same caveat as Combobox).
-        className='w-[calc(var(--laplace-chatterbox-dialog-width)-20px)]'
+        side={side}
+        align={align}
+        className={cn(
+          'flex flex-col',
+          contentClassName ?? 'w-[calc(var(--laplace-chatterbox-dialog-width,320px)-20px)]'
+        )}
       >
         {isLoading ? (
           <div class='p-2 text-ga6'>表情数据加载中…</div>
@@ -127,126 +334,178 @@ export function EmoteSelector() {
           <>
             {/* `border-solid` explicit: preflight is off, so a width-only
                 `border-b` renders nothing. */}
-            <div role='tablist' class='flex shrink-0 gap-1 overflow-x-auto border-b border-solid border-ga2 px-2'>
-              <button
-                key={FAVORITES_TAB}
-                type='button'
-                role='tab'
-                aria-selected={showingFavorites}
-                aria-label='收藏'
-                title={`收藏 (${favorites.length})`}
-                onClick={() => {
-                  activePkgId.value = FAVORITES_TAB
-                }}
-                class={cn(
-                  'relative flex shrink-0 items-center justify-center',
-                  'm-0 bg-transparent p-0.5',
-                  'cursor-pointer border-0 border-b-2 border-solid border-transparent transition',
-                  '[&:not(:disabled):hover]:brightness-95',
-                  showingFavorites ? 'border-brand bg-ga1s opacity-100' : 'opacity-55'
-                )}
+            <div class='shrink-0 border-b border-solid border-ga2'>
+              <div
+                ref={tabListRef}
+                role='tablist'
+                onScroll={syncHSlider}
+                onWheel={handleTabWheel}
+                class='flex shrink-0 [scrollbar-width:none] gap-1 overflow-x-auto px-2 [&::-webkit-scrollbar]:hidden'
               >
-                <span class='flex size-12 items-center justify-center'>
-                  {hasFavorites ? (
-                    <IconStarFilled size={26} class='text-brand' />
-                  ) : (
-                    <IconStar size={26} class='text-ga6' />
+                <button
+                  key={FAVORITES_TAB}
+                  type='button'
+                  role='tab'
+                  aria-selected={showingFavorites}
+                  aria-label='收藏'
+                  title={`收藏 (${favorites.length})`}
+                  onClick={() => {
+                    activePkgId.value = FAVORITES_TAB
+                  }}
+                  class={cn(
+                    'relative flex shrink-0 items-center justify-center',
+                    'm-0 bg-transparent p-0.5',
+                    'cursor-pointer border-0 border-b-2 border-solid border-transparent transition',
+                    '[&:not(:disabled):hover]:brightness-95',
+                    showingFavorites ? 'border-brand bg-ga1s opacity-100' : 'opacity-55'
                   )}
-                </span>
-              </button>
-              {packages.map(pkg => {
-                const isActive = pkg.pkg_id === activePkg?.pkg_id
-                const cover = pkg.emoticons[0]
-                return (
-                  <button
-                    key={pkg.pkg_id}
-                    type='button'
-                    role='tab'
-                    aria-selected={isActive}
-                    aria-label={pkg.pkg_name}
-                    title={`${pkg.pkg_name} (${pkg.emoticons.length})`}
-                    onClick={() => {
-                      activePkgId.value = pkg.pkg_id
-                    }}
-                    class={cn(
-                      'relative flex shrink-0 items-center justify-center',
-                      'm-0 bg-transparent p-0.5',
-                      // `border-b-2` transparent on inactive tabs so the row
-                      // height doesn't shift as selection moves.
-                      'cursor-pointer border-0 border-b-2 border-solid border-transparent transition',
-                      '[&:not(:disabled):hover]:brightness-95',
-                      isActive ? 'border-brand bg-ga1s opacity-100' : 'opacity-55'
-                    )}
-                  >
-                    {cover?.url ? (
-                      <img src={cover.url} alt='' class='size-12 object-contain' loading='lazy' />
+                >
+                  <span class='flex size-12 items-center justify-center'>
+                    {hasFavorites ? (
+                      <IconStarFilled size={26} class='text-brand' />
                     ) : (
-                      <span class='px-1 text-[11px] leading-none text-ga6'>{pkg.pkg_name}</span>
+                      <IconStar size={26} class='text-ga6' />
                     )}
-                  </button>
-                )
-              })}
+                  </span>
+                </button>
+                {packages.map(pkg => {
+                  const isActive = pkg.pkg_id === activePkg?.pkg_id
+                  const cover = pkg.emoticons[0]
+                  return (
+                    <button
+                      key={pkg.pkg_id}
+                      type='button'
+                      role='tab'
+                      aria-selected={isActive}
+                      aria-label={pkg.pkg_name}
+                      title={`${pkg.pkg_name} (${pkg.emoticons.length})`}
+                      onClick={() => {
+                        activePkgId.value = pkg.pkg_id
+                      }}
+                      class={cn(
+                        'relative flex shrink-0 items-center justify-center',
+                        'm-0 bg-transparent p-0.5',
+                        // `border-b-2` transparent on inactive tabs so the row
+                        // height doesn't shift as selection moves.
+                        'cursor-pointer border-0 border-b-2 border-solid border-transparent transition',
+                        '[&:not(:disabled):hover]:brightness-95',
+                        isActive ? 'border-brand bg-ga1s opacity-100' : 'opacity-55'
+                      )}
+                    >
+                      {cover?.url ? (
+                        <img src={cover.url} alt='' class='size-12 object-contain' loading='lazy' />
+                      ) : (
+                        <span class='px-1 text-[11px] leading-none text-ga6'>{pkg.pkg_name}</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+              {/* Custom horizontal slider bar for easy package switching across overflowed tabs. */}
+              <div
+                ref={hTrackRef}
+                onPointerDown={e =>
+                  startSliderDrag('x', tabListRef.current, hTrackRef.current, e, 'emoteSliderThumb', hDragCancelRef)
+                }
+                onWheel={handleTabWheel}
+                title='左右拖动切换表情包分类'
+                class={cn(
+                  'relative mx-2 my-1 h-2.5 cursor-pointer rounded-full bg-ga2/80 select-none',
+                  !hSlider.visible && 'hidden'
+                )}
+                style={{ touchAction: 'none' }}
+              >
+                <div
+                  data-emote-slider-thumb='true'
+                  class='absolute top-0 bottom-0 cursor-grab rounded-full bg-ga4 transition-colors hover:bg-ga5 active:cursor-grabbing active:bg-ga6'
+                  style={{ width: `${hSlider.size}px`, left: `${hSlider.offset}px` }}
+                />
+              </div>
             </div>
-            {/* Keyed by tab so switching remounts and resets scroll to the top. */}
-            <div
-              key={showingFavorites ? FAVORITES_TAB : activePkg?.pkg_id}
-              class='max-h-[min(320px,40vh)] overflow-y-auto p-2'
-            >
-              {showingFavorites ? (
-                favorites.length === 0 ? (
-                  <div class='p-3 text-center text-[11px] leading-relaxed text-ga6'>
-                    还没有收藏的表情
-                    <br />
-                    把鼠标移到表情上，点左上角的 ☆ 即可收藏
-                  </div>
-                ) : (
-                  <>
-                    <div class='mb-1 text-[11px] font-bold text-ga6'>
-                      收藏
-                      <span class='ml-2 font-normal'>({favorites.length})</span>
-                    </div>
-                    <div class='flex flex-wrap gap-1'>
-                      {favorites.map(fav => {
-                        // Live cache gives fresh perm/lock state; a missing one
-                        // (other room / loading) falls back to its snapshot.
-                        const { live, status } = resolveFavorite(fav.emoticon_unique, packages)
-                        return (
+            {/* Fixed height keeps the popover top stationary across tabs with different emote counts. */}
+            <div class='flex h-[min(240px,38vh)] min-h-0'>
+              <div
+                ref={gridListRef}
+                onScroll={syncVSlider}
+                class='min-w-0 flex-1 [scrollbar-width:none] overflow-y-auto p-2 [&::-webkit-scrollbar]:hidden'
+              >
+                <div ref={gridContentRef}>
+                  {showingFavorites ? (
+                    favorites.length === 0 ? (
+                      <div class='p-3 text-center text-[11px] leading-relaxed text-ga6'>
+                        还没有收藏的表情
+                        <br />
+                        把鼠标移到表情上，点左上角的 ☆ 即可收藏
+                      </div>
+                    ) : (
+                      <>
+                        <div class='mb-1 text-[11px] font-bold text-ga6'>
+                          收藏
+                          <span class='ml-2 font-normal'>({favorites.length})</span>
+                        </div>
+                        <div class='flex flex-wrap gap-1'>
+                          {favorites.map(fav => {
+                            // Live cache gives fresh perm/lock state; a missing one
+                            // (other room / loading) falls back to its snapshot.
+                            const { live, status } = resolveFavorite(fav.emoticon_unique, packages)
+                            return (
+                              <EmoteCell
+                                key={fav.emoticon_unique}
+                                emo={live ?? favoriteToEmoticon(fav)}
+                                copied={copiedId.value === fav.emoticon_unique}
+                                isFav
+                                unavailable={status === 'unavailable'}
+                                onSend={unique => void handleSend(unique)}
+                                onCopy={unique => void handleCopy(unique)}
+                                onToggleFav={() => handleToggleFav(live ?? fav)}
+                              />
+                            )
+                          })}
+                        </div>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <div class='mb-1 text-[11px] font-bold text-ga6'>
+                        {activePkg?.pkg_name}
+                        <span class='ml-2 font-normal'>({activePkg?.emoticons.length})</span>
+                      </div>
+                      <div class='flex flex-wrap gap-1'>
+                        {activePkg?.emoticons.map(emo => (
                           <EmoteCell
-                            key={fav.emoticon_unique}
-                            emo={live ?? favoriteToEmoticon(fav)}
-                            copied={copiedId.value === fav.emoticon_unique}
-                            isFav
-                            unavailable={status === 'unavailable'}
+                            key={emo.emoticon_id}
+                            emo={emo}
+                            copied={copiedId.value === emo.emoticon_unique}
+                            isFav={isFavorite(favorites, emo.emoticon_unique)}
                             onSend={unique => void handleSend(unique)}
                             onCopy={unique => void handleCopy(unique)}
-                            onToggleFav={() => handleToggleFav(live ?? fav)}
+                            onToggleFav={() => handleToggleFav(emo)}
                           />
-                        )
-                      })}
-                    </div>
-                  </>
-                )
-              ) : (
-                <>
-                  <div class='mb-1 text-[11px] font-bold text-ga6'>
-                    {activePkg?.pkg_name}
-                    <span class='ml-2 font-normal'>({activePkg?.emoticons.length})</span>
-                  </div>
-                  <div class='flex flex-wrap gap-1'>
-                    {activePkg?.emoticons.map(emo => (
-                      <EmoteCell
-                        key={emo.emoticon_id}
-                        emo={emo}
-                        copied={copiedId.value === emo.emoticon_unique}
-                        isFav={isFavorite(favorites, emo.emoticon_unique)}
-                        onSend={unique => void handleSend(unique)}
-                        onCopy={unique => void handleCopy(unique)}
-                        onToggleFav={() => handleToggleFav(emo)}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div
+                ref={vTrackRef}
+                onPointerDown={e =>
+                  startSliderDrag('y', gridListRef.current, vTrackRef.current, e, 'emoteVsliderThumb', vDragCancelRef)
+                }
+                onWheel={handleGridWheel}
+                title='上下拖动浏览表情'
+                class={cn(
+                  'relative my-2 mr-1.5 w-2.5 shrink-0 cursor-pointer rounded-full bg-ga2/80 select-none',
+                  !vSlider.visible && 'hidden'
+                )}
+                style={{ touchAction: 'none' }}
+              >
+                <div
+                  data-emote-vslider-thumb='true'
+                  class='absolute right-0 left-0 cursor-grab rounded-full bg-ga4 transition-colors hover:bg-ga5 active:cursor-grabbing active:bg-ga6'
+                  style={{ height: `${vSlider.size}px`, top: `${vSlider.offset}px` }}
+                />
+              </div>
             </div>
           </>
         )}

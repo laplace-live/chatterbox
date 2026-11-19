@@ -89,7 +89,7 @@ export const BASE_URL = {
   /** Fetches room basic info. GET, param: id (room ID). */
   BILIBILI_ROOM_INIT: 'https://api.live.bilibili.com/room/v1/Room/room_init',
 
-  /** Viewer's room-specific info (`data.property.danmu.length`, `data.forbid_live`). GET, param: room_id. */
+  /** Viewer's room-specific info (`data.property.danmu.length`, `data.forbid_live`, `data.medal.curr_show`). GET, param: room_id. */
   BILIBILI_GET_INFO_BY_USER: 'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByUser',
 
   /** Logged-in user info (`data.uname`, `data.mid`). GET with credentials. */
@@ -106,6 +106,15 @@ export const BASE_URL = {
 
   /** Get emoticons for a room. GET, params: platform, room_id. */
   BILIBILI_GET_EMOTICONS: 'https://api.live.bilibili.com/xlive/web-ucenter/v2/emoticon/GetEmoticons',
+
+  /** User's fans medal panel list. GET, params: page, page_size, target_id. */
+  BILIBILI_FANS_MEDAL_PANEL: 'https://api.live.bilibili.com/xlive/app-ucenter/v1/fansMedal/panel',
+
+  /** Wear a fans medal. POST, params: medal_id, csrf, csrf_token, visit_id. */
+  BILIBILI_FANS_MEDAL_WEAR: 'https://api.live.bilibili.com/xlive/web-room/v1/fansMedal/wear',
+
+  /** Take off the currently worn fans medal. POST, params: csrf, csrf_token, visit_id. */
+  BILIBILI_FANS_MEDAL_TAKE_OFF: 'https://api.live.bilibili.com/xlive/web-room/v1/fansMedal/take_off',
 
   LAPLACE_CHAT_AUDIT: 'https://edge-workers.laplace.cn/laplace/chat-audit',
 
