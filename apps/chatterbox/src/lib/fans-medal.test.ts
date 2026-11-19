@@ -703,10 +703,13 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
     expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
 
-    // A logout is current whenever it arrives.
+    // A logout is current whenever it arrives, and replies after it (a re-login) count fully again.
     expect(medalRoom.applyGetInfoByUserMedal({ code: -101, message: '未登录' }, { roomId: 81004 })).toBe('applied')
     expect(medalRoom.roomDisplayedMedal.value).toBeNull()
     expect(medalRoom.wearedMedal.value).toBeNull()
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004 })).toBe('applied')
+    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
+    expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
   })
 
   it('sets fansMedalError when fetchRoomDisplayedMedal fails or returns invalid data, and clears it on success', async () => {
