@@ -11,6 +11,7 @@ let moduleId = 0
 async function loadNormalSend(llmGap: string | null) {
   const polishWithLlm = mock(async (_feature: string, text: string) => `${text}～`)
   const logs: string[] = []
+  const fasongText = signals.signal('主播好')
   const dependencies: Record<string, unknown> = {
     '@preact/signals': signals,
     './ai-evasion': {},
@@ -21,7 +22,7 @@ async function loadNormalSend(llmGap: string | null) {
     './replacement': {},
     './road-rage': {},
     './send-queue': {},
-    './store': { fasongText: signals.signal('主播好'), normalSendYolo: signals.signal(false) },
+    './store': { fasongText, normalSendYolo: signals.signal(false) },
     './utils': utils,
     './wrap': wrap,
   }
@@ -38,7 +39,7 @@ async function loadNormalSend(llmGap: string | null) {
     const mod: typeof import('./normal-send') = await import(
       `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
     )
-    return { mod, polishWithLlm, logs }
+    return { mod, polishWithLlm, logs, fasongText }
   } finally {
     Reflect.deleteProperty(globalThis, key)
   }
@@ -49,12 +50,14 @@ function enter(mods: { altKey?: boolean; shiftKey?: boolean; isComposing?: boole
 }
 
 describe('handleNormalSendKeyDown', () => {
-  it('polishes on Alt+Enter once the LLM is ready', async () => {
-    const { mod, polishWithLlm } = await loadNormalSend(null)
+  it('polishes the shared draft in place on Alt+Enter once the LLM is ready', async () => {
+    const { mod, polishWithLlm, fasongText } = await loadNormalSend(null)
     const e = enter({ altKey: true })
     mod.handleNormalSendKeyDown(e)
     expect(e.preventDefault).toHaveBeenCalledTimes(1)
     expect(polishWithLlm).toHaveBeenCalledWith('normalSend', '主播好')
+    while (mod.normalSendPolishing.value) await Bun.sleep(1)
+    expect(fasongText.value).toBe('主播好～')
   })
 
   it('only explains the gap on Alt+Enter while the LLM is not ready', async () => {
