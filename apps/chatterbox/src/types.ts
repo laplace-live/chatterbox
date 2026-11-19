@@ -111,6 +111,8 @@ export interface FansMedal {
   colorEnd: string
   colorBorder: string
   colorText: string
+  /** Guard (大航海) icon URL from the medal payload, empty unless the medal is lit and guarded. */
+  guardIcon: string
   isLighted: boolean
   guardLevel: number
   todayFeed: number

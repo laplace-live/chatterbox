@@ -95,6 +95,8 @@ describe('normalizeFansMedal', () => {
         name: '测试牌',
         level: 24,
         is_light: 1,
+        guard_level: 3,
+        guard_icon: 'https://i0.hdslb.com/bfs/live/1d16bf0fcc3b1b768d1179d60f1fdbabe6ab4489.png',
         v2_medal_color_start: '#C770A499',
         v2_medal_color_end: '#C770A499',
         v2_medal_color_border: '#C770A499',
@@ -114,6 +116,7 @@ describe('normalizeFansMedal', () => {
       colorEnd: '#C770A499',
       colorBorder: '#C770A499',
       colorText: '#FFFFFFFF',
+      guardIcon: 'https://i0.hdslb.com/bfs/live/1d16bf0fcc3b1b768d1179d60f1fdbabe6ab4489.png',
       isLighted: true,
       guardLevel: 3,
       todayFeed: 120,
@@ -138,6 +141,7 @@ describe('normalizeFansMedal', () => {
       colorEnd: 'rgba(151, 158, 189, 0.8)',
       colorBorder: 'rgba(151, 158, 189, 0.8)',
       colorText: '#FFFFFF',
+      guardIcon: '',
       isLighted: true,
     })
     expect(parseFansMedalPanelResponse({ code: 0, data: { list: [entry] } }).weared?.medalId).toBe(303)
@@ -177,6 +181,7 @@ describe('parseGetInfoByUserMedal', () => {
           is_light: 1,
           ruid: 2132180406,
           guard_level: 3,
+          guard_icon: 'https://i0.hdslb.com/bfs/live/1d16bf0fcc3b1b768d1179d60f1fdbabe6ab4489.png',
           v2_medal_color_start: '#BE4960CC',
           v2_medal_color_end: '#BE4960CC',
           v2_medal_color_border: '#F18087FF',
@@ -215,6 +220,7 @@ describe('parseGetInfoByUserMedal', () => {
       colorEnd: '#3FB4F699',
       colorBorder: '#3FB4F699',
       colorText: '#FFFFFFFF',
+      guardIcon: '',
       isLighted: true,
       guardLevel: 0,
       todayFeed: 0,
@@ -226,6 +232,7 @@ describe('parseGetInfoByUserMedal', () => {
       level: 27,
       targetId: 2132180406,
       colorBorder: '#F18087FF',
+      guardIcon: 'https://i0.hdslb.com/bfs/live/1d16bf0fcc3b1b768d1179d60f1fdbabe6ab4489.png',
       guardLevel: 3,
     })
   })
@@ -271,6 +278,8 @@ describe('parseGetInfoByUserMedal', () => {
             color_end: 12632256,
             color_border: 12632256,
             is_light: 0,
+            guard_level: 3,
+            guard_icon: 'https://i0.hdslb.com/bfs/live/1d16bf0fcc3b1b768d1179d60f1fdbabe6ab4489.png',
             v2_medal_color_start: '#919298CC',
             v2_medal_color_end: '#919298CC',
             v2_medal_color_border: '#919298CC',
@@ -279,7 +288,8 @@ describe('parseGetInfoByUserMedal', () => {
         },
       },
     })
-    expect(unlit?.displayed).toMatchObject({ colorStart: '#919298CC', colorBorder: '#919298CC', isLighted: false })
+    // B站 draws no guard icon on an unlit medal.
+    expect(unlit?.displayed).toMatchObject({ colorStart: '#919298CC', guardIcon: '', isLighted: false, guardLevel: 3 })
 
     const legacy = parseGetInfoByUserMedal({
       code: 0,

@@ -15,19 +15,22 @@ function toFlag(raw: unknown): boolean {
 const DEFAULT_MEDAL_FILL = 'rgba(151, 158, 189, 0.8)'
 const DEFAULT_MEDAL_TEXT = '#FFFFFF'
 
-function readColor(raw: unknown, fallback: string): string {
+function readText(raw: unknown, fallback = ''): string {
   return typeof raw === 'string' && raw ? raw : fallback
 }
 
-/** B站's v2 medal colors (`#RRGGBBAA`; unlit medals come back grey), as its own renderer reads them. */
-function readMedalColors(
-  medal: Record<string, unknown>
-): Pick<FansMedal, 'colorStart' | 'colorEnd' | 'colorBorder' | 'colorText'> {
+/** B站's v2 look, read like its own renderer: colors (`#RRGGBBAA`, grey when unlit) and a lit guard medal's icon. */
+function readMedalLook(
+  display: Record<string, unknown>,
+  isLighted: boolean,
+  guardLevel: number
+): Pick<FansMedal, 'colorStart' | 'colorEnd' | 'colorBorder' | 'colorText' | 'guardIcon'> {
   return {
-    colorStart: readColor(medal.v2_medal_color_start, DEFAULT_MEDAL_FILL),
-    colorEnd: readColor(medal.v2_medal_color_end, DEFAULT_MEDAL_FILL),
-    colorBorder: readColor(medal.v2_medal_color_border, DEFAULT_MEDAL_FILL),
-    colorText: readColor(medal.v2_medal_color_text, DEFAULT_MEDAL_TEXT),
+    colorStart: readText(display.v2_medal_color_start, DEFAULT_MEDAL_FILL),
+    colorEnd: readText(display.v2_medal_color_end, DEFAULT_MEDAL_FILL),
+    colorBorder: readText(display.v2_medal_color_border, DEFAULT_MEDAL_FILL),
+    colorText: readText(display.v2_medal_color_text, DEFAULT_MEDAL_TEXT),
+    guardIcon: isLighted && guardLevel > 0 ? readText(display.guard_icon) : '',
   }
 }
 
@@ -36,7 +39,7 @@ export function normalizeFansMedal(raw: unknown): FansMedal | null {
   if (!isRecord(raw)) return null
   const medal = isRecord(raw.medal) ? raw.medal : raw
   // B站's own medal list draws `uinfo_medal`; the panel's `medal` carries no usable v2 colors.
-  const colors = isRecord(raw.uinfo_medal) ? raw.uinfo_medal : medal
+  const display = isRecord(raw.uinfo_medal) ? raw.uinfo_medal : medal
   const anchor = isRecord(raw.anchor_info) ? raw.anchor_info : raw
   const room = isRecord(raw.room_info) ? raw.room_info : isRecord(raw.roominfo) ? raw.roominfo : raw
 
@@ -45,6 +48,8 @@ export function normalizeFansMedal(raw: unknown): FansMedal | null {
   if (medalId <= 0 || !medalName) return null
 
   const rawLighted = medal.is_lighted ?? medal.is_light ?? raw.is_lighted
+  const isLighted = rawLighted === undefined ? true : toFlag(rawLighted)
+  const guardLevel = toInt(medal.guard_level ?? raw.guard_level)
 
   return {
     medalId,
@@ -57,9 +62,9 @@ export function normalizeFansMedal(raw: unknown): FansMedal | null {
       (typeof raw.uname === 'string' && raw.uname.trim()) ||
       '',
     roomId: toInt(room.room_id ?? raw.roomid),
-    ...readMedalColors(colors),
-    isLighted: rawLighted === undefined ? true : toFlag(rawLighted),
-    guardLevel: toInt(medal.guard_level ?? raw.guard_level),
+    ...readMedalLook(display, isLighted, guardLevel),
+    isLighted,
+    guardLevel,
     todayFeed: toInt(medal.today_feed ?? raw.today_feed ?? raw.intimacy),
     dayLimit: toInt(medal.day_limit ?? raw.day_limit),
   }
@@ -79,6 +84,8 @@ function normalizeV2OrRoomMedal(raw: unknown): FansMedal | null {
   if (medalId <= 0 && targetId <= 0 && level <= 0) return null
 
   const rawLighted = raw.is_light ?? raw.is_lighted
+  const isLighted = rawLighted === undefined ? true : toFlag(rawLighted)
+  const guardLevel = toInt(raw.guard_level)
 
   return {
     medalId,
@@ -90,9 +97,9 @@ function normalizeV2OrRoomMedal(raw: unknown): FansMedal | null {
       (typeof raw.uname === 'string' && raw.uname.trim()) ||
       '',
     roomId: toInt(raw.target_roomid ?? raw.roomid ?? raw.room_id),
-    ...readMedalColors(raw),
-    isLighted: rawLighted === undefined ? true : toFlag(rawLighted),
-    guardLevel: toInt(raw.guard_level),
+    ...readMedalLook(raw, isLighted, guardLevel),
+    isLighted,
+    guardLevel,
     todayFeed: toInt(raw.today_feed),
     dayLimit: toInt(raw.day_limit),
   }
