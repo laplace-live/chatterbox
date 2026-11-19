@@ -19,7 +19,8 @@ function extractUrlRoomId(url: string | undefined): number | null {
   return match ? parsePositiveRoomId(match[1]) : null
 }
 
-function collectRoomIds(payload: unknown, context?: { roomId?: number | null; url?: string }): number[] {
+/** Room ids a `getInfoByUser` reply belongs to: the caller's, the URL's `room_id`, and the payload's own. */
+export function collectRoomIds(payload: unknown, context?: { roomId?: number | null; url?: string }): number[] {
   const ids = new Set<number>()
   for (const candidate of [
     context?.roomId,
@@ -36,19 +37,23 @@ function collectRoomIds(payload: unknown, context?: { roomId?: number | null; ur
 /** Active resolved Bilibili real room ID for the current page (`null` until resolved). */
 export const cachedRoomId = signal<number | null>(null)
 
+/** Entry for the active room: `cachedRoomId`, else the URL's room, else the sole entry, else `unkeyed`. */
+export function resolveRoomEntry<T>(map: ReadonlyMap<number, T>, unkeyed: T | undefined): T | undefined {
+  const activeRoomId = cachedRoomId.value
+  if (activeRoomId !== null) return map.get(activeRoomId)
+  const urlRoom = typeof location !== 'undefined' ? parsePositiveRoomId(extractRoomNumber(location.href)) : null
+  if (urlRoom !== null && map.has(urlRoom)) return map.get(urlRoom)
+  if (map.size === 1) return map.values().next().value
+  return unkeyed
+}
+
 const unitsByRoom = signal<ReadonlyMap<number, number>>(new Map())
 const unkeyedUnits = signal<number | null>(null)
 
 /** Viewer's room-specific `data.property.danmu.length` in Bilibili half-width units (`null` until resolved for the active room or when logged out). */
-export const roomDanmakuUnits = computed<number | null>(() => {
-  const activeRoomId = cachedRoomId.value
-  const map = unitsByRoom.value
-  if (activeRoomId !== null) return map.get(activeRoomId) ?? null
-  const urlRoom = typeof location !== 'undefined' ? parsePositiveRoomId(extractRoomNumber(location.href)) : null
-  if (urlRoom !== null && map.has(urlRoom)) return map.get(urlRoom) ?? null
-  if (map.size === 1) return map.values().next().value ?? null
-  return unkeyedUnits.value
-})
+export const roomDanmakuUnits = computed<number | null>(
+  () => resolveRoomEntry(unitsByRoom.value, unkeyedUnits.value ?? undefined) ?? null
+)
 
 /** Effective room cap in Bilibili half-width units: live `getInfoByUser` value once known, else {@link DEFAULT_DANMAKU_MAX_UNITS}. */
 export const danmakuMaxUnits = computed(() => roomDanmakuUnits.value ?? DEFAULT_DANMAKU_MAX_UNITS)

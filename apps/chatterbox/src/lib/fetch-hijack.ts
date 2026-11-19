@@ -1,13 +1,7 @@
 import { unsafeWindow } from '$'
 import { applyGetInfoByUserDanmakuLength } from './danmaku-limit'
 import { createDeferredNode } from './deferred-node'
-import {
-  applyGetInfoByUserMedal,
-  captureGetInfoStamp,
-  type GetInfoStamp,
-  isOwnGetInfoMedalResponse,
-  markOwnGetInfoMedalResponse,
-} from './fans-medal-room'
+import { applyGetInfoByUserMedal } from './fans-medal-room'
 import { createLiveBlockPill } from './live-block-pill'
 
 const LIVE_BLOCK_INDICATOR_ID = 'laplace-chatterbox-live-block-indicator'
@@ -105,17 +99,6 @@ function buildDeletedAccountProfile(mid: number) {
 }
 
 /** True iff this is one of the URLs we rewrite. */
-const getInfoResponseStamps = new WeakMap<Response, GetInfoStamp>()
-
-function readFetchUrl(input: unknown): string {
-  if (typeof input === 'string') return input
-  if (input && typeof input === 'object') {
-    if ('url' in input && typeof input.url === 'string') return input.url
-    if ('href' in input && typeof input.href === 'string') return input.href
-  }
-  return ''
-}
-
 function shouldHijackUrl(url: string): boolean {
   return url.includes(GET_INFO_BY_USER_PATTERN) || url.includes(ACC_RELATION_PATTERN) || url.includes(ACC_INFO_PATTERN)
 }
@@ -125,17 +108,11 @@ function shouldHijackUrl(url: string): boolean {
  * indicator/banner. Idempotent, so re-consuming a cloned Response is safe.
  */
 // biome-ignore lint/suspicious/noExplicitAny: parsed JSON shape from B站
-function applyTransforms(url: string, data: any, resp?: Response): void {
+function applyTransforms(url: string, data: any): void {
   if (url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
     applyGetInfoByUserDanmakuLength(data, { url })
-    if (!resp || !isOwnGetInfoMedalResponse(resp)) {
-      applyGetInfoByUserMedal(data, {
-        url,
-        stamp: resp ? getInfoResponseStamps.get(resp) : undefined,
-        fromHijack: true,
-      })
-    }
+    applyGetInfoByUserMedal(data, { url, fromHijack: true })
     // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
     liveBlockPill.remove()
     const forbid = data?.data?.forbid_live
@@ -199,42 +176,18 @@ function applyTransforms(url: string, data: any, resp?: Response): void {
   }
 }
 /**
- * Wrap `unsafeWindow.fetch` (to stamp `getInfoByUser` request ordering) and patch
- * `Response.prototype.json`/`.text`/`.clone` (to rewrite payloads and preserve stamps).
- * B站's bundle closes over `fetch` and these prototype methods at module init, so all
- * patches must land at `document-start`; `vite dev`'s async graph loads too late (~600ms),
- * so verify these unlocks against a build.
+ * Patch `Response.prototype.json`/`.text` rather than `window.fetch`: B站's bundle
+ * closes over `fetch` at module init. It closes over these methods too, so the real
+ * invariant is landing before that bundle initialises — patching before the response
+ * is merely *consumed* is not enough, since the call never routes through a layer
+ * added after the capture. `document-start` guarantees it; `vite dev`'s async module
+ * graph does not (the hijack evaluates ~600ms in, too late to ever be called), so
+ * verify these unlocks against a build.
  */
 ;(() => {
   console.log('[LAPLACE Chatterbox] fetch-hijack loaded on', location.hostname)
   try {
-    const origFetch = unsafeWindow.fetch
-    if (typeof origFetch === 'function') {
-      unsafeWindow.fetch = function (this: unknown, ...args: Parameters<typeof fetch>): Promise<Response> {
-        const url = readFetchUrl(args[0])
-        const stamp = url.includes(GET_INFO_BY_USER_PATTERN) ? captureGetInfoStamp() : undefined
-        const promise = origFetch.apply(this, args)
-        return stamp
-          ? promise.then(resp => {
-              if (resp) getInfoResponseStamps.set(resp, stamp)
-              return resp
-            })
-          : promise
-      }
-    }
-
     const ResponseProto = unsafeWindow.Response.prototype
-
-    const origClone = ResponseProto.clone
-    if (typeof origClone === 'function') {
-      ResponseProto.clone = function (this: Response): Response {
-        const cloned = origClone.call(this)
-        const stamp = getInfoResponseStamps.get(this)
-        if (stamp) getInfoResponseStamps.set(cloned, stamp)
-        if (isOwnGetInfoMedalResponse(this)) markOwnGetInfoMedalResponse(cloned)
-        return cloned
-      }
-    }
 
     const origJson = ResponseProto.json
     ResponseProto.json = async function (this: Response): Promise<unknown> {
@@ -242,7 +195,7 @@ function applyTransforms(url: string, data: any, resp?: Response): void {
       const url = this.url
       if (url && data && typeof data === 'object') {
         try {
-          applyTransforms(url, data, this)
+          applyTransforms(url, data)
         } catch (err) {
           console.error('[LAPLACE Chatterbox] applyTransforms (json) failed:', err)
         }
@@ -258,7 +211,7 @@ function applyTransforms(url: string, data: any, resp?: Response): void {
       if (url && shouldHijackUrl(url)) {
         try {
           const data = JSON.parse(text)
-          applyTransforms(url, data, this)
+          applyTransforms(url, data)
           return JSON.stringify(data)
         } catch {
           // Body wasn't JSON (or transform threw); pass through unchanged.

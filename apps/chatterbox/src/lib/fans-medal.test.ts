@@ -5,7 +5,6 @@ import * as constants from './const'
 import * as danmakuLimit from './danmaku-limit'
 import * as medalParse from './fans-medal-parse'
 import {
-  applyWearedMedal,
   formatMedalColor,
   isSameFansMedal,
   mergeFansMedals,
@@ -41,16 +40,16 @@ async function loadFansMedal(fetchImpl: (url: string, init?: RequestInit) => Pro
   Reflect.set(globalThis, key, { fetch: fetchImpl, dependencies })
   const js = new Bun.Transpiler({ loader: 'ts' })
     .transformSync(fansMedalSource)
-    .replace(/export\s*\{[^}]+\}\s*from\s*["'][^"']+["'];?/g, '')
     .replace(/import\s*\{([^}]+)\}\s*from\s*["']([^"']+)["'];?/g, (_match, names, path) => {
       if (!(path in dependencies)) throw new Error(`Unmocked import: ${path}`)
       return `const {${names}} = globalThis[${JSON.stringify(key)}].dependencies[${JSON.stringify(path)}];`
     })
   const code = `const { fetch } = globalThis[${JSON.stringify(key)}];\n${js}`
   try {
-    return (await import(
+    const mod: typeof import('./fans-medal') = await import(
       `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
-    )) as typeof import('./fans-medal')
+    )
+    return mod
   } finally {
     Reflect.deleteProperty(globalThis, key)
   }
@@ -114,7 +113,6 @@ describe('normalizeFansMedal', () => {
       colorEnd: '#5d8bf8',
       colorBorder: '#ff6699',
       isLighted: true,
-      wearingStatus: true,
       guardLevel: 3,
       todayFeed: 120,
       dayLimit: 1500,
@@ -122,7 +120,7 @@ describe('normalizeFansMedal', () => {
   })
 
   it('falls back from zero medal_color_start to medal_color and handles is_used / omitted is_lighted', () => {
-    const medal = normalizeFansMedal({
+    const entry = {
       medal: {
         medal_id: 303,
         medal_name: '备用色',
@@ -133,12 +131,13 @@ describe('normalizeFansMedal', () => {
         medal_color: '#83c5be',
         is_used: 1,
       },
-    })
+    }
+    const medal = normalizeFansMedal(entry)
     expect(medal?.colorStart).toBe('#83c5be')
     expect(medal?.colorEnd).toBe('#83c5be')
     expect(medal?.colorBorder).toBe('#83c5be')
-    expect(medal?.wearingStatus).toBe(true)
     expect(medal?.isLighted).toBe(true)
+    expect(parseFansMedalPanelResponse({ code: 0, data: { list: [entry] } }).weared?.medalId).toBe(303)
   })
 
   it('falls back to default medal color when both medal_color_start and medal_color are 0', () => {
@@ -225,7 +224,6 @@ describe('parseGetInfoByUserMedal', () => {
       colorEnd: '#6888f1',
       colorBorder: '#06154c',
       isLighted: true,
-      wearingStatus: false,
       guardLevel: 0,
       todayFeed: 0,
       dayLimit: 20000,
@@ -237,7 +235,6 @@ describe('parseGetInfoByUserMedal', () => {
       targetId: 2132180406,
       colorBorder: '#67e8ff',
       guardLevel: 3,
-      wearingStatus: true,
     })
   })
 
@@ -370,7 +367,7 @@ describe('parseFansMedalPanelResponse', () => {
   })
 })
 
-describe('isSameFansMedal, applyWearedMedal & room-keyed display', () => {
+describe('isSameFansMedal & room-keyed display', () => {
   it('matches by medalId first and falls back to targetId when curr_weared_v2 omits id', () => {
     const rich = mustNormalize({ medal: { medal_id: 500, target_id: 2132180406, medal_name: '奶糖花', level: 27 } })
     const other = mustNormalize({ medal: { medal_id: 510698, target_id: 1521415, medal_name: '艾薯条', level: 27 } })
@@ -386,8 +383,7 @@ describe('isSameFansMedal, applyWearedMedal & room-keyed display', () => {
     })?.weared
     expect(v2Worn).toBeTruthy()
     expect(isSameFansMedal(rich, v2Worn ?? null)).toBe(true)
-    expect(applyWearedMedal([rich, other], v2Worn ?? null).map(m => m.wearingStatus)).toEqual([true, false])
-    expect(applyWearedMedal([rich, other], null).map(m => m.wearingStatus)).toEqual([false, false])
+    expect(isSameFansMedal(other, v2Worn ?? null)).toBe(false)
   })
 
   it('tracks displayed medals per room, ignores target_roomid as room key, and keeps rich wearedMedal id', () => {
@@ -450,7 +446,7 @@ describe('isSameFansMedal, applyWearedMedal & room-keyed display', () => {
 })
 
 describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
-  it('populates empty page-1 list reconciled with wearedMedal if takeOff runs mid-fetch, and drops stale refresh when non-empty', async () => {
+  it('fills an empty page-1 list without reviving wearedMedal if takeOff runs mid-fetch, and drops a stale refresh when non-empty', async () => {
     let resolvePanel!: (resp: Response) => void
     const mod = await loadFansMedal(url => {
       if (url.includes('fansMedal/panel')) {
@@ -483,10 +479,7 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     )
     await firstFetch
 
-    expect(mod.fansMedalList.value.map(m => [m.medalId, m.wearingStatus])).toEqual([
-      [10, false],
-      [20, false],
-    ])
+    expect(mod.fansMedalList.value.map(m => m.medalId)).toEqual([10, 20])
     expect(medalRoom.wearedMedal.value).toBeNull()
     expect(mod.fansMedalTotal.value).toBe(2)
     expect(mod.fansMedalHasMore.value).toBe(true)
@@ -514,7 +507,9 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
       })
     )
     await refresh
-    expect(nextMod.fansMedalList.value.map(m => m.wearingStatus)).toEqual([false])
+    // Applying the raced page would have re-worn 牌A.
+    expect(medalRoom.wearedMedal.value).toBeNull()
+    expect(nextMod.fansMedalList.value).toEqual([initialWorn])
   })
 
   it('keeps roomDisplayedMedal decoupled from fansMedalPanel and refreshes it via getInfoByUser on wear/takeOff', async () => {
@@ -571,8 +566,8 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     })
 
     danmakuLimit.cachedRoomId.value = 81004
-    const initialDisplayed = await mod.fetchRoomDisplayedMedal(81004)
-    expect(initialDisplayed?.medalName).toBe('艾薯条')
+    await mod.fetchRoomDisplayedMedal()
+    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('艾薯条')
     expect(requestedUrls.some(u => u.includes('not_mock_enter_effect=1') && u.includes('room_id=81004'))).toBe(true)
 
     // Opening panel updates global wearedMedal (奶糖花), NOT roomDisplayedMedal (艾薯条).
@@ -621,8 +616,8 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     })
 
     danmakuLimit.cachedRoomId.value = 81004
-    const slow = mod.fetchRoomDisplayedMedal(81004)
-    const fast = mod.fetchRoomDisplayedMedal(81004)
+    const slow = mod.fetchRoomDisplayedMedal()
+    const fast = mod.fetchRoomDisplayedMedal()
     await fast
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('最新')
 
@@ -636,7 +631,7 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('最新')
   })
 
-  it('drops stale hijacked getInfoByUser responses predating a wear/takeOff mutation and syncs fansMedalList wearingStatus', async () => {
+  it('ignores hijacked getInfoByUser replies after a wear/takeOff but still applies our own refetches', async () => {
     const mod = await loadFansMedal(url => {
       if (url.includes('fansMedal/panel')) {
         return Promise.resolve(
@@ -673,73 +668,32 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
 
     danmakuLimit.cachedRoomId.value = 81004
     await mod.fetchFansMedalPanel(1)
-    expect(mod.fansMedalList.value.map(m => [m.medalId, m.wearingStatus])).toEqual([
-      [10, true],
-      [20, false],
-    ])
+    expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
 
-    // Capture a pre-action getInfoByUser stamp before wearing 牌B.
-    const preActionStamp = medalRoom.captureGetInfoStamp()
+    const wornA = {
+      code: 0,
+      data: {
+        medal: {
+          is_weared: true,
+          curr_show: { name: '牌A', level: 5, id: 10, ruid: 100 },
+          curr_weared_v2: { name: '牌A', level: 5, id: 10, ruid: 100 },
+        },
+      },
+    }
+    // B站's own replies count until the user changes medals.
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, fromHijack: true })).toBe('applied')
+
     const medalB = mustNormalize({ medal: { medal_id: 20, target_id: 200, medal_name: '牌B', level: 6 } })
     expect(await mod.wearFansMedal(medalB)).toBe(true)
     await waitFor(() => medalRoom.roomDisplayedMedal.value?.medalName === '牌B')
 
-    // Late pre-action response (both stamped and un-stamped fromHijack) must be dropped.
-    expect(
-      medalRoom.applyGetInfoByUserMedal(
-        {
-          code: 0,
-          data: {
-            medal: {
-              is_weared: true,
-              curr_show: { name: '牌A', level: 5, id: 10, ruid: 100 },
-              curr_weared_v2: { name: '牌A', level: 5, id: 10, ruid: 100 },
-            },
-          },
-        },
-        { roomId: 81004, stamp: preActionStamp, fromHijack: true }
-      )
-    ).toBe('stale')
-    expect(
-      medalRoom.applyGetInfoByUserMedal(
-        {
-          code: 0,
-          data: {
-            medal: {
-              is_weared: true,
-              curr_show: { name: '牌A', level: 5, id: 10, ruid: 100 },
-              curr_weared_v2: { name: '牌A', level: 5, id: 10, ruid: 100 },
-            },
-          },
-        },
-        { roomId: 81004, fromHijack: true }
-      )
-    ).toBe('stale')
+    // A late page reply may predate the wear, so it no longer applies.
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, fromHijack: true })).toBe('stale')
     expect(medalRoom.wearedMedal.value?.medalId).toBe(20)
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌B')
 
-    // Newer post-action hijacked reply updates wearedMedal AND reconciles fansMedalList rows.
-    const freshStamp = medalRoom.captureGetInfoStamp()
-    expect(
-      medalRoom.applyGetInfoByUserMedal(
-        {
-          code: 0,
-          data: {
-            medal: {
-              is_weared: true,
-              curr_show: { name: '牌A', level: 5, id: 10, ruid: 100 },
-              curr_weared_v2: { name: '牌A', level: 5, id: 10, ruid: 100 },
-            },
-          },
-        },
-        { roomId: 81004, stamp: freshStamp, fromHijack: true }
-      )
-    ).toBe('applied')
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004 })).toBe('applied')
     expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
-    expect(mod.fansMedalList.value.map(m => [m.medalId, m.wearingStatus])).toEqual([
-      [10, true],
-      [20, false],
-    ])
   })
 
   it('sets fansMedalError when fetchRoomDisplayedMedal fails or returns invalid data, and clears it on success', async () => {
@@ -756,54 +710,34 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     })
 
     danmakuLimit.cachedRoomId.value = 81004
-    await mod.fetchRoomDisplayedMedal(81004)
+    await mod.fetchRoomDisplayedMedal()
     expect(mod.fansMedalError.value).toContain('HTTP 500')
 
     mode = 'badcode'
-    await mod.fetchRoomDisplayedMedal(81004)
+    await mod.fetchRoomDisplayedMedal()
     expect(mod.fansMedalError.value).toContain('参数错误')
 
     mode = 'ok'
-    await mod.fetchRoomDisplayedMedal(81004)
+    await mod.fetchRoomDisplayedMedal()
     expect(mod.fansMedalError.value).toBeNull()
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('恢复')
   })
 
   it('clears loading and acting state when panel or action requests time out', async () => {
-    const prevSetTimeout = globalThis.setTimeout
-    const pendingTimeouts: Array<() => void> = []
-    globalThis.setTimeout = ((fn: () => void) => {
-      pendingTimeouts.push(fn)
-      return pendingTimeouts.length as unknown as ReturnType<typeof setTimeout>
-    }) as typeof setTimeout
+    // What `fetch` rejects with once its `AbortSignal.timeout` fires.
+    const mod = await loadFansMedal(() => Promise.reject(new DOMException('The operation timed out.', 'TimeoutError')))
 
-    try {
-      const mod = await loadFansMedal((_url, init) => {
-        return new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => {
-            reject(new DOMException('Aborted', 'AbortError'))
-          })
-        })
-      })
+    const panelPromise = mod.fetchFansMedalPanel(1)
+    expect(mod.fansMedalLoading.value).toBe(true)
+    await panelPromise
+    expect(mod.fansMedalLoading.value).toBe(false)
+    expect(mod.fansMedalError.value).toBe('请求超时')
 
-      const panelPromise = mod.fetchFansMedalPanel(1)
-      expect(mod.fansMedalLoading.value).toBe(true)
-      expect(pendingTimeouts.length).toBe(1)
-      pendingTimeouts.shift()?.()
-      await panelPromise
-      expect(mod.fansMedalLoading.value).toBe(false)
-      expect(mod.fansMedalError.value).toBe('请求超时')
-
-      const medal = mustNormalize({ medal: { medal_id: 10, target_id: 100, medal_name: '牌A', level: 5 } })
-      const wearPromise = mod.wearFansMedal(medal)
-      expect(medalRoom.fansMedalActingId.value).toBe(10)
-      expect(pendingTimeouts.length).toBe(1)
-      pendingTimeouts.shift()?.()
-      expect(await wearPromise).toBe(false)
-      expect(medalRoom.fansMedalActingId.value).toBeNull()
-      expect(mod.fansMedalError.value).toBe('佩戴失败：请求超时')
-    } finally {
-      globalThis.setTimeout = prevSetTimeout
-    }
+    const medal = mustNormalize({ medal: { medal_id: 10, target_id: 100, medal_name: '牌A', level: 5 } })
+    const wearPromise = mod.wearFansMedal(medal)
+    expect(medalRoom.fansMedalActingId.value).toBe(10)
+    expect(await wearPromise).toBe(false)
+    expect(medalRoom.fansMedalActingId.value).toBeNull()
+    expect(mod.fansMedalError.value).toBe('佩戴失败：请求超时')
   })
 })

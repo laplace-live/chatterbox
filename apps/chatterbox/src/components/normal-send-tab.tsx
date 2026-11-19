@@ -1,10 +1,5 @@
 import { describeLlmGap, isLlmApiConfigured } from '../lib/llm-tasks'
-import {
-  normalSendPolishing,
-  polishNormalSendInput,
-  previewNormalSendCount,
-  submitNormalSend,
-} from '../lib/normal-send'
+import { normalSendPolishing, normalSendPreview, polishNormalSendInput, submitNormalSend } from '../lib/normal-send'
 import {
   aiEvasion,
   fasongText,
@@ -15,15 +10,15 @@ import {
   normalSendWrapBrackets,
   normalSendYolo,
 } from '../lib/store'
-import { getGraphemes } from '../lib/utils'
 import { EmoteSelector } from './emote-selector'
+import { FansMedalSelector } from './fans-medal-selector'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Textarea } from './ui/textarea'
 
-/** Manual danmaku send panel (常规发送) with emote picker, AI polish, YOLO mode, and Road Rage dedup. */
+/** Manual danmaku send panel (常规发送) with fans medal and emote pickers, AI polish, YOLO mode, and Road Rage dedup. */
 export function NormalSendTab() {
   const llmGap = describeLlmGap('normalSend')
   const llmReady = llmGap === null
@@ -31,8 +26,7 @@ export function NormalSendTab() {
   // Shown even when the active draft is empty (llmReady false), so the user can switch to a non-empty draft.
   const showPromptPicker = isLlmApiConfigured() && llmPromptsNormalSend.value.length > 0
 
-  const msgCount = previewNormalSendCount(fasongText.value)
-  const charCount = getGraphemes(fasongText.value).length
+  const { msgCount, charCount } = normalSendPreview.value
 
   return (
     <AccordionItem
@@ -70,6 +64,7 @@ export function NormalSendTab() {
         </div>
 
         <div class='my-2 flex items-center gap-1'>
+          <FansMedalSelector />
           <EmoteSelector />
           <Button
             variant='outline'
@@ -79,6 +74,9 @@ export function NormalSendTab() {
           >
             {normalSendPolishing.value ? '润色中…' : 'AI 润色'}
           </Button>
+        </div>
+
+        <div class='my-2 flex items-center gap-1'>
           <Button
             variant={normalSendYolo.value ? 'default' : 'outline'}
             size='sm'

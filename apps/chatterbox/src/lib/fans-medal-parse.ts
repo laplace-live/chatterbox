@@ -1,6 +1,6 @@
 import type { FansMedal } from '../types'
 
-import { isRecord } from './utils'
+import { isRecord, readPath } from './utils'
 
 const DEFAULT_MEDAL_COLOR = '#5896de'
 
@@ -79,7 +79,6 @@ export function normalizeFansMedal(raw: unknown): FansMedal | null {
     medal.medal_color
   )
   const rawLighted = medal.is_lighted ?? medal.is_light ?? raw.is_lighted
-  const rawWearing = medal.wearing_status ?? raw.wearing_status ?? medal.is_used ?? raw.is_used
 
   return {
     medalId,
@@ -96,14 +95,13 @@ export function normalizeFansMedal(raw: unknown): FansMedal | null {
     colorEnd,
     colorBorder,
     isLighted: rawLighted === undefined ? true : toFlag(rawLighted),
-    wearingStatus: toFlag(rawWearing),
     guardLevel: toInt(medal.guard_level ?? raw.guard_level),
     todayFeed: toInt(medal.today_feed ?? raw.today_feed ?? raw.intimacy),
     dayLimit: toInt(medal.day_limit ?? raw.day_limit),
   }
 }
 
-function normalizeV2OrRoomMedal(raw: unknown, wearingStatus: boolean): FansMedal | null {
+function normalizeV2OrRoomMedal(raw: unknown): FansMedal | null {
   if (!isRecord(raw) || Array.isArray(raw)) return null
   const medalName =
     (typeof raw.name === 'string' && raw.name.trim()) ||
@@ -141,7 +139,6 @@ function normalizeV2OrRoomMedal(raw: unknown, wearingStatus: boolean): FansMedal
     colorEnd,
     colorBorder,
     isLighted: rawLighted === undefined ? true : toFlag(rawLighted),
-    wearingStatus,
     guardLevel: toInt(raw.guard_level),
     todayFeed: toInt(raw.today_feed),
     dayLimit: toInt(raw.day_limit),
@@ -169,11 +166,11 @@ export function parseGetInfoByUserMedal(payload: unknown): ParsedRoomMedalInfo |
   if (payload.code !== 0 || !isRecord(payload.data) || !isRecord(payload.data.medal)) return null
 
   const medalObj = payload.data.medal
-  const currWearedMeta = normalizeV2OrRoomMedal(medalObj.curr_weared, false)
+  const currWearedMeta = normalizeV2OrRoomMedal(medalObj.curr_weared)
 
   let displayed: FansMedal | null
   if ('curr_show' in medalObj) {
-    const parsedShow = normalizeV2OrRoomMedal(medalObj.curr_show, false)
+    const parsedShow = normalizeV2OrRoomMedal(medalObj.curr_show)
     displayed =
       parsedShow && currWearedMeta && isSameFansMedal(parsedShow, currWearedMeta)
         ? {
@@ -194,7 +191,7 @@ export function parseGetInfoByUserMedal(payload: unknown): ParsedRoomMedalInfo |
     if (medalObj.is_weared === false || medalObj.is_weared === 0) {
       weared = null
     } else {
-      weared = normalizeV2OrRoomMedal(medalObj.curr_weared_v2, true)
+      weared = normalizeV2OrRoomMedal(medalObj.curr_weared_v2)
     }
   }
 
@@ -209,12 +206,19 @@ export function mergeFansMedals(existing: readonly FansMedal[], incoming: readon
   return [...byId.values()]
 }
 
-/** Reconcile each medal's `wearingStatus` against `weared` (`null` clears all). */
-export function applyWearedMedal(medals: readonly FansMedal[], weared: FansMedal | null): FansMedal[] {
-  return medals.map(item => ({
-    ...item,
-    wearingStatus: isSameFansMedal(item, weared),
-  }))
+/** Bilibili's `message` (or `msg`) error text; empty when absent. */
+export function readBilibiliMessage(payload: unknown): string {
+  for (const key of ['message', 'msg']) {
+    const text = readPath(payload, key)
+    if (typeof text === 'string' && text) return text
+  }
+  return ''
+}
+
+function isWornPanelEntry(raw: unknown): boolean {
+  if (!isRecord(raw)) return false
+  const medal = isRecord(raw.medal) ? raw.medal : raw
+  return toFlag(medal.wearing_status ?? raw.wearing_status ?? medal.is_used ?? raw.is_used)
 }
 
 export interface ParsedFansMedalPanel {
@@ -227,21 +231,22 @@ export interface ParsedFansMedalPanel {
 /** Parse `fansMedal/panel` JSON into a deduplicated medal list and pagination metadata. */
 export function parseFansMedalPanelResponse(payload: unknown): ParsedFansMedalPanel {
   if (!isRecord(payload) || payload.code !== 0 || !isRecord(payload.data)) {
-    const msg = isRecord(payload)
-      ? (typeof payload.message === 'string' && payload.message) || (typeof payload.msg === 'string' && payload.msg)
-      : ''
-    throw new Error(msg || '获取粉丝牌失败')
+    throw new Error(readBilibiliMessage(payload) || '获取粉丝牌失败')
   }
   const data = payload.data
   const rawSpecial = Array.isArray(data.special_list) ? data.special_list : []
   const rawList = Array.isArray(data.list) ? data.list : []
   const parsed: FansMedal[] = []
+  // Later duplicates win, matching `mergeFansMedals`.
+  const wornById = new Map<number, boolean>()
   for (const entry of [...rawSpecial, ...rawList]) {
     const medal = normalizeFansMedal(entry)
-    if (medal) parsed.push(medal)
+    if (!medal) continue
+    parsed.push(medal)
+    wornById.set(medal.medalId, isWornPanelEntry(entry))
   }
   const medals = mergeFansMedals([], parsed)
-  const weared = medals.find(m => m.wearingStatus) ?? null
+  const weared = medals.find(m => wornById.get(m.medalId)) ?? null
   const pageInfo = isRecord(data.page_info) ? data.page_info : null
   const currentPage = toInt(pageInfo?.current_page, 1)
   const totalPage = toInt(pageInfo?.total_page, 1)

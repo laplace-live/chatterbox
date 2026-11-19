@@ -111,7 +111,6 @@ export interface FansMedal {
   colorEnd: string
   colorBorder: string
   isLighted: boolean
-  wearingStatus: boolean
   guardLevel: number
   todayFeed: number
   dayLimit: number

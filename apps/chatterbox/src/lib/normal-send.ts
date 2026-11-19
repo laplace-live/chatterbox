@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals'
+import { computed, signal } from '@preact/signals'
 
 import { tryAiEvasion } from './ai-evasion'
 import { ensureRoomId, getCsrfToken } from './api'
@@ -22,14 +22,14 @@ import {
   normalSendWrapBrackets,
   normalSendYolo,
 } from './store'
-import { countDanmakuMessages, processDanmakuMessages } from './utils'
+import { countDanmakuMessages, getGraphemes, processDanmakuMessages } from './utils'
 import { wrapSegment, wrapSplitUnits } from './wrap'
 
 /** Shared lock across 常规发送 and the floating input box while an LLM polish is in flight. */
 export const normalSendPolishing = signal(false)
 
 /** Estimate how many danmaku segments `raw` will split into after replacements, Road Rage, and bracket wrapping. */
-export function previewNormalSendCount(raw: string): number {
+function previewNormalSendCount(raw: string): number {
   const trimmed = raw.trim()
   if (!trimmed) return 0
   if (isEmoticonUnique(trimmed) || isUnavailableEmoticon(trimmed)) return 1
@@ -40,6 +40,12 @@ export function previewNormalSendCount(raw: string): number {
   const preview = previewRoadRageText(trimmed, replaced, invisibleChar.value, normalSendRoadRage.value)
   return countDanmakuMessages(preview, wrapSplitUnits(danmakuMaxUnits.value, normalSendWrapBrackets.value))
 }
+
+/** Segment and grapheme counts of the shared `fasongText` draft, for both composers. */
+export const normalSendPreview = computed(() => ({
+  msgCount: previewNormalSendCount(fasongText.value),
+  charCount: getGraphemes(fasongText.value).length,
+}))
 
 /** Polish the shared `fasongText` input in place; returns whether it succeeded. */
 export async function polishNormalSendInput(): Promise<boolean> {
@@ -69,7 +75,7 @@ export async function polishNormalSendInput(): Promise<boolean> {
 }
 
 /** Validate, apply replacements and Road Rage dedup, split into segments, and enqueue the manual send. */
-export async function sendNormalDanmaku(): Promise<void> {
+async function sendNormalDanmaku(): Promise<void> {
   const originalMessage = fasongText.value.trim()
   if (!originalMessage) {
     appendLog('⚠️ 消息内容不能为空')

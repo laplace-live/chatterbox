@@ -104,6 +104,7 @@ export function StatusBarFold({
 }: {
   collapsed: boolean
   onToggle: () => void
+  /** Revealed above the chevron on hover or keyboard focus (on touch, while the group holds focus). */
   hoverAction?: ComponentChildren
   children: ComponentChildren
 }) {
@@ -209,7 +210,19 @@ export function StatusBarFold({
             class={cn('transition-transform duration-200', collapsed && 'rotate-180')}
           />
         </button>
-        {hoverAction}
+        {hoverAction && (
+          <div
+            class={cn(
+              'invisible absolute bottom-full left-1/2 z-0 -translate-x-1/2 pb-1',
+              'translate-y-4 opacity-0 transition-[translate,opacity,visibility] delay-150 duration-500 ease-out',
+              'group-hover/fold:visible group-hover/fold:translate-y-0 group-hover/fold:opacity-100 group-hover/fold:delay-0',
+              'group-has-focus-visible/fold:visible group-has-focus-visible/fold:translate-y-0 group-has-focus-visible/fold:opacity-100 group-has-focus-visible/fold:delay-0',
+              'pointer-coarse:group-focus-within/fold:visible pointer-coarse:group-focus-within/fold:translate-y-0 pointer-coarse:group-focus-within/fold:opacity-100 pointer-coarse:group-focus-within/fold:delay-0'
+            )}
+          >
+            {hoverAction}
+          </div>
+        )}
       </div>
     </>
   )

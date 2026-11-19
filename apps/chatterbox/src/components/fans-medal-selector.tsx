@@ -1,12 +1,10 @@
 import { useSignal } from '@preact/signals'
 import { IconAward, IconRefresh, IconX } from '@tabler/icons-preact'
 import { cn } from 'cn'
-import { useEffect } from 'preact/hooks'
 
 import type { FansMedal } from '../types'
 
 import {
-  fansMedalActingId,
   fansMedalError,
   fansMedalHasMore,
   fansMedalList,
@@ -15,14 +13,12 @@ import {
   fansMedalTotal,
   fetchFansMedalPanel,
   fetchRoomDisplayedMedal,
-  isSameFansMedal,
-  roomDisplayedMedal,
-  roomDisplayedMedalKnown,
   takeOffFansMedal,
-  wearedMedal,
   wearFansMedal,
 } from '../lib/fans-medal'
-import { cachedRoomId, cachedStreamerUid } from '../lib/store'
+import { isSameFansMedal } from '../lib/fans-medal-parse'
+import { fansMedalActingId, roomDisplayedMedal, roomDisplayedMedalKnown, wearedMedal } from '../lib/fans-medal-room'
+import { cachedStreamerUid } from '../lib/store'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -52,17 +48,13 @@ function MedalBadge({ medal, compact = false }: { medal: FansMedal; compact?: bo
   )
 }
 
-/** Left-side fans medal button & classic Bilibili-style medal switcher popover. */
+/**
+ * Fans medal button with a classic Bilibili-style switcher popover. The badge comes from B站's own
+ * `getInfoByUser` (via fetch-hijack); opening refetches it only when still unknown.
+ */
 export function FansMedalSelector() {
   const open = useSignal(false)
   const query = useSignal('')
-
-  useEffect(() => {
-    const roomId = cachedRoomId.value
-    if (roomId !== null && !roomDisplayedMedalKnown.peek()) {
-      void fetchRoomDisplayedMedal(roomId)
-    }
-  }, [cachedRoomId.value])
 
   const displayed = roomDisplayedMedal.value
   const weared = wearedMedal.value
@@ -82,13 +74,13 @@ export function FansMedalSelector() {
     open.value = next
     if (next) {
       void fetchFansMedalPanel(1)
+      if (!roomDisplayedMedalKnown.peek()) void fetchRoomDisplayedMedal()
     } else {
       query.value = ''
     }
   }
 
   const handleSelect = async (medal: FansMedal) => {
-    if (actingId !== null) return
     const isWorn = isSameFansMedal(wearedMedal.peek(), medal)
     const ok = isWorn ? await takeOffFansMedal() : await wearFansMedal(medal)
     if (ok) handleOpenChange(false)

@@ -1,5 +1,3 @@
-import { IconChevronUp } from '@tabler/icons-preact'
-import { cn } from 'cn'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { startAiChatEngine, stopAiChatEngine } from '../lib/ai-chat'
@@ -28,9 +26,9 @@ import { AudioOnlyControls } from './audio-only-controls'
 import { AudioOnlyModeSelect } from './audio-only-mode-select'
 import { Configurator, clampWidth } from './configurator'
 import { ConfiguratorButton } from './configurator-button'
-import { FloatingInputBox } from './floating-input-box'
+import { FloatingInputBox, FloatingInputRestoreButton } from './floating-input-box'
 import { FoldableInfoItems } from './info-items'
-import { STATUS_BAR_BUTTON_CLASS, StatusBar } from './status-bar'
+import { StatusBar } from './status-bar'
 import { AlertDialog } from './ui/alert-dialog'
 
 export function AppRoom() {
@@ -143,40 +141,9 @@ export function AppRoom() {
 
   return (
     <>
-      {/* Mount order + z-index (2147483645) keep FloatingInputBox below Configurator (2147483646) and StatusBar (2147483647). */}
-      <FloatingInputBox />
+      {floatingInputEnabled.value && <FloatingInputBox />}
       <StatusBar>
-        <FoldableInfoItems
-          foldHoverAction={
-            showRestoreInput ? (
-              <div
-                class={cn(
-                  'invisible absolute bottom-full left-1/2 z-0 -translate-x-1/2 pb-1',
-                  'translate-y-4 opacity-0 transition-[translate,opacity,visibility] delay-150 duration-500 ease-out',
-                  'group-hover/fold:visible group-hover/fold:translate-y-0 group-hover/fold:opacity-100 group-hover/fold:delay-0',
-                  'group-has-focus-visible/fold:visible group-has-focus-visible/fold:translate-y-0 group-has-focus-visible/fold:opacity-100 group-has-focus-visible/fold:delay-0',
-                  'pointer-coarse:group-focus-within/fold:visible pointer-coarse:group-focus-within/fold:translate-y-0 pointer-coarse:group-focus-within/fold:opacity-100 pointer-coarse:group-focus-within/fold:delay-0'
-                )}
-              >
-                <button
-                  type='button'
-                  onClick={() => {
-                    floatingInputMinimized.value = false
-                  }}
-                  title='恢复悬浮输入框'
-                  aria-label='恢复悬浮输入框'
-                  class={cn(
-                    STATUS_BAR_BUTTON_CLASS,
-                    'h-6 w-7 justify-center px-0 shadow-md ring-1 ring-white/25',
-                    'bg-ga6'
-                  )}
-                >
-                  <IconChevronUp size={15} stroke={2.2} aria-hidden='true' />
-                </button>
-              </div>
-            ) : null
-          }
-        />
+        <FoldableInfoItems foldHoverAction={showRestoreInput && <FloatingInputRestoreButton />} />
         <AudioOnlyControls />
         <AudioOnlyModeSelect />
         <ConfiguratorButton />
