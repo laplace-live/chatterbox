@@ -1,4 +1,4 @@
-import { IconArrowsMove, IconMessage, IconMinus } from '@tabler/icons-preact'
+import { IconDotsDiagonal, IconGripHorizontal, IconMessage, IconMinus } from '@tabler/icons-preact'
 import { cn } from 'cn'
 import type { TargetedMouseEvent, TargetedPointerEvent } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
@@ -8,7 +8,6 @@ import {
   DEFAULT_FLOATING_RECT,
   type FloatingRect,
   moveFloatingRect,
-  type ResizeEdge,
   resizeFloatingRect,
   type ViewportSize,
 } from '../lib/floating-input-rect'
@@ -19,15 +18,6 @@ import { fasongText, floatingInputMinimized, floatingInputRect, normalSendYolo }
 import { EmoteSelector } from './emote-selector'
 import { FansMedalSelector } from './fans-medal-selector'
 import { STATUS_BAR_BUTTON_CLASS } from './status-bar'
-
-const RESIZE_HANDLES: Array<{ edge: ResizeEdge; className: string; cursor: string; title: string }> = [
-  { edge: 'n', className: 'top-0 left-4 right-2.5 h-1.5', cursor: 'ns-resize', title: '向上/下调整高度' },
-  { edge: 's', className: 'bottom-0 left-5 right-2.5 h-1.5', cursor: 'ns-resize', title: '向上/下调整高度' },
-  { edge: 'w', className: 'top-4 bottom-5 left-0 w-1.5', cursor: 'ew-resize', title: '向左/右调整宽度' },
-  { edge: 'e', className: 'top-2.5 bottom-2.5 right-0 w-1.5', cursor: 'ew-resize', title: '向左/右调整宽度' },
-  { edge: 'ne', className: 'top-0 right-0 size-2.5', cursor: 'nesw-resize', title: '拖动调整大小' },
-  { edge: 'se', className: 'bottom-0 right-0 size-2.5', cursor: 'nwse-resize', title: '拖动调整大小' },
-]
 
 function getViewportSize(): ViewportSize {
   return {
@@ -106,7 +96,7 @@ export function FloatingInputBox() {
     <div
       id='laplace-chatterbox-floating-input'
       // z-2147483645 sits beneath Configurator (2147483646) and StatusBar (2147483647), keeping popovers bounded inside this stacking context.
-      class='group/floating-input fixed z-2147483645 box-border flex rounded-xl bg-bg1 text-[12px] shadow-md ring ring-ga4/50'
+      class='fixed z-2147483645 box-border flex flex-col rounded-md bg-bg1 text-[12px] shadow-md ring ring-ga4/50'
       style={{
         right: `${renderRect.right}px`,
         bottom: `${renderRect.bottom}px`,
@@ -114,50 +104,31 @@ export function FloatingInputBox() {
         height: `${renderRect.height}px`,
       }}
     >
-      {RESIZE_HANDLES.map(handle => (
+      <div class='relative h-[14px] shrink-0 rounded-t-md bg-ga2 text-ga5'>
         <div
-          key={handle.edge}
           aria-hidden='true'
           onMouseDown={preventFocus}
-          onPointerDown={startDrag(handle.cursor, (r, dx, dy, vp) => resizeFloatingRect(r, handle.edge, dx, dy, vp))}
-          title={handle.title}
-          class={cn('absolute z-10 transition-colors select-none hover:bg-brand/25', handle.className)}
-          style={{ cursor: handle.cursor, touchAction: 'none' }}
-        />
-      ))}
+          onPointerDown={startDrag('grabbing', moveFloatingRect)}
+          title='拖动移动输入框'
+          class='absolute inset-0 flex cursor-grab items-center justify-center select-none active:cursor-grabbing'
+          style={{ touchAction: 'none' }}
+        >
+          <IconGripHorizontal size={12} stroke={2} />
+        </div>
+        <button
+          type='button'
+          onClick={() => {
+            floatingInputMinimized.value = true
+          }}
+          title='最小化输入框'
+          aria-label='最小化输入框'
+          class='absolute top-0 right-0 m-0 flex h-full w-[18px] cursor-pointer items-center justify-center rounded-tr-md border-none bg-transparent p-0 text-ga6 hover:bg-ga3 hover:text-inherit'
+        >
+          <IconMinus size={10} stroke={2.2} aria-hidden='true' />
+        </button>
+      </div>
 
-      <button
-        type='button'
-        onClick={() => {
-          floatingInputMinimized.value = true
-        }}
-        title='最小化输入框'
-        aria-label='最小化输入框'
-        class={cn(
-          'absolute top-0.5 left-0.5 z-20 m-0 flex size-3.5 items-center justify-center rounded-full border-none p-0',
-          'cursor-pointer bg-ga2/80 text-ga6 opacity-45 transition hover:bg-ga3 hover:text-inherit hover:opacity-100'
-        )}
-      >
-        <IconMinus size={10} stroke={2.2} aria-hidden='true' />
-      </button>
-
-      <button
-        type='button'
-        onMouseDown={preventFocus}
-        onPointerDown={startDrag('grabbing', moveFloatingRect)}
-        title='按住拖动输入框位置'
-        aria-label='拖动输入框位置'
-        class={cn(
-          'absolute bottom-0.5 left-0.5 z-20 m-0 flex size-4 items-center justify-center rounded-full border-none p-0',
-          'cursor-grab bg-bg2/65 text-ga6 opacity-0 backdrop-blur-[2px] transition-opacity duration-200',
-          'group-hover/floating-input:opacity-45 hover:!opacity-85 active:cursor-grabbing'
-        )}
-        style={{ touchAction: 'none' }}
-      >
-        <IconArrowsMove size={11} stroke={1.8} aria-hidden='true' />
-      </button>
-
-      <div class='flex h-full min-w-0 flex-1 flex-col gap-1 py-1 pr-1.5 pl-4'>
+      <div class='flex min-h-0 flex-1 flex-col gap-1 px-1.5 py-1'>
         <div class='relative min-h-0 flex-1'>
           <textarea
             value={fasongText.value}
@@ -183,6 +154,17 @@ export function FloatingInputBox() {
           <FansMedalSelector />
           <EmoteSelector contentClassName='w-[min(372px,calc(100vw-24px))]' />
         </div>
+      </div>
+
+      <div
+        aria-hidden='true'
+        onMouseDown={preventFocus}
+        onPointerDown={startDrag('nwse-resize', resizeFloatingRect)}
+        title='拖动调整大小'
+        class='absolute right-0 bottom-0 flex size-3 cursor-nwse-resize items-center justify-center text-ga4 select-none hover:text-ga6'
+        style={{ touchAction: 'none' }}
+      >
+        <IconDotsDiagonal size={10} stroke={2} aria-hidden='true' />
       </div>
     </div>
   )

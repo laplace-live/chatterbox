@@ -10,14 +10,12 @@ export interface ViewportSize {
   height: number
 }
 
-export type ResizeEdge = 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se'
-
 export const FLOATING_INPUT_MIN_WIDTH = 180
-// One textarea line plus the medal/emote row.
-export const FLOATING_INPUT_MIN_HEIGHT = 52
+// Move bar, one textarea line and the medal/emote row.
+export const FLOATING_INPUT_MIN_HEIGHT = 64
 
 /** First-run rect: bottom-right, just above the StatusBar. After that the user's last rect is remembered. */
-export const DEFAULT_FLOATING_RECT: Readonly<FloatingRect> = { right: 8, bottom: 44, width: 240, height: 64 }
+export const DEFAULT_FLOATING_RECT: Readonly<FloatingRect> = { right: 8, bottom: 44, width: 240, height: 80 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max))
@@ -52,36 +50,19 @@ export function moveFloatingRect(
   )
 }
 
-/** Resize `startRect` along `edge` by pointer delta `(dx, dy)` while anchoring opposite edges. */
-export function resizeFloatingRect(
-  startRect: FloatingRect,
-  edge: ResizeEdge,
-  dx: number,
-  dy: number,
-  viewport: ViewportSize
-): FloatingRect {
-  let right = startRect.right
-  let bottom = startRect.bottom
-  let width = startRect.width
-  let height = startRect.height
-
-  if (edge.includes('w')) {
-    const maxW = Math.max(FLOATING_INPUT_MIN_WIDTH, viewport.width - startRect.right)
-    width = clamp(Math.round(startRect.width - dx), FLOATING_INPUT_MIN_WIDTH, maxW)
-  } else if (edge.includes('e')) {
-    const maxW = Math.max(FLOATING_INPUT_MIN_WIDTH, startRect.width + startRect.right)
-    width = clamp(Math.round(startRect.width + dx), FLOATING_INPUT_MIN_WIDTH, maxW)
-    right = startRect.right + startRect.width - width
+/** Resize `startRect` from its bottom-right corner by `(dx, dy)`; the top-left corner stays put and the box on screen. */
+export function resizeFloatingRect(startRect: FloatingRect, dx: number, dy: number): FloatingRect {
+  // `right`/`bottom` are the gaps to the viewport edge, so the corner may grow by at most those.
+  const width = clamp(Math.round(startRect.width + dx), FLOATING_INPUT_MIN_WIDTH, startRect.width + startRect.right)
+  const height = clamp(
+    Math.round(startRect.height + dy),
+    FLOATING_INPUT_MIN_HEIGHT,
+    startRect.height + startRect.bottom
+  )
+  return {
+    right: startRect.right + startRect.width - width,
+    bottom: startRect.bottom + startRect.height - height,
+    width,
+    height,
   }
-
-  if (edge.includes('n')) {
-    const maxH = Math.max(FLOATING_INPUT_MIN_HEIGHT, viewport.height - startRect.bottom)
-    height = clamp(Math.round(startRect.height - dy), FLOATING_INPUT_MIN_HEIGHT, maxH)
-  } else if (edge.includes('s')) {
-    const maxH = Math.max(FLOATING_INPUT_MIN_HEIGHT, startRect.height + startRect.bottom)
-    height = clamp(Math.round(startRect.height + dy), FLOATING_INPUT_MIN_HEIGHT, maxH)
-    bottom = startRect.bottom + startRect.height - height
-  }
-
-  return { right, bottom, width, height }
 }
