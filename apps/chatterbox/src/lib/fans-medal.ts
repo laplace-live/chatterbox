@@ -57,7 +57,7 @@ export async function fetchRoomDisplayedMedal(): Promise<void> {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
     const json: unknown = await resp.json()
     if (controller.signal.aborted) return
-    const status = applyGetInfoByUserMedal(json, { roomId })
+    const status = applyGetInfoByUserMedal(json, { roomId, authoritative: true })
     if (status === 'invalid') throw new Error(readBilibiliMessage(json) || '响应无效')
     if (status === 'applied' && fansMedalError.value?.startsWith(ROOM_MEDAL_ERROR_PREFIX)) {
       fansMedalError.value = null

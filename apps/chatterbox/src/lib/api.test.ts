@@ -2,6 +2,7 @@ import { expect, mock, test } from 'bun:test'
 
 import * as constants from './const'
 import * as danmakuLimit from './danmaku-limit'
+import * as medalRoom from './fans-medal-room'
 import * as utils from './utils'
 
 const source = await Bun.file(new URL('./api.ts', import.meta.url)).text()
@@ -16,6 +17,7 @@ async function loadApi(body: unknown) {
     './const': constants,
     './danmaku-limit': danmakuLimit,
     './emoticon': { isEmoticonUnique: () => false },
+    './fans-medal-room': medalRoom,
     './store': {},
     './utils': utils,
     './wbi': { cachedWbiKeys: null, encodeWbi: () => '' },
@@ -80,10 +82,17 @@ test('an unreadable response fails without counting as a rejection', async () =>
   expect(result.rejected).toBeUndefined()
 })
 
-test('fetchDanmakuMaxLength populates roomDanmakuUnits from getInfoByUser', async () => {
+test('fetchDanmakuMaxLength populates roomDanmakuUnits and the room medal from getInfoByUser', async () => {
   danmakuLimit.resetRoomDanmakuLimits()
+  medalRoom.resetRoomDisplayedMedals()
   try {
-    const { api, fetch } = await loadApi({ code: 0, data: { property: { danmu: { length: 60 } } } })
+    const { api, fetch } = await loadApi({
+      code: 0,
+      data: {
+        property: { danmu: { length: 60 } },
+        medal: { curr_show: { name: '艾薯条', level: 27, id: 510698, ruid: 1521415 } },
+      },
+    })
     await api.fetchDanmakuMaxLength(12345)
     expect(fetch).toHaveBeenCalledTimes(1)
     const [calledUrl, calledInit] = fetch.mock.calls[0] as unknown as [string, RequestInit]
@@ -91,7 +100,10 @@ test('fetchDanmakuMaxLength populates roomDanmakuUnits from getInfoByUser', asyn
     expect(calledInit).toMatchObject({ method: 'GET', credentials: 'include' })
     expect(calledInit.signal).toBeInstanceOf(AbortSignal)
     expect(danmakuLimit.roomDanmakuUnits.peek()).toBe(60)
+    danmakuLimit.cachedRoomId.value = 12345
+    expect(medalRoom.roomDisplayedMedal.peek()?.medalName).toBe('艾薯条')
   } finally {
     danmakuLimit.resetRoomDanmakuLimits()
+    medalRoom.resetRoomDisplayedMedals()
   }
 })

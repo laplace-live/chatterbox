@@ -18,17 +18,13 @@ import { cachedEmoticonPackages, favoriteEmotes } from '../lib/store'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
-/**
- * Emote picker shared by 常规发送 and the floating input box: a popover of
- * per-package tabs (收藏 pinned first) over a fixed-height grid. Image click
- * sends (B站 requires the message be exactly the `emoticon_unique`, so no
- * textarea compose); name click copies the id; star click toggles favorite.
- */
-
 // String sentinel can't collide with the numeric `pkg_id`s real packages use.
 const FAVORITES_TAB = 'favorites' as const
 
-/** `contentClassName` replaces the default width, which tracks the Configurator dialog's. */
+/**
+ * Emote picker: image click sends (B站 needs the exact `emoticon_unique`, so no textarea compose), name copies, star favorites.
+ * `contentClassName` replaces the default width, which tracks the Configurator dialog's.
+ */
 export function EmoteSelector({ contentClassName }: { contentClassName?: string } = {}) {
   const open = useSignal(false)
   const copiedId = useSignal<string | null>(null)

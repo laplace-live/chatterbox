@@ -112,7 +112,7 @@ function applyTransforms(url: string, data: any): void {
   if (url.includes(GET_INFO_BY_USER_PATTERN)) {
     console.log('[LAPLACE Chatterbox] Hijacking getInfoByUser response:', url)
     applyGetInfoByUserDanmakuLength(data, { url })
-    applyGetInfoByUserMedal(data, { url, fromHijack: true })
+    applyGetInfoByUserMedal(data, { url })
     // B站 reuses `.right-section` across SPA nav; clear the stale pill first.
     liveBlockPill.remove()
     const forbid = data?.data?.forbid_live

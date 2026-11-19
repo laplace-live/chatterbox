@@ -58,7 +58,8 @@ export function startPointerDrag(
   )
   window.addEventListener('pointerup', endIfOurs, options)
   window.addEventListener('pointercancel', endIfOurs, options)
-  window.addEventListener('blur', end, options)
+  // Not capture: element blurs pass window in the capture phase; only the window's own blur should end the drag.
+  window.addEventListener('blur', end, { signal: listeners.signal })
   target.addEventListener('lostpointercapture', endIfOurs, { signal: listeners.signal })
   return end
 }

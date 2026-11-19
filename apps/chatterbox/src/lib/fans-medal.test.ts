@@ -631,7 +631,7 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('最新')
   })
 
-  it('ignores hijacked getInfoByUser replies after a wear/takeOff but still applies our own refetches', async () => {
+  it('after a wear/takeOff, lets non-authoritative replies seed only unrecorded rooms', async () => {
     const mod = await loadFansMedal(url => {
       if (url.includes('fansMedal/panel')) {
         return Promise.resolve(
@@ -680,20 +680,26 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
         },
       },
     }
-    // B站's own replies count until the user changes medals.
-    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, fromHijack: true })).toBe('applied')
+    // B站's own replies count fully until the user changes medals.
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004 })).toBe('applied')
 
     const medalB = mustNormalize({ medal: { medal_id: 20, target_id: 200, medal_name: '牌B', level: 6 } })
     expect(await mod.wearFansMedal(medalB)).toBe(true)
     await waitFor(() => medalRoom.roomDisplayedMedal.value?.medalName === '牌B')
 
-    // A late page reply may predate the wear, so it no longer applies.
-    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, fromHijack: true })).toBe('stale')
+    // A late reply for a recorded room may predate the wear.
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004 })).toBe('stale')
     expect(medalRoom.wearedMedal.value?.medalId).toBe(20)
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌B')
 
-    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004 })).toBe('applied')
-    expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
+    // An in-page room switch still records the new room.
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 92000 })).toBe('applied')
+    danmakuLimit.cachedRoomId.value = 92000
+    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
+
+    danmakuLimit.cachedRoomId.value = 81004
+    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, authoritative: true })).toBe('applied')
+    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
   })
 
   it('sets fansMedalError when fetchRoomDisplayedMedal fails or returns invalid data, and clears it on success', async () => {

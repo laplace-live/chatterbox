@@ -3,6 +3,7 @@ import type { BilibiliGetEmoticonsResponse } from '../types'
 import { BASE_URL } from './const'
 import { applyGetInfoByUserDanmakuLength } from './danmaku-limit'
 import { isEmoticonUnique } from './emoticon'
+import { applyGetInfoByUserMedal } from './fans-medal-room'
 import { availableDanmakuColors, cachedEmoticonPackages, cachedRoomId, cachedStreamerUid } from './store'
 import { extractRoomNumber, readPath } from './utils'
 import { cachedWbiKeys, encodeWbi } from './wbi'
@@ -100,7 +101,7 @@ export async function fetchEmoticons(roomId: number): Promise<void> {
   }
 }
 
-/** Fallback `getInfoByUser` fetch when `fetch-hijack` missed the page's initial request (e.g. `vite dev`). */
+/** Fallback `getInfoByUser` fetch (danmaku cap, fans medal) when `fetch-hijack` missed the page's initial request (e.g. `vite dev`). */
 export async function fetchDanmakuMaxLength(roomId: number): Promise<void> {
   const resp = await fetch(`${BASE_URL.BILIBILI_GET_INFO_BY_USER}?room_id=${roomId}`, {
     method: 'GET',
@@ -108,7 +109,9 @@ export async function fetchDanmakuMaxLength(roomId: number): Promise<void> {
     signal: AbortSignal.timeout(5000),
   })
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
-  applyGetInfoByUserDanmakuLength(await resp.json(), { roomId })
+  const json: unknown = await resp.json()
+  applyGetInfoByUserDanmakuLength(json, { roomId })
+  applyGetInfoByUserMedal(json, { roomId })
 }
 
 export interface SendDanmakuResult {

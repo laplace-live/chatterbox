@@ -35,18 +35,22 @@ export function medalChangeCount(): number {
 }
 
 /**
- * Record `getInfoByUser`'s per-room `curr_show` and global `curr_weared_v2`. B站's own replies
- * (`fromHijack`) are ignored after a wear/take-off, since they may predate it.
+ * Record `getInfoByUser`'s per-room `curr_show` and global `curr_weared_v2`. Only `authoritative` replies (our
+ * own refetch) are ordered after a wear/take-off; once one happens, other replies only seed unrecorded rooms.
  */
 export function applyGetInfoByUserMedal(
   payload: unknown,
-  context?: { roomId?: number | null; url?: string; fromHijack?: boolean }
+  context?: { roomId?: number | null; url?: string; authoritative?: boolean }
 ): 'applied' | 'stale' | 'invalid' {
-  if (fansMedalActingId.peek() !== null || (context?.fromHijack && medalChanges > 0)) return 'stale'
+  if (fansMedalActingId.peek() !== null) return 'stale'
+  const roomIds = collectRoomIds(payload, context)
+  if (!context?.authoritative && medalChanges > 0) {
+    const recorded = medalsByRoom.value
+    if (roomIds.length === 0 || roomIds.some(id => recorded.has(id))) return 'stale'
+  }
   const parsed = parseGetInfoByUserMedal(payload)
   if (!parsed) return 'invalid'
 
-  const roomIds = collectRoomIds(payload, context)
   if (readPath(payload, 'code') === -101) {
     // Logged out: forget every recorded room, not just this one.
     medalsByRoom.value = new Map(roomIds.map(id => [id, null]))

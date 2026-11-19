@@ -109,24 +109,24 @@ describe('resolveDefaultFloatingRect', () => {
 
 describe('moveFloatingRect', () => {
   it('moves while preserving size and clamping to viewport edges', () => {
-    const start = { right: 160, bottom: 70, width: 220, height: 50 }
+    const start = { right: 160, bottom: 70, width: 220, height: 60 }
     expect(moveFloatingRect(start, -100, -50, VIEWPORT)).toEqual({
       right: 260,
       bottom: 120,
       width: 220,
-      height: 50,
+      height: 60,
     })
     expect(moveFloatingRect(start, 500, 500, VIEWPORT)).toEqual({
       right: 0,
       bottom: 0,
       width: 220,
-      height: 50,
+      height: 60,
     })
     expect(moveFloatingRect(start, -2000, -2000, VIEWPORT)).toEqual({
       right: 1060,
-      bottom: 670,
+      bottom: 660,
       width: 220,
-      height: 50,
+      height: 60,
     })
   })
 })

@@ -20,7 +20,8 @@ export interface AnchorBox {
 export type ResizeEdge = 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se'
 
 export const FLOATING_INPUT_MIN_WIDTH = 180
-export const FLOATING_INPUT_MIN_HEIGHT = 44
+// One textarea line plus the medal/emote row.
+export const FLOATING_INPUT_MIN_HEIGHT = 52
 
 // Fixed default covering B站's native chat input inside the dark bottom bar while keeping the emote icon above StatusBar.
 export const FLOATING_INPUT_DEFAULT_WIDTH = 203
