@@ -223,18 +223,7 @@ export function removeLlmProvider(id: string): void {
 export function updateLlmProvider(id: string, patch: Partial<Omit<LlmProviderProfile, 'id'>>): void {
   llmProviders.value = llmProviders.value.map(p => (p.id === id ? { ...p, ...patch } : p))
 }
-// Seed the default global prompt. Uses a dedicated `llmPromptsGlobalSeeded` flag, not the gmSignal default, because testers with `llmPromptsGlobal: []` already persisted would suppress that default; the flag also stops a deliberately-deleted default from being re-added.
-;(() => {
-  const seeded = GM_getValue<boolean>('llmPromptsGlobalSeeded', false)
-  if (seeded) return
-  const existing = GM_getValue<string[]>('llmPromptsGlobal', [])
-  if (existing.length === 0) {
-    GM_setValue('llmPromptsGlobal', [DEFAULT_GLOBAL_PROMPT])
-  }
-  GM_setValue('llmPromptsGlobalSeeded', true)
-})()
 
-// Default mirrors DEFAULT_GLOBAL_PROMPT as a safety net if the migration's GM_setValue above silently fails.
 export const llmPromptsGlobal = gmSignal<string[]>('llmPromptsGlobal', [DEFAULT_GLOBAL_PROMPT])
 export const llmActivePromptGlobal = gmSignal('llmActivePromptGlobal', 0)
 export const llmPromptsNormalSend = gmSignal<string[]>('llmPromptsNormalSend', [])
@@ -244,22 +233,6 @@ export const llmActivePromptAutoBlend = gmSignal('llmActivePromptAutoBlend', 0)
 export const llmPromptsAutoSend = gmSignal<string[]>('llmPromptsAutoSend', [])
 export const llmActivePromptAutoSend = gmSignal('llmActivePromptAutoSend', 0)
 
-// AI Chat prompt seed. v2 migration is additive: merge (by exact content match) any missing v2 persona templates onto the user's list, preserving customisations; empty lists get the full lineup. Sets both v1 + v2 flags so neither re-seeds.
-;(() => {
-  const seededV2 = GM_getValue<boolean>('llmPromptsAiChatSeededV2', false)
-  if (seededV2) return
-  const existing = GM_getValue<string[]>('llmPromptsAiChat', [])
-  if (existing.length === 0) {
-    GM_setValue('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
-  } else {
-    const additions = DEFAULT_AI_CHAT_PROMPTS.filter(p => !existing.includes(p))
-    if (additions.length > 0) {
-      GM_setValue('llmPromptsAiChat', [...existing, ...additions])
-    }
-  }
-  GM_setValue('llmPromptsAiChatSeeded', true)
-  GM_setValue('llmPromptsAiChatSeededV2', true)
-})()
 export const llmPromptsAiChat = gmSignal<string[]>('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
 export const llmActivePromptAiChat = gmSignal('llmActivePromptAiChat', 0)
 // 感知忍術: Copy Ninja mirrors rewrite master actions with these instead of copying verbatim.
@@ -337,37 +310,11 @@ export const openaiSttApi = gmSignal<SttTranslationApi>('openaiSttApi', 'openai'
 export const openaiSttTranslationEnabled = gmSignal('openaiSttTranslationEnabled', false)
 
 // --- Shared output / capture (every provider) ---
-// Migrate the formerly Soniox-prefixed keys to neutral `stt*` keys.
-migrateGmKey('sonioxAutoSend', 'sttAutoSend')
-migrateGmKey('sonioxMaxLength', 'sttMaxLength')
-migrateGmKey('sonioxWrapBrackets', 'sttWrapBrackets')
-migrateGmKey('sonioxAudioDeviceId', 'sttAudioDeviceId')
-
 export const sttAutoSend = gmSignal('sttAutoSend', true)
 export const sttMaxLength = gmSignal('sttMaxLength', 40)
 export const sttWrapBrackets = gmSignal('sttWrapBrackets', false)
 // '' = system default mic; WEB_AUDIO_DEVICE_ID = live-player audio. Validated against live mic list before start so unplugged mics fall back to ''.
 export const sttAudioDeviceId = gmSignal('sttAudioDeviceId', '')
-
-// Migrate legacy flat replacementRules → localGlobalRules (one-time, then delete old key)
-;(() => {
-  const old = GM_getValue<Array<{ from?: string; to?: string }>>('replacementRules', [])
-  if (old.length > 0) {
-    const existing = GM_getValue<Array<{ from?: string; to?: string }>>('localGlobalRules', [])
-    if (existing.length === 0) {
-      GM_setValue('localGlobalRules', old)
-    }
-    GM_deleteValue('replacementRules')
-  }
-})()
-
-// Drop keys for removed settings (`autoBlendIncludeReply`: @ replies always excluded now; the two `unlock*Block` keys: both unlocks are always-on now). Existence check, not value check, so it deletes regardless of on/off and skips the write after first run.
-;(() => {
-  const sentinel = Symbol()
-  for (const key of ['autoBlendIncludeReply', 'unlockSpaceBlock', 'unlockLiveBlock']) {
-    if (GM_getValue<unknown>(key, sentinel) !== sentinel) GM_deleteValue(key)
-  }
-})()
 
 // Replacement rules
 // Master switch for cloud-synced rules. When off, `applyReplacements` skips the remote layer and auto-sync pauses (local rules unaffected).
