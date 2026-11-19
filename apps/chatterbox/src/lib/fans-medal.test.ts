@@ -5,7 +5,6 @@ import * as constants from './const'
 import * as danmakuLimit from './danmaku-limit'
 import * as medalParse from './fans-medal-parse'
 import {
-  formatMedalColor,
   isSameFansMedal,
   mergeFansMedals,
   normalizeFansMedal,
@@ -69,20 +68,8 @@ async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void>
   }
 }
 
-describe('formatMedalColor', () => {
-  it('formats decimal RGB numbers and 6/8-digit hex strings into #rrggbb[aa]', () => {
-    expect(formatMedalColor(6130680)).toBe('#5d8bf8')
-    expect(formatMedalColor(0)).toBe('#000000')
-    expect(formatMedalColor('#FF6699')).toBe('#FF6699')
-    expect(formatMedalColor('#3FB4F699')).toBe('#3FB4F699')
-    expect(formatMedalColor('3FB4F699')).toBe('#3FB4F699')
-    expect(formatMedalColor('36a185')).toBe('#36a185')
-    expect(formatMedalColor(null, '#123456')).toBe('#123456')
-  })
-})
-
 describe('normalizeFansMedal', () => {
-  it('normalizes nested fansMedal/panel entries', () => {
+  it('normalizes nested fansMedal/panel entries with B站 v2 colors, ignoring the legacy decimal ones', () => {
     const medal = normalizeFansMedal({
       medal: {
         medal_id: 101,
@@ -92,6 +79,11 @@ describe('normalizeFansMedal', () => {
         medal_color_start: 16737945,
         medal_color_end: 6130680,
         medal_color_border: 16737945,
+        v2_medal_color_start: '#C770A499',
+        v2_medal_color_end: '#C770A499',
+        v2_medal_color_border: '#C770A499',
+        v2_medal_color_text: '#FFFFFFFF',
+        v2_medal_color_level: '#6C004799',
         is_lighted: 1,
         wearing_status: 1,
         guard_level: 3,
@@ -109,9 +101,10 @@ describe('normalizeFansMedal', () => {
       targetId: 999,
       targetName: '某主播',
       roomId: 777,
-      colorStart: '#ff6699',
-      colorEnd: '#5d8bf8',
-      colorBorder: '#ff6699',
+      colorStart: '#C770A499',
+      colorEnd: '#C770A499',
+      colorBorder: '#C770A499',
+      colorText: '#FFFFFFFF',
       isLighted: true,
       guardLevel: 3,
       todayFeed: 120,
@@ -119,42 +112,26 @@ describe('normalizeFansMedal', () => {
     })
   })
 
-  it('falls back from zero medal_color_start to medal_color and handles is_used / omitted is_lighted', () => {
+  it("falls back to B站's default colors without v2 ones and handles is_used / omitted is_lighted", () => {
     const entry = {
       medal: {
         medal_id: 303,
         medal_name: '备用色',
         level: 6,
-        medal_color_start: 0,
-        medal_color_end: 0,
-        medal_color_border: 0,
-        medal_color: '#83c5be',
+        medal_color_start: 12632256,
+        v2_medal_color_start: '',
         is_used: 1,
       },
     }
     const medal = normalizeFansMedal(entry)
-    expect(medal?.colorStart).toBe('#83c5be')
-    expect(medal?.colorEnd).toBe('#83c5be')
-    expect(medal?.colorBorder).toBe('#83c5be')
-    expect(medal?.isLighted).toBe(true)
-    expect(parseFansMedalPanelResponse({ code: 0, data: { list: [entry] } }).weared?.medalId).toBe(303)
-  })
-
-  it('falls back to default medal color when both medal_color_start and medal_color are 0', () => {
-    const medal = normalizeFansMedal({
-      medal: {
-        medal_id: 404,
-        medal_name: '默认蓝',
-        level: 3,
-        medal_color_start: 0,
-        medal_color_end: 0,
-        medal_color_border: 0,
-        medal_color: 0,
-      },
+    expect(medal).toMatchObject({
+      colorStart: 'rgba(151, 158, 189, 0.8)',
+      colorEnd: 'rgba(151, 158, 189, 0.8)',
+      colorBorder: 'rgba(151, 158, 189, 0.8)',
+      colorText: '#FFFFFF',
+      isLighted: true,
     })
-    expect(medal?.colorStart).toBe('#5896de')
-    expect(medal?.colorEnd).toBe('#5896de')
-    expect(medal?.colorBorder).toBe('#5896de')
+    expect(parseFansMedalPanelResponse({ code: 0, data: { list: [entry] } }).weared?.medalId).toBe(303)
   })
 })
 
@@ -191,6 +168,10 @@ describe('parseGetInfoByUserMedal', () => {
           is_light: 1,
           ruid: 2132180406,
           guard_level: 3,
+          v2_medal_color_start: '#BE4960CC',
+          v2_medal_color_end: '#BE4960CC',
+          v2_medal_color_border: '#F18087FF',
+          v2_medal_color_text: '#FFFFFFFF',
         },
         curr_show: {
           name: '艾薯条',
@@ -206,6 +187,7 @@ describe('parseGetInfoByUserMedal', () => {
           v2_medal_color_start: '#3FB4F699',
           v2_medal_color_end: '#3FB4F699',
           v2_medal_color_border: '#3FB4F699',
+          v2_medal_color_text: '#FFFFFFFF',
         },
       },
     },
@@ -220,9 +202,10 @@ describe('parseGetInfoByUserMedal', () => {
       targetId: 1521415,
       targetName: '艾尔莎_Channel',
       roomId: 81004,
-      colorStart: '#06154c',
-      colorEnd: '#6888f1',
-      colorBorder: '#06154c',
+      colorStart: '#3FB4F699',
+      colorEnd: '#3FB4F699',
+      colorBorder: '#3FB4F699',
+      colorText: '#FFFFFFFF',
       isLighted: true,
       guardLevel: 0,
       todayFeed: 0,
@@ -233,7 +216,7 @@ describe('parseGetInfoByUserMedal', () => {
       medalName: '奶糖花',
       level: 27,
       targetId: 2132180406,
-      colorBorder: '#67e8ff',
+      colorBorder: '#F18087FF',
       guardLevel: 3,
     })
   })
@@ -265,30 +248,29 @@ describe('parseGetInfoByUserMedal', () => {
     expect(emptyShow).toEqual({ displayed: null, weared: null })
   })
 
-  it('falls back to v2_medal_color_* when v1 decimal colors are absent, and handles legacy payloads and error codes', () => {
-    const v2Only = parseGetInfoByUserMedal({
+  it('reads only v2 colors, falls back for legacy payloads, and handles error codes', () => {
+    const unlit = parseGetInfoByUserMedal({
       code: 0,
       data: {
         medal: {
           curr_show: {
-            name: 'V2色',
-            level: 5,
+            name: '未点亮',
+            level: 11,
             id: 77,
             ruid: 88,
-            color_start: 0,
-            color_end: 0,
-            color_border: 0,
-            color: 0,
-            v2_medal_color_start: '#3FB4F699',
-            v2_medal_color_end: '#5FC7F4',
-            v2_medal_color_border: '#123456',
+            color_start: 12632256,
+            color_end: 12632256,
+            color_border: 12632256,
+            is_light: 0,
+            v2_medal_color_start: '#919298CC',
+            v2_medal_color_end: '#919298CC',
+            v2_medal_color_border: '#919298CC',
+            v2_medal_color_text: '#FFFFFFFF',
           },
         },
       },
     })
-    expect(v2Only?.displayed?.colorStart).toBe('#3FB4F699')
-    expect(v2Only?.displayed?.colorEnd).toBe('#5FC7F4')
-    expect(v2Only?.displayed?.colorBorder).toBe('#123456')
+    expect(unlit?.displayed).toMatchObject({ colorStart: '#919298CC', colorBorder: '#919298CC', isLighted: false })
 
     const legacy = parseGetInfoByUserMedal({
       code: 0,
@@ -301,6 +283,7 @@ describe('parseGetInfoByUserMedal', () => {
     })
     expect(legacy?.displayed?.medalName).toBe('旧字段')
     expect(legacy?.displayed?.roomId).toBe(9001)
+    expect(legacy?.displayed?.colorStart).toBe('rgba(151, 158, 189, 0.8)')
     expect(legacy?.weared).toBeUndefined()
 
     const blankName = parseGetInfoByUserMedal({

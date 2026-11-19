@@ -19,34 +19,10 @@ import {
 import { isSameFansMedal } from '../lib/fans-medal-parse'
 import { fansMedalActingId, roomDisplayedMedal, roomDisplayedMedalKnown, wearedMedal } from '../lib/fans-medal-room'
 import { cachedStreamerUid } from '../lib/store'
+import { FansMedalBadge } from './fans-medal-badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-
-/** Compact Bilibili-style two-part fans medal badge (`[name | level]`). */
-function MedalBadge({ medal, compact = false }: { medal: FansMedal; compact?: boolean }) {
-  const bg = medal.isLighted ? `linear-gradient(45deg, ${medal.colorStart}, ${medal.colorEnd})` : '#9ea6b2'
-  const borderColor = medal.isLighted ? medal.colorBorder : '#9ea6b2'
-
-  return (
-    <span
-      class={cn(
-        'inline-flex items-stretch overflow-hidden rounded-[3px] border border-solid text-[10px] leading-none select-none',
-        compact ? 'max-w-full min-w-0' : 'shrink-0',
-        !medal.isLighted && 'opacity-75'
-      )}
-      style={{ borderColor }}
-      title={`${medal.medalName} Lv.${medal.level}${medal.targetName ? ` · ${medal.targetName}` : ''}${medal.isLighted ? '' : '（未点亮）'}`}
-    >
-      <span class='flex min-w-0 items-center px-1 py-0.5 font-medium text-white' style={{ background: bg }}>
-        <span class={cn('truncate', compact ? 'max-w-[52px]' : 'max-w-[96px]')}>{medal.medalName}</span>
-      </span>
-      <span class='flex shrink-0 items-center bg-white px-1 py-0.5 font-semibold' style={{ color: borderColor }}>
-        {medal.level}
-      </span>
-    </span>
-  )
-}
 
 /**
  * Fans medal button with a classic Bilibili-style switcher popover. The badge comes from B站's own
@@ -110,7 +86,7 @@ export function FansMedalSelector() {
           )}
         >
           {displayed ? (
-            <MedalBadge medal={displayed} compact />
+            <FansMedalBadge medal={displayed} className='shrink' />
           ) : (
             <span class='inline-flex shrink-0 items-center gap-0.5 rounded border border-solid border-ga3 bg-ga1 px-1 py-0.5 text-[11px] leading-none whitespace-nowrap text-ga5'>
               <IconAward size={13} stroke={1.8} aria-hidden='true' />
@@ -200,7 +176,7 @@ export function FansMedalSelector() {
                     )}
                   >
                     <div class='flex min-w-0 items-center gap-1.5'>
-                      <MedalBadge medal={medal} />
+                      <FansMedalBadge medal={medal} />
                       <span class='truncate text-[11px] text-inherit'>
                         {medal.targetName || `UID ${medal.targetId}`}
                       </span>
