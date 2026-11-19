@@ -692,14 +692,21 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     expect(medalRoom.wearedMedal.value?.medalId).toBe(20)
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌B')
 
-    // An in-page room switch still records the new room.
+    // An in-page room switch still records the new room, but its possibly older worn medal is ignored.
     expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 92000 })).toBe('applied')
+    expect(medalRoom.wearedMedal.value?.medalId).toBe(20)
     danmakuLimit.cachedRoomId.value = 92000
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
 
     danmakuLimit.cachedRoomId.value = 81004
     expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, authoritative: true })).toBe('applied')
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
+    expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
+
+    // A logout is current whenever it arrives.
+    expect(medalRoom.applyGetInfoByUserMedal({ code: -101, message: '未登录' }, { roomId: 81004 })).toBe('applied')
+    expect(medalRoom.roomDisplayedMedal.value).toBeNull()
+    expect(medalRoom.wearedMedal.value).toBeNull()
   })
 
   it('sets fansMedalError when fetchRoomDisplayedMedal fails or returns invalid data, and clears it on success', async () => {

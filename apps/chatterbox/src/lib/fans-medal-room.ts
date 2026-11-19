@@ -36,7 +36,8 @@ export function medalChangeCount(): number {
 
 /**
  * Record `getInfoByUser`'s per-room `curr_show` and global `curr_weared_v2`. Only `authoritative` replies (our
- * own refetch) are ordered after a wear/take-off; once one happens, other replies only seed unrecorded rooms.
+ * own refetch) are ordered after a wear/take-off; once one happens, other replies may predate it, so they only
+ * seed unrecorded rooms and leave the worn medal alone. A logout always applies.
  */
 export function applyGetInfoByUserMedal(
   payload: unknown,
@@ -44,14 +45,16 @@ export function applyGetInfoByUserMedal(
 ): 'applied' | 'stale' | 'invalid' {
   if (fansMedalActingId.peek() !== null) return 'stale'
   const roomIds = collectRoomIds(payload, context)
-  if (!context?.authoritative && medalChanges > 0) {
+  const loggedOut = readPath(payload, 'code') === -101
+  const untrusted = !loggedOut && !context?.authoritative && medalChanges > 0
+  if (untrusted) {
     const recorded = medalsByRoom.value
     if (roomIds.length === 0 || roomIds.some(id => recorded.has(id))) return 'stale'
   }
   const parsed = parseGetInfoByUserMedal(payload)
   if (!parsed) return 'invalid'
 
-  if (readPath(payload, 'code') === -101) {
+  if (loggedOut) {
     // Logged out: forget every recorded room, not just this one.
     medalsByRoom.value = new Map(roomIds.map(id => [id, null]))
     unkeyedDisplayedMedal.value = null
@@ -64,7 +67,7 @@ export function applyGetInfoByUserMedal(
   }
 
   const weared = parsed.weared
-  if (weared !== undefined) {
+  if (weared !== undefined && !untrusted) {
     const existing = wearedMedal.peek()
     // `curr_weared_v2` can omit the id; keep the panel's richer record of the same medal.
     const keepExisting =

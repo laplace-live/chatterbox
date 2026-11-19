@@ -42,15 +42,18 @@ describe('startPointerDrag', () => {
   it('tracks moves, then releases capture and restores body styles on pointerup', () => {
     const target = fakeTarget()
     const onMove = mock(() => {})
-    startPointerDrag(target, 7, { onMove, cursor: 'ew-resize' })
+    const onEnd = mock(() => {})
+    startPointerDrag(target, 7, { onMove, onEnd, cursor: 'ew-resize' })
     expect(body.style).toEqual({ cursor: 'ew-resize', userSelect: 'none' })
 
     win.dispatchEvent(pointer('pointermove', { pointerId: 7, clientX: 50 }))
     expect(onMove).toHaveBeenCalledTimes(1)
 
+    expect(onEnd).not.toHaveBeenCalled()
     win.dispatchEvent(pointer('pointerup', { pointerId: 7 }))
     expect(target.releasePointerCapture).toHaveBeenCalledWith(7)
     expect(body.style).toEqual(RESTORED)
+    expect(onEnd).toHaveBeenCalledTimes(1)
 
     win.dispatchEvent(pointer('pointermove', { pointerId: 7 }))
     expect(onMove).toHaveBeenCalledTimes(1)
@@ -70,7 +73,8 @@ describe('startPointerDrag', () => {
   it('ignores other pointers, and cancel() ends synchronously and idempotently', () => {
     const target = fakeTarget()
     const onMove = mock(() => {})
-    const cancel = startPointerDrag(target, 3, { onMove, cursor: 'grabbing' })
+    const onEnd = mock(() => {})
+    const cancel = startPointerDrag(target, 3, { onMove, onEnd, cursor: 'grabbing' })
 
     win.dispatchEvent(pointer('pointermove', { pointerId: 99 }))
     win.dispatchEvent(pointer('pointerup', { pointerId: 99 }))
@@ -81,6 +85,7 @@ describe('startPointerDrag', () => {
     cancel()
     cancel()
     expect(target.releasePointerCapture).toHaveBeenCalledTimes(1)
+    expect(onEnd).toHaveBeenCalledTimes(1)
     expect(body.style).toEqual(RESTORED)
   })
 

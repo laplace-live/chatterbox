@@ -190,8 +190,17 @@ export async function submitNormalSend(): Promise<void> {
 }
 
 /** Shared composer keys: Enter sends (YOLO polishes first), Alt+Enter polishes in place, Shift+Enter breaks the line. */
-export function handleNormalSendKeyDown(e: KeyboardEvent): void {
+export function handleNormalSendKeyDown(
+  e: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'altKey' | 'isComposing' | 'preventDefault'>
+): void {
   if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
   e.preventDefault()
-  void (e.altKey ? polishNormalSendInput() : submitNormalSend())
+  if (!e.altKey) {
+    void submitNormalSend()
+    return
+  }
+  // Same gate as the disabled AI 润色 button: a half-configured provider would send a doomed request.
+  const llmGap = describeLlmGap('normalSend')
+  if (llmGap === null) void polishNormalSendInput()
+  else appendLog(`❌ AI 润色不可用：${llmGap}`)
 }

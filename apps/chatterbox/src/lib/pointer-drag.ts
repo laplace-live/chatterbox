@@ -12,12 +12,12 @@ let savedUserSelect = ''
 
 /**
  * Track `pointerId` from its `pointerdown` on `target` until release, with the body cursor and
- * text selection locked meanwhile. Returns an idempotent cancel.
+ * text selection locked meanwhile. `onEnd` runs once however the drag ends. Returns an idempotent cancel.
  */
 export function startPointerDrag(
   target: DragTarget,
   pointerId: number,
-  { onMove, cursor }: { onMove: (e: PointerEvent) => void; cursor: string }
+  { onMove, onEnd, cursor }: { onMove: (e: PointerEvent) => void; onEnd?: () => void; cursor: string }
 ): () => void {
   try {
     target.setPointerCapture(pointerId)
@@ -41,6 +41,7 @@ export function startPointerDrag(
       style.cursor = savedCursor
       style.userSelect = savedUserSelect
     }
+    onEnd?.()
   }
   const endIfOurs = (e: Event) => {
     if ('pointerId' in e && e.pointerId === pointerId) end()

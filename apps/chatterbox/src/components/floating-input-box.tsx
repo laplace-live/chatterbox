@@ -34,6 +34,7 @@ export function FloatingInputBox() {
   const minimized = floatingInputMinimized.value
   const polishing = normalSendPolishing.value
   const [viewport, setViewport] = useState<ViewportSize>(getViewportSize)
+  const [dragRect, setDragRect] = useState<FloatingRect | null>(null)
   const activeDragCancelRef = useRef<(() => void) | null>(null)
 
   const cancelActiveDrag = () => {
@@ -71,7 +72,7 @@ export function FloatingInputBox() {
 
   if (minimized) return null
 
-  const renderRect = clampFloatingRect(floatingInputRect.value ?? DEFAULT_FLOATING_RECT, viewport)
+  const renderRect = clampFloatingRect(dragRect ?? floatingInputRect.value ?? DEFAULT_FLOATING_RECT, viewport)
   const llmReady = describeLlmGap('normalSend') === null
   const { msgCount, charCount } = normalSendPreview.value
 
@@ -84,10 +85,17 @@ export function FloatingInputBox() {
       const startRect = renderRect
       const vp = viewport
       cancelActiveDrag()
+      let last: FloatingRect | null = null
       activeDragCancelRef.current = startPointerDrag(e.currentTarget, e.pointerId, {
         cursor,
         onMove: ev => {
-          floatingInputRect.value = next(startRect, ev.clientX - startX, ev.clientY - startY, vp)
+          last = next(startRect, ev.clientX - startX, ev.clientY - startY, vp)
+          setDragRect(last)
+        },
+        // Persist once per drag: every `floatingInputRect` change is a GM storage write.
+        onEnd: () => {
+          if (last) floatingInputRect.value = last
+          setDragRect(null)
         },
       })
     }
