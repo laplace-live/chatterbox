@@ -89,7 +89,8 @@ export function FansMedalSelector() {
 
   const handleSelect = async (medal: FansMedal) => {
     if (actingId !== null) return
-    const ok = medal.wearingStatus ? await takeOffFansMedal() : await wearFansMedal(medal)
+    const isWorn = isSameFansMedal(wearedMedal.peek(), medal)
+    const ok = isWorn ? await takeOffFansMedal() : await wearFansMedal(medal)
     if (ok) handleOpenChange(false)
   }
 
@@ -189,6 +190,7 @@ export function FansMedalSelector() {
             <div class='flex flex-col gap-1'>
               {filtered.map(medal => {
                 const isRoomMedal = streamerUid !== null && medal.targetId === streamerUid
+                const isWorn = isSameFansMedal(weared, medal)
                 const isDisplayedHere = isSameFansMedal(displayed, medal)
                 const isBusy = actingId === medal.medalId
                 return (
@@ -200,7 +202,7 @@ export function FansMedalSelector() {
                     class={cn(
                       'm-0 flex w-full cursor-pointer items-center justify-between gap-2 rounded border border-solid px-2 py-1.5 text-left transition',
                       'disabled:cursor-not-allowed disabled:opacity-60',
-                      medal.wearingStatus
+                      isWorn
                         ? 'border-brand bg-brand/10'
                         : 'border-transparent bg-transparent hover:border-ga3 hover:bg-ga1'
                     )}
@@ -222,7 +224,7 @@ export function FansMedalSelector() {
                       )}
                       {isBusy ? (
                         <span class='text-brand'>处理中…</span>
-                      ) : medal.wearingStatus ? (
+                      ) : isWorn ? (
                         <span class='font-semibold text-brand'>佩戴中</span>
                       ) : isDisplayedHere ? (
                         <span class='font-semibold text-brand'>本房展示</span>

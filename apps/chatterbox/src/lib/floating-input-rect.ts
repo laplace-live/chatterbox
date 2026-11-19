@@ -1,6 +1,6 @@
 export interface FloatingRect {
-  left: number
-  top: number
+  right: number
+  bottom: number
   width: number
   height: number
 }
@@ -15,11 +15,11 @@ export type ResizeEdge = 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se'
 export const FLOATING_INPUT_MIN_WIDTH = 180
 export const FLOATING_INPUT_MIN_HEIGHT = 44
 
-// Fixed default matching B站's 300px chat panel input box (196x56, sitting above the status bar fold button).
-export const FLOATING_INPUT_DEFAULT_WIDTH = 196
-export const FLOATING_INPUT_DEFAULT_HEIGHT = 56
+// Fixed default covering B站's native chat input while keeping the 36px emote trigger clear above StatusBar.
+export const FLOATING_INPUT_DEFAULT_WIDTH = 205
+export const FLOATING_INPUT_DEFAULT_HEIGHT = 70
 export const FLOATING_INPUT_DEFAULT_RIGHT = 98
-export const FLOATING_INPUT_DEFAULT_BOTTOM = 11
+export const FLOATING_INPUT_DEFAULT_BOTTOM = 14
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max))
@@ -31,22 +31,19 @@ export function clampFloatingRect(rect: FloatingRect, viewport: ViewportSize): F
   const maxHeight = Math.max(FLOATING_INPUT_MIN_HEIGHT, viewport.height)
   const width = clamp(Math.round(rect.width), FLOATING_INPUT_MIN_WIDTH, maxWidth)
   const height = clamp(Math.round(rect.height), FLOATING_INPUT_MIN_HEIGHT, maxHeight)
-  const left = clamp(Math.round(rect.left), 0, Math.max(0, viewport.width - width))
-  const top = clamp(Math.round(rect.top), 0, Math.max(0, viewport.height - height))
-  return { left, top, width, height }
+  const right = clamp(Math.round(rect.right), 0, Math.max(0, viewport.width - width))
+  const bottom = clamp(Math.round(rect.bottom), 0, Math.max(0, viewport.height - height))
+  return { right, bottom, width, height }
 }
 
-/** Fixed initial rect calibrated to B站's live-room chat input position and size. */
-export function defaultFloatingRect(viewport: ViewportSize): FloatingRect {
-  return clampFloatingRect(
-    {
-      left: viewport.width - FLOATING_INPUT_DEFAULT_RIGHT - FLOATING_INPUT_DEFAULT_WIDTH,
-      top: viewport.height - FLOATING_INPUT_DEFAULT_BOTTOM - FLOATING_INPUT_DEFAULT_HEIGHT,
-      width: FLOATING_INPUT_DEFAULT_WIDTH,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    },
-    viewport
-  )
+/** Fixed initial bottom-right anchor calibrated over B站's chat input, keeping controls clear of StatusBar. */
+export function defaultFloatingRect(): FloatingRect {
+  return {
+    right: FLOATING_INPUT_DEFAULT_RIGHT,
+    bottom: FLOATING_INPUT_DEFAULT_BOTTOM,
+    width: FLOATING_INPUT_DEFAULT_WIDTH,
+    height: FLOATING_INPUT_DEFAULT_HEIGHT,
+  }
 }
 
 /** Translate `startRect` by `(dx, dy)`, keeping its size unchanged and inside `viewport`. */
@@ -58,8 +55,8 @@ export function moveFloatingRect(
 ): FloatingRect {
   return clampFloatingRect(
     {
-      left: startRect.left + dx,
-      top: startRect.top + dy,
+      right: startRect.right - dx,
+      bottom: startRect.bottom - dy,
       width: startRect.width,
       height: startRect.height,
     },
@@ -75,31 +72,28 @@ export function resizeFloatingRect(
   dy: number,
   viewport: ViewportSize
 ): FloatingRect {
-  const right = startRect.left + startRect.width
-  const bottom = startRect.top + startRect.height
-
-  let left = startRect.left
-  let top = startRect.top
+  let right = startRect.right
+  let bottom = startRect.bottom
   let width = startRect.width
   let height = startRect.height
 
   if (edge.includes('w')) {
-    const maxW = Math.max(FLOATING_INPUT_MIN_WIDTH, right)
+    const maxW = Math.max(FLOATING_INPUT_MIN_WIDTH, viewport.width - startRect.right)
     width = clamp(Math.round(startRect.width - dx), FLOATING_INPUT_MIN_WIDTH, maxW)
-    left = right - width
   } else if (edge.includes('e')) {
-    const maxW = Math.max(FLOATING_INPUT_MIN_WIDTH, viewport.width - startRect.left)
+    const maxW = Math.max(FLOATING_INPUT_MIN_WIDTH, startRect.width + startRect.right)
     width = clamp(Math.round(startRect.width + dx), FLOATING_INPUT_MIN_WIDTH, maxW)
+    right = startRect.right + startRect.width - width
   }
 
   if (edge.includes('n')) {
-    const maxH = Math.max(FLOATING_INPUT_MIN_HEIGHT, bottom)
+    const maxH = Math.max(FLOATING_INPUT_MIN_HEIGHT, viewport.height - startRect.bottom)
     height = clamp(Math.round(startRect.height - dy), FLOATING_INPUT_MIN_HEIGHT, maxH)
-    top = bottom - height
   } else if (edge.includes('s')) {
-    const maxH = Math.max(FLOATING_INPUT_MIN_HEIGHT, viewport.height - startRect.top)
+    const maxH = Math.max(FLOATING_INPUT_MIN_HEIGHT, startRect.height + startRect.bottom)
     height = clamp(Math.round(startRect.height + dy), FLOATING_INPUT_MIN_HEIGHT, maxH)
+    bottom = startRect.bottom + startRect.height - height
   }
 
-  return { left, top, width, height }
+  return { right, bottom, width, height }
 }

@@ -401,7 +401,6 @@ export function EmoteSelector({
                   )
                 })}
               </div>
-              {/* Custom horizontal slider bar for easy package switching across overflowed tabs. */}
               <div
                 ref={hTrackRef}
                 onPointerDown={e =>

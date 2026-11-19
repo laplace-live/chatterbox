@@ -141,4 +141,93 @@ describe('startPointerDrag', () => {
       globalThis.document = prevDocument
     }
   })
+
+  it('ignores lostpointercapture for other pointerIds and preserves original body styles across concurrent drags', () => {
+    const prevDocument = globalThis.document
+    const fakeBody = { style: { cursor: 'auto', userSelect: 'text' } }
+    globalThis.document = { body: fakeBody } as unknown as Document
+    try {
+      const targetA = createFakeTarget(true)
+      const targetB = createFakeTarget(true)
+      const onMove = mock(() => {})
+
+      startPointerDrag(targetA as unknown as Element, { pointerId: 1 } as PointerEvent, {
+        onMove,
+        cursor: 'grabbing',
+      })
+      startPointerDrag(targetB as unknown as Element, { pointerId: 2 } as PointerEvent, {
+        onMove,
+        cursor: 'ew-resize',
+      })
+
+      expect(fakeBody.style.cursor).toBe('ew-resize')
+      expect(fakeBody.style.userSelect).toBe('none')
+
+      // Mismatched lostpointercapture pointerId does not prematurely end drag A.
+      targetA.emit('lostpointercapture', { pointerId: 999 })
+      expect(targetA.listenerCount('pointermove')).toBe(1)
+
+      // Ending drag A first keeps userSelect disabled and drag B's cursor active.
+      targetA.emit('pointerup', { pointerId: 1 })
+      expect(fakeBody.style.userSelect).toBe('none')
+      expect(fakeBody.style.cursor).toBe('ew-resize')
+
+      // Ending drag B restores the original body styles from before drag A started.
+      targetB.emit('pointerup', { pointerId: 2 })
+      expect(fakeBody.style.cursor).toBe('auto')
+      expect(fakeBody.style.userSelect).toBe('text')
+    } finally {
+      globalThis.document = prevDocument
+    }
+  })
+
+  it('registers window pointermove fallback when capture fails and removes it on cleanup', () => {
+    const prevDocument = globalThis.document
+    const prevWindow = globalThis.window
+    const fakeBody = { style: { cursor: '', userSelect: '' } }
+    const winListeners = new Map<string, Set<EventListener>>()
+    const fakeWindow = {
+      addEventListener: mock((type: string, fn: EventListener) => {
+        let set = winListeners.get(type)
+        if (!set) {
+          set = new Set()
+          winListeners.set(type, set)
+        }
+        set.add(fn)
+      }),
+      removeEventListener: mock((type: string, fn: EventListener) => {
+        winListeners.get(type)?.delete(fn)
+      }),
+      emit(type: string, event: unknown) {
+        for (const fn of [...(winListeners.get(type) ?? [])]) fn(event as Event)
+      },
+    }
+    globalThis.document = { body: fakeBody } as unknown as Document
+    globalThis.window = fakeWindow as unknown as Window & typeof globalThis
+    try {
+      const target = createFakeTarget(false)
+      const onMove = mock(() => {})
+
+      startPointerDrag(target as unknown as Element, { pointerId: 4 } as PointerEvent, {
+        onMove,
+        cursor: 'grabbing',
+      })
+
+      const sharedEvent = { pointerId: 4, buttons: 1, clientX: 25 }
+      target.emit('pointermove', sharedEvent)
+      fakeWindow.emit('pointermove', sharedEvent)
+      expect(onMove).toHaveBeenCalledTimes(1)
+
+      fakeWindow.emit('pointermove', { pointerId: 4, buttons: 1, clientX: 40 })
+      expect(onMove).toHaveBeenCalledTimes(2)
+
+      fakeWindow.emit('pointerup', { pointerId: 4 })
+      expect(winListeners.get('pointermove')?.size ?? 0).toBe(0)
+      expect(fakeBody.style.cursor).toBe('')
+      expect(fakeBody.style.userSelect).toBe('')
+    } finally {
+      globalThis.document = prevDocument
+      globalThis.window = prevWindow
+    }
+  })
 })

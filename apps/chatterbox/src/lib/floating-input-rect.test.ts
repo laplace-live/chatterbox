@@ -17,43 +17,54 @@ const VIEWPORT = { width: 1280, height: 720 }
 
 describe('clampFloatingRect & defaultFloatingRect', () => {
   it('enforces minimum size and keeps the box inside viewport', () => {
-    expect(clampFloatingRect({ left: -20, top: -10, width: 50, height: 10 }, VIEWPORT)).toEqual({
-      left: 0,
-      top: 0,
+    expect(clampFloatingRect({ right: -20, bottom: -10, width: 50, height: 10 }, VIEWPORT)).toEqual({
+      right: 0,
+      bottom: 0,
       width: FLOATING_INPUT_MIN_WIDTH,
       height: FLOATING_INPUT_MIN_HEIGHT,
     })
 
-    expect(clampFloatingRect({ left: 1200, top: 700, width: 240, height: 80 }, VIEWPORT)).toEqual({
-      left: 1040,
-      top: 640,
+    expect(clampFloatingRect({ right: 1200, bottom: 700, width: 240, height: 80 }, VIEWPORT)).toEqual({
+      right: 1040,
+      bottom: 640,
       width: 240,
       height: 80,
     })
   })
 
-  it('places the default box at the fixed bottom-right Bilibili input offset', () => {
-    expect(defaultFloatingRect(VIEWPORT)).toEqual({
-      left: VIEWPORT.width - FLOATING_INPUT_DEFAULT_RIGHT - FLOATING_INPUT_DEFAULT_WIDTH,
-      top: VIEWPORT.height - FLOATING_INPUT_DEFAULT_BOTTOM - FLOATING_INPUT_DEFAULT_HEIGHT,
+  it('places the default box at the fixed bottom-right offset and stays anchored across viewport growth', () => {
+    const rect = defaultFloatingRect()
+    expect(rect).toEqual({
+      right: FLOATING_INPUT_DEFAULT_RIGHT,
+      bottom: FLOATING_INPUT_DEFAULT_BOTTOM,
       width: FLOATING_INPUT_DEFAULT_WIDTH,
       height: FLOATING_INPUT_DEFAULT_HEIGHT,
     })
+
+    // Narrow activity iframe -> wider web fullscreen keeps right/bottom offset instead of drifting left.
+    expect(clampFloatingRect(rect, { width: 1335, height: 750 })).toEqual(rect)
+    expect(clampFloatingRect(rect, { width: 1536, height: 860 })).toEqual(rect)
   })
 })
 
 describe('moveFloatingRect', () => {
   it('moves while preserving size and clamping to viewport edges', () => {
-    const start = { left: 900, top: 600, width: 220, height: 50 }
+    const start = { right: 160, bottom: 70, width: 220, height: 50 }
     expect(moveFloatingRect(start, -100, -50, VIEWPORT)).toEqual({
-      left: 800,
-      top: 550,
+      right: 260,
+      bottom: 120,
       width: 220,
       height: 50,
     })
     expect(moveFloatingRect(start, 500, 500, VIEWPORT)).toEqual({
-      left: 1060,
-      top: 670,
+      right: 0,
+      bottom: 0,
+      width: 220,
+      height: 50,
+    })
+    expect(moveFloatingRect(start, -2000, -2000, VIEWPORT)).toEqual({
+      right: 1060,
+      bottom: 670,
       width: 220,
       height: 50,
     })
@@ -61,30 +72,30 @@ describe('moveFloatingRect', () => {
 })
 
 describe('resizeFloatingRect', () => {
-  const start = { left: 900, top: 600, width: 220, height: 50 }
+  const start = { right: 160, bottom: 70, width: 220, height: 50 }
 
   it('expands and shrinks symmetrically in all four directions while anchoring opposite edges', () => {
     expect(resizeFloatingRect(start, 'w', -80, 0, VIEWPORT)).toEqual({
-      left: 820,
-      top: 600,
+      right: 160,
+      bottom: 70,
       width: 300,
       height: 50,
     })
     expect(resizeFloatingRect(start, 'e', 60, 0, VIEWPORT)).toEqual({
-      left: 900,
-      top: 600,
+      right: 100,
+      bottom: 70,
       width: 280,
       height: 50,
     })
     expect(resizeFloatingRect(start, 'n', 0, -100, VIEWPORT)).toEqual({
-      left: 900,
-      top: 500,
+      right: 160,
+      bottom: 70,
       width: 220,
       height: 150,
     })
     expect(resizeFloatingRect(start, 's', 0, 40, VIEWPORT)).toEqual({
-      left: 900,
-      top: 600,
+      right: 160,
+      bottom: 30,
       width: 220,
       height: 90,
     })
@@ -93,23 +104,31 @@ describe('resizeFloatingRect', () => {
   it('clamps shrink to minimum dimensions without shifting opposite edges', () => {
     const shrunkW = resizeFloatingRect(start, 'w', 500, 0, VIEWPORT)
     expect(shrunkW.width).toBe(FLOATING_INPUT_MIN_WIDTH)
-    expect(shrunkW.left + shrunkW.width).toBe(start.left + start.width)
+    expect(shrunkW.right).toBe(start.right)
+
+    const shrunkE = resizeFloatingRect(start, 'e', -500, 0, VIEWPORT)
+    expect(shrunkE.width).toBe(FLOATING_INPUT_MIN_WIDTH)
+    expect(shrunkE.right + shrunkE.width).toBe(start.right + start.width)
 
     const shrunkN = resizeFloatingRect(start, 'n', 0, 500, VIEWPORT)
     expect(shrunkN.height).toBe(FLOATING_INPUT_MIN_HEIGHT)
-    expect(shrunkN.top + shrunkN.height).toBe(start.top + start.height)
+    expect(shrunkN.bottom).toBe(start.bottom)
+
+    const shrunkS = resizeFloatingRect(start, 's', 0, -500, VIEWPORT)
+    expect(shrunkS.height).toBe(FLOATING_INPUT_MIN_HEIGHT)
+    expect(shrunkS.bottom + shrunkS.height).toBe(start.bottom + start.height)
   })
 
   it('handles corner drags (nw/se) without escaping viewport', () => {
     expect(resizeFloatingRect(start, 'se', 500, 500, VIEWPORT)).toEqual({
-      left: 900,
-      top: 600,
+      right: 0,
+      bottom: 0,
       width: 380,
       height: 120,
     })
     expect(resizeFloatingRect(start, 'nw', -2000, -2000, VIEWPORT)).toEqual({
-      left: 0,
-      top: 0,
+      right: 160,
+      bottom: 70,
       width: 1120,
       height: 650,
     })

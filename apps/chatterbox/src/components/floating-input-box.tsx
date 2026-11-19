@@ -43,7 +43,7 @@ function getViewportSize(): ViewportSize {
 
 /**
  * Floating danmaku input box sitting at the lowest plugin layer (below Configurator and StatusBar).
- * Initializes once per room load to B站's native input box size/position and stays stable across room layout changes.
+ * Initializes once per page load and stays anchored to the bottom-right across layout changes.
  */
 export function FloatingInputBox() {
   const enabled = floatingInputEnabled.value
@@ -64,8 +64,11 @@ export function FloatingInputBox() {
   useEffect(() => {
     const onResize = () => setViewport(getViewportSize())
     window.addEventListener('resize', onResize)
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null
+    observer?.observe(document.documentElement)
     return () => {
       window.removeEventListener('resize', onResize)
+      observer?.disconnect()
       cancelActiveDrag()
     }
   }, [])
@@ -77,7 +80,7 @@ export function FloatingInputBox() {
       floatingInputMinimized.value = false
       return
     }
-    setRect(prev => prev ?? defaultFloatingRect(getViewportSize()))
+    setRect(prev => prev ?? defaultFloatingRect())
   }, [enabled])
 
   useEffect(() => {
@@ -150,8 +153,8 @@ export function FloatingInputBox() {
         minimized && 'hidden'
       )}
       style={{
-        left: `${renderRect.left}px`,
-        top: `${renderRect.top}px`,
+        right: `${renderRect.right}px`,
+        bottom: `${renderRect.bottom}px`,
         width: `${renderRect.width}px`,
         height: `${renderRect.height}px`,
       }}

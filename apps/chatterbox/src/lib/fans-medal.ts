@@ -5,13 +5,24 @@ import type { FansMedal } from '../types'
 import { getCsrfToken, getSpmPrefix } from './api'
 import { BASE_URL } from './const'
 import { applyWearedMedal, isSameFansMedal, mergeFansMedals, parseFansMedalPanelResponse } from './fans-medal-parse'
-import { applyGetInfoByUserMedal, fansMedalActingId, roomDisplayedMedal, wearedMedal } from './fans-medal-room'
+import {
+  applyGetInfoByUserMedal,
+  bumpMedalMutationEpoch,
+  captureGetInfoStamp,
+  fansMedalActingId,
+  markOwnGetInfoMedalResponse,
+  roomDisplayedMedal,
+  setWearedMedalChangeListener,
+  wearedMedal,
+} from './fans-medal-room'
 import { appendLog } from './log'
 import { cachedRoomId, cachedStreamerUid } from './store'
 import { cachedWbiKeys, encodeWbi } from './wbi'
 
 const MEDAL_PAGE_SIZE = 50
 const ROOM_MEDAL_TIMEOUT_MS = 5000
+const MEDAL_ACTION_TIMEOUT_MS = 8000
+const ROOM_MEDAL_ERROR_PREFIX = '刷新直播间粉丝牌失败：'
 
 export {
   applyWearedMedal,
@@ -42,6 +53,33 @@ let roomMedalRequestSeq = 0
 let mutationSeq = 0
 let roomMedalAbort: AbortController | null = null
 
+setWearedMedalChangeListener(next => {
+  if (fansMedalList.value.length > 0) {
+    fansMedalList.value = applyWearedMedal(fansMedalList.value, next)
+  }
+})
+
+function startTimedAbort(timeoutMs: number, controller = new AbortController()) {
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  return {
+    controller,
+    isTimedOut: () => timedOut,
+    clear: () => clearTimeout(timer),
+  }
+}
+
+function extractBilibiliError(payload: unknown): string {
+  if (typeof payload !== 'object' || payload === null) return ''
+  const record = payload as { message?: unknown; msg?: unknown }
+  if (typeof record.message === 'string' && record.message) return record.message
+  if (typeof record.msg === 'string' && record.msg) return record.msg
+  return ''
+}
+
 function buildCsrfForm(extra?: Record<string, string>): FormData {
   const csrf = getCsrfToken() ?? ''
   const form = new FormData()
@@ -61,10 +99,11 @@ export async function fetchRoomDisplayedMedal(roomIdOverride?: number | null): P
 
   const seq = ++roomMedalRequestSeq
   const mut = mutationSeq
+  const stamp = captureGetInfoStamp()
   roomMedalAbort?.abort()
   const controller = new AbortController()
   roomMedalAbort = controller
-  const timeoutId = setTimeout(() => controller.abort(), ROOM_MEDAL_TIMEOUT_MS)
+  const timer = startTimedAbort(ROOM_MEDAL_TIMEOUT_MS, controller)
 
   try {
     const base = { room_id: String(roomId), from: '0', not_mock_enter_effect: '1' }
@@ -76,17 +115,30 @@ export async function fetchRoomDisplayedMedal(roomIdOverride?: number | null): P
       credentials: 'include',
       signal: controller.signal,
     })
-    if (!resp.ok) return roomDisplayedMedal.peek()
+    markOwnGetInfoMedalResponse(resp)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
     const json: unknown = await resp.json()
     if (seq !== roomMedalRequestSeq || mut !== mutationSeq || fansMedalActingId.value !== null) {
       return roomDisplayedMedal.peek()
     }
-    applyGetInfoByUserMedal(json, { roomId })
+    const status = applyGetInfoByUserMedal(json, { roomId, stamp })
+    if (status === 'invalid') {
+      throw new Error(extractBilibiliError(json) || '响应无效')
+    }
+    if (status === 'applied' && fansMedalError.value?.startsWith(ROOM_MEDAL_ERROR_PREFIX)) {
+      fansMedalError.value = null
+    }
     return roomDisplayedMedal.peek()
-  } catch {
+  } catch (err) {
+    if (seq === roomMedalRequestSeq && mut === mutationSeq && fansMedalActingId.value === null) {
+      if (timer.isTimedOut() || !controller.signal.aborted) {
+        const msg = timer.isTimedOut() ? '请求超时' : err instanceof Error ? err.message : String(err)
+        fansMedalError.value = `${ROOM_MEDAL_ERROR_PREFIX}${msg}`
+      }
+    }
     return roomDisplayedMedal.peek()
   } finally {
-    clearTimeout(timeoutId)
+    timer.clear()
     if (roomMedalAbort === controller) roomMedalAbort = null
   }
 }
@@ -100,6 +152,7 @@ export async function fetchFansMedalPanel(page = 1): Promise<void> {
   }
   const seq = ++requestSeq
   const mut = mutationSeq
+  const timer = startTimedAbort(MEDAL_ACTION_TIMEOUT_MS)
   fansMedalLoading.value = true
   fansMedalError.value = null
   try {
@@ -111,6 +164,7 @@ export async function fetchFansMedalPanel(page = 1): Promise<void> {
     const resp = await fetch(`${BASE_URL.BILIBILI_FANS_MEDAL_PANEL}?${params.toString()}`, {
       method: 'GET',
       credentials: 'include',
+      signal: timer.controller.signal,
     })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
     const json: unknown = await resp.json()
@@ -126,22 +180,26 @@ export async function fetchFansMedalPanel(page = 1): Promise<void> {
       }
       return
     }
-    fansMedalList.value = page <= 1 ? parsed.medals : mergeFansMedals(fansMedalList.value, parsed.medals)
-    fansMedalTotal.value = Math.max(parsed.total, fansMedalList.value.length)
-    fansMedalPage.value = page
-    fansMedalHasMore.value = parsed.hasMore
+    const merged = page <= 1 ? parsed.medals : mergeFansMedals(fansMedalList.value, parsed.medals)
     if (page <= 1) {
       if (parsed.weared) {
         wearedMedal.value = parsed.weared
       } else if (wearedMedal.value) {
-        const match = fansMedalList.value.find(m => isSameFansMedal(m, wearedMedal.value))
-        if (match && !match.wearingStatus) wearedMedal.value = null
+        const match = merged.find(m => isSameFansMedal(m, wearedMedal.value))
+        if ((match && !match.wearingStatus) || !parsed.hasMore) wearedMedal.value = null
       }
+    } else if (!wearedMedal.value && parsed.weared) {
+      wearedMedal.value = parsed.weared
     }
+    fansMedalList.value = applyWearedMedal(merged, wearedMedal.value)
+    fansMedalTotal.value = Math.max(parsed.total, fansMedalList.value.length)
+    fansMedalPage.value = page
+    fansMedalHasMore.value = parsed.hasMore
   } catch (err) {
     if (seq !== requestSeq || mut !== mutationSeq) return
-    fansMedalError.value = err instanceof Error ? err.message : String(err)
+    fansMedalError.value = timer.isTimedOut() ? '请求超时' : err instanceof Error ? err.message : String(err)
   } finally {
+    timer.clear()
     fansMedalLoading.value = false
   }
 }
@@ -157,6 +215,7 @@ async function postMedalAction(
     fansMedalError.value = '未找到登录信息，请先登录 Bilibili'
     return false
   }
+  const timer = startTimedAbort(MEDAL_ACTION_TIMEOUT_MS)
   fansMedalActingId.value = actingId
   fansMedalError.value = null
   roomMedalAbort?.abort()
@@ -166,6 +225,7 @@ async function postMedalAction(
       method: 'POST',
       credentials: 'include',
       body: buildCsrfForm(extra),
+      signal: timer.controller.signal,
     })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
     const json: { code?: number; message?: string; msg?: string } = await resp.json()
@@ -173,13 +233,15 @@ async function postMedalAction(
     mutationSeq++
     requestSeq++
     roomMedalRequestSeq++
+    bumpMedalMutationEpoch()
     return true
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = timer.isTimedOut() ? '请求超时' : err instanceof Error ? err.message : String(err)
     fansMedalError.value = `${actionLabel}失败：${msg}`
     appendLog(`❌ ${actionLabel}粉丝牌失败：${msg}`)
     return false
   } finally {
+    timer.clear()
     fansMedalActingId.value = null
   }
 }

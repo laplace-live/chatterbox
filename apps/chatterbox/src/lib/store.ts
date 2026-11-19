@@ -452,5 +452,5 @@ export const favoriteEmotes = gmSignal<FavoriteEmote[]>('favoriteEmotes', [])
 // Fasong tab shared text
 export const fasongText = signal('')
 
-/** Runtime minimize state for the floating danmaku input box (reset per room session). */
+/** Runtime minimize state for the floating danmaku input box (resets on page load; not persisted). */
 export const floatingInputMinimized = signal(false)
