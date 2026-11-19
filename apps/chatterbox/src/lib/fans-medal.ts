@@ -72,6 +72,12 @@ export async function fetchRoomDisplayedMedal(): Promise<void> {
   }
 }
 
+/** Refetch everything the switcher shows: the first page of owned medals and the room's displayed medal. */
+export function refreshFansMedalSwitcher(): void {
+  void fetchFansMedalPanel(1)
+  void fetchRoomDisplayedMedal()
+}
+
 /** Fetch owned fans medals (`page = 1` replaces the list; `page > 1` appends). */
 export async function fetchFansMedalPanel(page = 1): Promise<void> {
   if (fansMedalLoading.value) return

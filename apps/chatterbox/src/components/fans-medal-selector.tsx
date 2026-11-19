@@ -12,12 +12,12 @@ import {
   fansMedalPage,
   fansMedalTotal,
   fetchFansMedalPanel,
-  fetchRoomDisplayedMedal,
+  refreshFansMedalSwitcher,
   takeOffFansMedal,
   wearFansMedal,
 } from '../lib/fans-medal'
 import { isSameFansMedal } from '../lib/fans-medal-parse'
-import { fansMedalActingId, roomDisplayedMedal, roomDisplayedMedalKnown, wearedMedal } from '../lib/fans-medal-room'
+import { fansMedalActingId, roomDisplayedMedal, wearedMedal } from '../lib/fans-medal-room'
 import { cachedStreamerUid } from '../lib/store'
 import { FansMedalBadge } from './fans-medal-badge'
 import { Button } from './ui/button'
@@ -26,7 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 /**
  * Fans medal button with a classic Bilibili-style switcher popover. The badge comes from B站's own
- * `getInfoByUser` (via fetch-hijack); opening refetches it only when still unknown.
+ * `getInfoByUser` (via fetch-hijack); opening the switcher refetches it along with the medal list.
  */
 export function FansMedalSelector() {
   const open = useSignal(false)
@@ -49,8 +49,7 @@ export function FansMedalSelector() {
   const handleOpenChange = (next: boolean) => {
     open.value = next
     if (next) {
-      void fetchFansMedalPanel(1)
-      if (!roomDisplayedMedalKnown.peek()) void fetchRoomDisplayedMedal()
+      refreshFansMedalSwitcher()
     } else {
       query.value = ''
     }
@@ -121,10 +120,7 @@ export function FansMedalSelector() {
             <button
               type='button'
               disabled={loading}
-              onClick={() => {
-                void fetchFansMedalPanel(1)
-                void fetchRoomDisplayedMedal()
-              }}
+              onClick={refreshFansMedalSwitcher}
               title='刷新粉丝牌列表'
               aria-label='刷新粉丝牌列表'
               class='m-0 flex size-6 cursor-pointer items-center justify-center rounded border border-solid border-ga3 bg-transparent p-0 text-ga6 transition hover:bg-ga2 disabled:cursor-not-allowed disabled:opacity-50'

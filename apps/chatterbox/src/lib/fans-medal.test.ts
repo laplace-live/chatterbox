@@ -412,14 +412,12 @@ describe('isSameFansMedal & room-keyed display', () => {
       )
 
       danmakuLimit.cachedRoomId.value = 99999
-      expect(medalRoom.roomDisplayedMedalKnown.peek()).toBe(true)
       expect(medalRoom.roomDisplayedMedal.peek()?.medalName).toBe('艾薯条')
       // Rich medalId must not be overwritten by curr_weared_v2's id=0 for the same medal.
       expect(medalRoom.wearedMedal.peek()?.medalId).toBe(9001)
 
       // Switching to another room whose target_roomid was only in curr_weared does not reuse room 99999's entry.
       danmakuLimit.cachedRoomId.value = 81004
-      expect(medalRoom.roomDisplayedMedalKnown.peek()).toBe(false)
       expect(medalRoom.roomDisplayedMedal.peek()).toBeNull()
 
       // Transient error does not overwrite recorded state.
@@ -690,6 +688,41 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, authoritative: true })).toBe('applied')
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
     expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
+  })
+
+  it('retries a failed post-wear room refresh the next time the switcher refreshes', async () => {
+    let infoOk = true
+    let currShow = { name: '牌A', level: 5, id: 10, ruid: 100 }
+    const mod = await loadFansMedal(url => {
+      if (url.includes('getInfoByUser')) {
+        if (!infoOk) return Promise.resolve(new Response('err', { status: 500, statusText: 'Server Error' }))
+        return Promise.resolve(
+          Response.json({
+            code: 0,
+            data: { medal: { is_weared: true, curr_show: currShow, curr_weared_v2: currShow } },
+          })
+        )
+      }
+      return Promise.resolve(
+        Response.json({ code: 0, data: { list: [], page_info: { current_page: 1, total_page: 1 } } })
+      )
+    })
+
+    danmakuLimit.cachedRoomId.value = 81004
+    await mod.fetchRoomDisplayedMedal()
+    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
+
+    // The wear lands but its follow-up refresh fails, so the room keeps its pre-wear medal.
+    infoOk = false
+    currShow = { name: '牌B', level: 6, id: 20, ruid: 200 }
+    const medalB = mustNormalize({ medal: { medal_id: 20, target_id: 200, medal_name: '牌B', level: 6 } })
+    expect(await mod.wearFansMedal(medalB)).toBe(true)
+    await waitFor(() => mod.fansMedalError.value !== null)
+    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
+
+    infoOk = true
+    mod.refreshFansMedalSwitcher()
+    await waitFor(() => medalRoom.roomDisplayedMedal.value?.medalName === '牌B')
   })
 
   it('sets fansMedalError when fetchRoomDisplayedMedal fails or returns invalid data, and clears it on success', async () => {

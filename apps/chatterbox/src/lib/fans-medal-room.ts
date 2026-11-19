@@ -7,13 +7,11 @@ import { isSameFansMedal, parseGetInfoByUserMedal } from './fans-medal-parse'
 
 const medalsByRoom = signal<ReadonlyMap<number, FansMedal | null>>(new Map())
 const unkeyedDisplayedMedal = signal<FansMedal | null | undefined>(undefined)
-const activeRoomMedal = computed(() => resolveRoomEntry(medalsByRoom.value, unkeyedDisplayedMedal.value))
 
 /** Medal Bilibili displays in the active room (`data.medal.curr_show` from `getInfoByUser`). */
-export const roomDisplayedMedal = computed(() => activeRoomMedal.value ?? null)
-
-/** Whether `getInfoByUser` medal state has been recorded for the active room. */
-export const roomDisplayedMedalKnown = computed(() => activeRoomMedal.value !== undefined)
+export const roomDisplayedMedal = computed(
+  () => resolveRoomEntry(medalsByRoom.value, unkeyedDisplayedMedal.value) ?? null
+)
 
 /** User's globally worn fans medal (not necessarily what is displayed in the current room). */
 export const wearedMedal = signal<FansMedal | null>(null)
