@@ -1010,7 +1010,7 @@ export function SettingsTab() {
               onInput={e => {
                 floatingInputEnabled.value = e.currentTarget.checked
               }}
-              label='开启悬浮弹幕输入框（复用常规发送、粉丝牌切换与表情包）'
+              label='开启悬浮弹幕输入框'
             />
           </div>
 

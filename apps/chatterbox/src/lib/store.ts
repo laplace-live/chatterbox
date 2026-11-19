@@ -59,7 +59,15 @@ export const autoSendYolo = gmSignal('autoSendYolo', false)
 export const forceScrollDanmaku = gmSignal('forceScrollDanmaku', false)
 export const optimizeLayout = gmSignal('optimizeLayout', false)
 export const hideUidWatermark = gmSignal('hideUidWatermark', false)
-export const floatingInputEnabled = gmSignal('floatingInputEnabled', false)
+// One-shot default flip: v4.13.0 persisted `floatingInputEnabled: false` for everyone, so enable existing users once while letting later opt-outs stick.
+;(() => {
+  if (GM_getValue<boolean>('floatingInputDefaultMigrated', false) === true) return
+  GM_setValue('floatingInputEnabled', true)
+  GM_setValue('floatingInputDefaultMigrated', true)
+})()
+export const floatingInputEnabled = gmSignal('floatingInputEnabled', true)
+/** Whether the floating danmaku input box is minimized to the status bar toggle. */
+export const floatingInputMinimized = gmSignal('floatingInputMinimized', true)
 /** Floating input box rect, remembered across reloads; `null` until first moved or resized. */
 export const floatingInputRect = gmSignal<FloatingRect | null>('floatingInputRect', null)
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
@@ -454,6 +462,3 @@ export const favoriteEmotes = gmSignal<FavoriteEmote[]>('favoriteEmotes', [])
 
 // Fasong tab shared text
 export const fasongText = signal('')
-
-/** Runtime minimize state for the floating danmaku input box (resets on page load; not persisted). */
-export const floatingInputMinimized = signal(false)

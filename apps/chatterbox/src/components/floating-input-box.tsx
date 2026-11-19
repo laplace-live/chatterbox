@@ -29,7 +29,7 @@ function getViewportSize(): ViewportSize {
 // Cancel mousedown, not pointerdown: it still bubbles to close popovers but no longer steals focus or selects.
 const preventFocus = (e: TargetedMouseEvent<HTMLElement>) => e.preventDefault()
 
-/** Floating danmaku input box; mount only while enabled. Its rect persists across reloads. */
+/** Floating danmaku input box; mount only while enabled. Its rect and minimize state persist across reloads. */
 export function FloatingInputBox() {
   const minimized = floatingInputMinimized.value
   const polishing = normalSendPolishing.value
@@ -42,13 +42,7 @@ export function FloatingInputBox() {
     activeDragCancelRef.current = null
   }
 
-  useEffect(
-    () => () => {
-      cancelActiveDrag()
-      floatingInputMinimized.value = false
-    },
-    []
-  )
+  useEffect(() => () => cancelActiveDrag(), [])
 
   // The status bar toggle can hide the box mid-drag.
   useEffect(() => {
