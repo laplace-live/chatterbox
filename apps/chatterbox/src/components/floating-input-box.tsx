@@ -1,23 +1,21 @@
-import { IconArrowsMove, IconChevronUp, IconMinus } from '@tabler/icons-preact'
+import { IconArrowsMove, IconMessage, IconMinus } from '@tabler/icons-preact'
 import { cn } from 'cn'
 import type { TargetedMouseEvent, TargetedPointerEvent } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import {
   clampFloatingRect,
-  FLOATING_INPUT_MIN_HEIGHT,
-  FLOATING_INPUT_MIN_WIDTH,
+  DEFAULT_FLOATING_RECT,
   type FloatingRect,
   moveFloatingRect,
   type ResizeEdge,
   resizeFloatingRect,
-  resolveDefaultFloatingRect,
   type ViewportSize,
 } from '../lib/floating-input-rect'
 import { describeLlmGap } from '../lib/llm-tasks'
 import { normalSendPolishing, normalSendPreview, polishNormalSendInput, submitNormalSend } from '../lib/normal-send'
 import { startPointerDrag } from '../lib/pointer-drag'
-import { fasongText, floatingInputMinimized, normalSendYolo } from '../lib/store'
+import { fasongText, floatingInputMinimized, floatingInputRect, normalSendYolo } from '../lib/store'
 import { EmoteSelector } from './emote-selector'
 import { FansMedalSelector } from './fans-medal-selector'
 import { STATUS_BAR_BUTTON_CLASS } from './status-bar'
@@ -31,16 +29,6 @@ const RESIZE_HANDLES: Array<{ edge: ResizeEdge; className: string; cursor: strin
   { edge: 'se', className: 'bottom-0 right-0 size-2.5', cursor: 'nwse-resize', title: '拖动调整大小' },
 ]
 
-const CHAT_ANCHOR_SELECTORS = [
-  '#chat-control-panel-vm',
-  '.control-panel-ctnr',
-  '#aside-area-vm',
-  '.aside-area',
-] as const
-
-// Poll for the chat panel while it's missing instead of observing every page mutation.
-const ANCHOR_POLL_MS = 500
-
 function getViewportSize(): ViewportSize {
   return {
     width: document.documentElement.clientWidth || window.innerWidth,
@@ -48,44 +36,17 @@ function getViewportSize(): ViewportSize {
   }
 }
 
-function findChatAnchor(): { el: HTMLElement; rect: DOMRect } | null {
-  for (const selector of CHAT_ANCHOR_SELECTORS) {
-    const el = document.querySelector<HTMLElement>(selector)
-    const rect = el?.getBoundingClientRect()
-    if (el && rect && rect.width >= FLOATING_INPUT_MIN_WIDTH && rect.height >= FLOATING_INPUT_MIN_HEIGHT) {
-      return { el, rect }
-    }
-  }
-  return null
-}
-
-function sameRect(a: FloatingRect, b: FloatingRect): boolean {
-  return a.right === b.right && a.bottom === b.bottom && a.width === b.width && a.height === b.height
-}
-
-function sameViewport(a: ViewportSize, b: ViewportSize): boolean {
-  return a.width === b.width && a.height === b.height
-}
-
 // Cancel mousedown, not pointerdown: it still bubbles to close popovers but no longer steals focus or selects.
 const preventFocus = (e: TargetedMouseEvent<HTMLElement>) => e.preventDefault()
 
-/**
- * Floating danmaku input box; mount only while enabled. Auto-anchors to B站's visible chat
- * control panel until the user moves or resizes it.
- */
+/** Floating danmaku input box; mount only while enabled. Its rect persists across reloads. */
 export function FloatingInputBox() {
   const minimized = floatingInputMinimized.value
   const polishing = normalSendPolishing.value
-  const [customRect, setCustomRect] = useState<FloatingRect | null>(null)
-  const [autoRect, setAutoRect] = useState<FloatingRect>(() =>
-    resolveDefaultFloatingRect(getViewportSize(), findChatAnchor()?.rect)
-  )
   const [viewport, setViewport] = useState<ViewportSize>(getViewportSize)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const refocusAfterPolishRef = useRef(false)
   const activeDragCancelRef = useRef<(() => void) | null>(null)
-  const autoAnchored = customRect === null
 
   const cancelActiveDrag = () => {
     activeDragCancelRef.current?.()
@@ -101,53 +62,19 @@ export function FloatingInputBox() {
   )
 
   useEffect(() => {
-    let raf = 0
-    let pollTimer: ReturnType<typeof setInterval> | undefined
-    let anchor: Element | null = null
-    let appBody: Element | null = null
-    const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(sync)
-    }
-    const resizeObserver = new ResizeObserver(schedule)
-    const bodyObserver = new MutationObserver(schedule)
-    const track = (prev: Element | null, next: Element | null) => {
-      if (prev !== next) {
-        if (prev) resizeObserver.unobserve(prev)
-        if (next) resizeObserver.observe(next)
-      }
-      return next
-    }
     const sync = () => {
-      raf = 0
-      const vp = getViewportSize()
-      setViewport(prev => (sameViewport(prev, vp) ? prev : vp))
-      if (!autoAnchored) return
-      const found = findChatAnchor()
-      anchor = track(anchor, found?.el ?? null)
-      appBody = track(appBody, document.querySelector('.app-body'))
-      if (found) {
-        clearInterval(pollTimer)
-        pollTimer = undefined
-      } else {
-        pollTimer ??= setInterval(schedule, ANCHOR_POLL_MS)
-      }
-      const next = resolveDefaultFloatingRect(vp, found?.rect)
-      setAutoRect(prev => (sameRect(prev, next) ? prev : next))
+      const next = getViewportSize()
+      setViewport(prev => (prev.width === next.width && prev.height === next.height ? prev : next))
     }
-
-    resizeObserver.observe(document.documentElement)
-    window.addEventListener('resize', schedule)
-    // B站 switches layouts (e.g. web fullscreen) through body class/style.
-    if (autoAnchored) bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] })
-    sync()
+    // The root's box tracks width changes window `resize` can miss (e.g. a scrollbar appearing).
+    const observer = new ResizeObserver(sync)
+    observer.observe(document.documentElement)
+    window.addEventListener('resize', sync)
     return () => {
-      cancelAnimationFrame(raf)
-      clearInterval(pollTimer)
-      window.removeEventListener('resize', schedule)
-      resizeObserver.disconnect()
-      bodyObserver.disconnect()
+      observer.disconnect()
+      window.removeEventListener('resize', sync)
     }
-  }, [autoAnchored])
+  }, [])
 
   useEffect(() => {
     if (polishing || !refocusAfterPolishRef.current) return
@@ -157,7 +84,7 @@ export function FloatingInputBox() {
 
   if (minimized) return null
 
-  const renderRect = clampFloatingRect(customRect ?? autoRect, viewport)
+  const renderRect = clampFloatingRect(floatingInputRect.value ?? DEFAULT_FLOATING_RECT, viewport)
   const llmReady = describeLlmGap('normalSend') === null
   const { msgCount, charCount } = normalSendPreview.value
 
@@ -172,7 +99,9 @@ export function FloatingInputBox() {
       cancelActiveDrag()
       activeDragCancelRef.current = startPointerDrag(e.currentTarget, e.pointerId, {
         cursor,
-        onMove: ev => setCustomRect(next(startRect, ev.clientX - startX, ev.clientY - startY, vp)),
+        onMove: ev => {
+          floatingInputRect.value = next(startRect, ev.clientX - startX, ev.clientY - startY, vp)
+        },
       })
     }
 
@@ -275,7 +204,7 @@ export function FloatingInputBox() {
   )
 }
 
-/** Restores the minimized box; rendered in the status bar's fold-toggle reveal slot. */
+/** Icon-only status bar button that restores the minimized box. */
 export function FloatingInputRestoreButton() {
   return (
     <button
@@ -285,9 +214,9 @@ export function FloatingInputRestoreButton() {
       }}
       title='恢复悬浮输入框'
       aria-label='恢复悬浮输入框'
-      class={cn(STATUS_BAR_BUTTON_CLASS, 'h-6 w-7 justify-center px-0 shadow-md ring-1 ring-white/25', 'bg-ga6')}
+      class={cn(STATUS_BAR_BUTTON_CLASS, 'w-7 justify-center px-0', 'bg-ga6')}
     >
-      <IconChevronUp size={15} stroke={2.2} aria-hidden='true' />
+      <IconMessage size={16} stroke={2} aria-hidden='true' />
     </button>
   )
 }

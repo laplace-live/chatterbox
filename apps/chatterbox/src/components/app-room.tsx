@@ -137,15 +137,14 @@ export function AppRoom() {
     return () => style.remove()
   }, [hideUidWatermark.value])
 
-  const showRestoreInput = floatingInputEnabled.value && floatingInputMinimized.value
-
   return (
     <>
       {floatingInputEnabled.value && <FloatingInputBox />}
       <StatusBar>
-        <FoldableInfoItems foldHoverAction={showRestoreInput && <FloatingInputRestoreButton />} />
+        <FoldableInfoItems />
         <AudioOnlyControls />
         <AudioOnlyModeSelect />
+        {floatingInputEnabled.value && floatingInputMinimized.value && <FloatingInputRestoreButton />}
         <ConfiguratorButton />
       </StatusBar>
       <Configurator />

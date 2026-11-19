@@ -2,21 +2,16 @@ import { describe, expect, it } from 'bun:test'
 
 import {
   clampFloatingRect,
-  defaultFloatingRect,
-  FLOATING_INPUT_DEFAULT_BOTTOM,
-  FLOATING_INPUT_DEFAULT_HEIGHT,
-  FLOATING_INPUT_DEFAULT_RIGHT,
-  FLOATING_INPUT_DEFAULT_WIDTH,
+  DEFAULT_FLOATING_RECT,
   FLOATING_INPUT_MIN_HEIGHT,
   FLOATING_INPUT_MIN_WIDTH,
   moveFloatingRect,
   resizeFloatingRect,
-  resolveDefaultFloatingRect,
 } from './floating-input-rect'
 
 const VIEWPORT = { width: 1280, height: 720 }
 
-describe('clampFloatingRect & defaultFloatingRect', () => {
+describe('clampFloatingRect', () => {
   it('enforces minimum size and keeps the box inside viewport', () => {
     expect(clampFloatingRect({ right: -20, bottom: -10, width: 50, height: 10 }, VIEWPORT)).toEqual({
       right: 0,
@@ -33,77 +28,9 @@ describe('clampFloatingRect & defaultFloatingRect', () => {
     })
   })
 
-  it('places the default box at the fixed bottom-right offset and stays anchored across viewport growth', () => {
-    const rect = defaultFloatingRect()
-    expect(rect).toEqual({
-      right: FLOATING_INPUT_DEFAULT_RIGHT,
-      bottom: FLOATING_INPUT_DEFAULT_BOTTOM,
-      width: FLOATING_INPUT_DEFAULT_WIDTH,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    })
-
-    // Narrow activity iframe -> wider web fullscreen keeps right/bottom offset instead of drifting left.
-    expect(clampFloatingRect(rect, { width: 1335, height: 750 })).toEqual(rect)
-    expect(clampFloatingRect(rect, { width: 1536, height: 860 })).toEqual(rect)
-  })
-})
-
-describe('resolveDefaultFloatingRect', () => {
-  it('anchors cleanly in web fullscreen when panel sits flush at bottom-right', () => {
-    expect(
-      resolveDefaultFloatingRect({ width: 1536, height: 860 }, { right: 1536, bottom: 860, width: 300, height: 74 })
-    ).toEqual({
-      right: FLOATING_INPUT_DEFAULT_RIGHT,
-      bottom: FLOATING_INPUT_DEFAULT_BOTTOM,
-      width: FLOATING_INPUT_DEFAULT_WIDTH,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    })
-  })
-
-  it('tracks bottomGap on /blanc/<id> non-fullscreen embeds so the box aligns with the room panel', () => {
-    expect(
-      resolveDefaultFloatingRect({ width: 1335, height: 720 }, { right: 1335, bottom: 690, width: 300, height: 75 })
-    ).toEqual({
-      right: FLOATING_INPUT_DEFAULT_RIGHT,
-      bottom: 45,
-      width: FLOATING_INPUT_DEFAULT_WIDTH,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    })
-  })
-
-  it('adapts width to narrower chat panels without overhanging the video', () => {
-    expect(
-      resolveDefaultFloatingRect({ width: 1536, height: 860 }, { right: 1536, bottom: 860, width: 290, height: 74 })
-    ).toEqual({
-      right: FLOATING_INPUT_DEFAULT_RIGHT,
-      bottom: FLOATING_INPUT_DEFAULT_BOTTOM,
-      width: 193,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    })
-  })
-
-  it('offsets from horizontal and vertical panel gaps in widescreen rooms', () => {
-    expect(
-      resolveDefaultFloatingRect({ width: 1920, height: 1080 }, { right: 1800, bottom: 1020, width: 300, height: 80 })
-    ).toEqual({
-      right: 217,
-      bottom: 75,
-      width: FLOATING_INPUT_DEFAULT_WIDTH,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    })
-  })
-
-  it('falls back to defaultFloatingRect when anchor is missing, undersized, or off-screen', () => {
-    const base = defaultFloatingRect()
-    const vp = { width: 1280, height: 720 }
-    expect(resolveDefaultFloatingRect(vp, null)).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, undefined)).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, { right: 1280, bottom: 720, width: 150, height: 74 })).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, { right: 1280, bottom: 720, width: 300, height: 30 })).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, { right: 1280, bottom: 60, width: 300, height: 74 })).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, { right: 1280, bottom: 725, width: 300, height: 74 })).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, { right: 250, bottom: 720, width: 300, height: 74 })).toEqual(base)
-    expect(resolveDefaultFloatingRect(vp, { right: 1285, bottom: 720, width: 300, height: 74 })).toEqual(base)
+  it('keeps a bottom-right rect anchored as the viewport grows', () => {
+    expect(clampFloatingRect(DEFAULT_FLOATING_RECT, { width: 1335, height: 750 })).toEqual(DEFAULT_FLOATING_RECT)
+    expect(clampFloatingRect(DEFAULT_FLOATING_RECT, { width: 1536, height: 860 })).toEqual(DEFAULT_FLOATING_RECT)
   })
 })
 

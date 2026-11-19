@@ -10,24 +10,14 @@ export interface ViewportSize {
   height: number
 }
 
-export interface AnchorBox {
-  right: number
-  bottom: number
-  width: number
-  height: number
-}
-
 export type ResizeEdge = 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se'
 
 export const FLOATING_INPUT_MIN_WIDTH = 180
 // One textarea line plus the medal/emote row.
 export const FLOATING_INPUT_MIN_HEIGHT = 52
 
-// Fixed default covering B站's native chat input inside the dark bottom bar while keeping the emote icon above StatusBar.
-export const FLOATING_INPUT_DEFAULT_WIDTH = 203
-export const FLOATING_INPUT_DEFAULT_HEIGHT = 56
-export const FLOATING_INPUT_DEFAULT_RIGHT = 97
-export const FLOATING_INPUT_DEFAULT_BOTTOM = 15
+/** First-run rect: bottom-right, just above the StatusBar. After that the user's last rect is remembered. */
+export const DEFAULT_FLOATING_RECT: Readonly<FloatingRect> = { right: 8, bottom: 44, width: 240, height: 64 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max))
@@ -42,48 +32,6 @@ export function clampFloatingRect(rect: FloatingRect, viewport: ViewportSize): F
   const right = clamp(Math.round(rect.right), 0, Math.max(0, viewport.width - width))
   const bottom = clamp(Math.round(rect.bottom), 0, Math.max(0, viewport.height - height))
   return { right, bottom, width, height }
-}
-
-/** Fixed initial bottom-right anchor calibrated over B站's chat input, keeping controls clear of StatusBar. */
-export function defaultFloatingRect(): FloatingRect {
-  return {
-    right: FLOATING_INPUT_DEFAULT_RIGHT,
-    bottom: FLOATING_INPUT_DEFAULT_BOTTOM,
-    width: FLOATING_INPUT_DEFAULT_WIDTH,
-    height: FLOATING_INPUT_DEFAULT_HEIGHT,
-  }
-}
-
-/** Anchor the default floating rect to B站's visible chat control panel, falling back to `defaultFloatingRect()`. */
-export function resolveDefaultFloatingRect(viewport: ViewportSize, anchor?: AnchorBox | null): FloatingRect {
-  const base = defaultFloatingRect()
-  if (
-    !anchor ||
-    anchor.width < FLOATING_INPUT_MIN_WIDTH ||
-    anchor.height < FLOATING_INPUT_MIN_HEIGHT ||
-    anchor.bottom < FLOATING_INPUT_DEFAULT_HEIGHT + FLOATING_INPUT_DEFAULT_BOTTOM ||
-    anchor.bottom > viewport.height + 4 ||
-    anchor.right > viewport.width + 4
-  ) {
-    return base
-  }
-  const width = clamp(
-    Math.round(anchor.width - FLOATING_INPUT_DEFAULT_RIGHT),
-    FLOATING_INPUT_MIN_WIDTH,
-    FLOATING_INPUT_DEFAULT_WIDTH
-  )
-  if (anchor.right < width + FLOATING_INPUT_DEFAULT_RIGHT) return base
-  const rightGap = Math.max(0, viewport.width - anchor.right)
-  const bottomGap = Math.max(0, viewport.height - anchor.bottom)
-  return clampFloatingRect(
-    {
-      right: rightGap + FLOATING_INPUT_DEFAULT_RIGHT,
-      bottom: bottomGap + FLOATING_INPUT_DEFAULT_BOTTOM,
-      width,
-      height: FLOATING_INPUT_DEFAULT_HEIGHT,
-    },
-    viewport
-  )
 }
 
 /** Translate `startRect` by `(dx, dy)`, keeping its size unchanged and inside `viewport`. */
