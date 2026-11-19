@@ -83,6 +83,7 @@ import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
+import { ScrollArea } from './ui/scroll-area'
 import { Separator } from './ui/separator'
 
 const STT_FLUSH_DELAY_MS = 5000
@@ -1015,18 +1016,18 @@ export function SttTab() {
         {showingTranslation && !isOpenAiCompat && (
           <div class='my-2'>
             <div class='mb-1 font-bold'>原文转录：</div>
-            <div class='max-h-25 min-h-10 overflow-y-auto rounded bg-bg2 p-2 break-all'>
+            <ScrollArea className='max-h-25 min-h-10 rounded bg-bg2 p-2 break-all'>
               <span>{sourceFinalText.value}</span>
               <span class='text-ga6'>{sourceNonFinalText.value}</span>
-            </div>
+            </ScrollArea>
           </div>
         )}
         <div class='my-2'>
           <div class='mb-1 font-bold'>{showingTranslation ? '翻译结果：' : '转录结果：'}</div>
-          <div class='max-h-25 min-h-10 overflow-y-auto rounded bg-bg2 p-2 break-all'>
+          <ScrollArea className='max-h-25 min-h-10 rounded bg-bg2 p-2 break-all'>
             <span>{finalText.value}</span>
             <span class='text-ga6'>{nonFinalText.value}</span>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     </>
