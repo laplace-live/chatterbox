@@ -120,11 +120,7 @@ export function FansMedalSelector() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent
-        side='top'
-        align='start'
-        className='flex w-[min(320px,calc(100vw-24px))] flex-col p-2 text-[12px]'
-      >
+      <PopoverContent side='top' align='start' className='flex w-[min(320px,calc(100vw-24px))] flex-col p-2'>
         <div class='mb-1.5 flex shrink-0 items-center justify-between gap-2 border-b border-solid border-ga2 pb-1.5'>
           <div class='flex items-center gap-1.5 font-bold'>
             <span>粉丝勋章</span>
@@ -174,7 +170,7 @@ export function FansMedalSelector() {
                 query.value = e.currentTarget.value
               }}
               placeholder={hasMore ? `搜索已加载的 ${medals.length} 个粉丝牌…` : '搜索粉丝牌或主播名…'}
-              className='h-6 min-w-0 flex-1 text-[11px]'
+              className='h-6 min-w-0 flex-1'
             />
             {hasMore && (
               <Button
@@ -190,7 +186,7 @@ export function FansMedalSelector() {
           </div>
         )}
 
-        {error && <div class='mb-1.5 shrink-0 rounded bg-danger/10 px-2 py-1 text-[11px] text-danger'>{error}</div>}
+        {error && <div class='mb-1.5 shrink-0 rounded bg-danger/10 px-2 py-1 text-danger'>{error}</div>}
 
         <ScrollArea className='max-h-[min(260px,40vh)] min-h-0 shrink' onScroll={handleListScroll}>
           {loading && medals.length === 0 ? (
@@ -221,12 +217,12 @@ export function FansMedalSelector() {
                     >
                       <div class='flex min-w-0 items-center gap-1.5'>
                         <FansMedalBadge medal={medal} />
-                        <span class='truncate text-[11px] text-inherit'>{streamer}</span>
+                        <span class='truncate'>{streamer}</span>
                         {isRoomMedal && (
-                          <span class='shrink-0 rounded bg-brand/15 px-1 py-px text-[10px] text-brand'>当前</span>
+                          <span class='shrink-0 rounded bg-brand/15 px-1 py-px text-[11px] text-brand'>当前</span>
                         )}
                       </div>
-                      <div class='flex shrink-0 items-center gap-1.5 text-[10px] text-ga6'>
+                      <div class='flex shrink-0 items-center gap-1.5 text-[11px] text-ga6'>
                         {medal.dayLimit > 0 && (
                           <span title='今日亲密度 / 上限'>
                             {medal.todayFeed}/{medal.dayLimit}
