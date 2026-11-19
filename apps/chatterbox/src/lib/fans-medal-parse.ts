@@ -31,10 +31,12 @@ function readMedalColors(
   }
 }
 
-/** Normalize a `fansMedal/panel` item (`{ medal, anchor_info, room_info }`) or legacy flat payload. */
+/** Normalize a `fansMedal/panel` item (`{ medal, anchor_info, room_info, uinfo_medal }`) or legacy flat payload. */
 export function normalizeFansMedal(raw: unknown): FansMedal | null {
   if (!isRecord(raw)) return null
   const medal = isRecord(raw.medal) ? raw.medal : raw
+  // B站's own medal list draws `uinfo_medal`; the panel's `medal` carries no usable v2 colors.
+  const colors = isRecord(raw.uinfo_medal) ? raw.uinfo_medal : medal
   const anchor = isRecord(raw.anchor_info) ? raw.anchor_info : raw
   const room = isRecord(raw.room_info) ? raw.room_info : isRecord(raw.roominfo) ? raw.roominfo : raw
 
@@ -55,7 +57,7 @@ export function normalizeFansMedal(raw: unknown): FansMedal | null {
       (typeof raw.uname === 'string' && raw.uname.trim()) ||
       '',
     roomId: toInt(room.room_id ?? raw.roomid),
-    ...readMedalColors(medal),
+    ...readMedalColors(colors),
     isLighted: rawLighted === undefined ? true : toFlag(rawLighted),
     guardLevel: toInt(medal.guard_level ?? raw.guard_level),
     todayFeed: toInt(medal.today_feed ?? raw.today_feed ?? raw.intimacy),

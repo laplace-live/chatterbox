@@ -69,7 +69,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void>
 }
 
 describe('normalizeFansMedal', () => {
-  it('normalizes nested fansMedal/panel entries with B站 v2 colors, ignoring the legacy decimal ones', () => {
+  it("normalizes fansMedal/panel entries, taking colors from uinfo_medal like B站's own medal list", () => {
     const medal = normalizeFansMedal({
       medal: {
         medal_id: 101,
@@ -79,11 +79,10 @@ describe('normalizeFansMedal', () => {
         medal_color_start: 16737945,
         medal_color_end: 6130680,
         medal_color_border: 16737945,
-        v2_medal_color_start: '#C770A499',
-        v2_medal_color_end: '#C770A499',
-        v2_medal_color_border: '#C770A499',
-        v2_medal_color_text: '#FFFFFFFF',
-        v2_medal_color_level: '#6C004799',
+        v2_medal_color_start: '',
+        v2_medal_color_end: '',
+        v2_medal_color_border: '',
+        v2_medal_color_text: '',
         is_lighted: 1,
         wearing_status: 1,
         guard_level: 3,
@@ -92,6 +91,16 @@ describe('normalizeFansMedal', () => {
       },
       anchor_info: { nick_name: '某主播' },
       room_info: { room_id: 777 },
+      uinfo_medal: {
+        name: '测试牌',
+        level: 24,
+        is_light: 1,
+        v2_medal_color_start: '#C770A499',
+        v2_medal_color_end: '#C770A499',
+        v2_medal_color_border: '#C770A499',
+        v2_medal_color_text: '#FFFFFFFF',
+        v2_medal_color_level: '#6C004799',
+      },
     })
 
     expect(medal).toEqual({
