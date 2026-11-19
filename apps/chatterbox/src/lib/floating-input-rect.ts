@@ -15,11 +15,11 @@ export type ResizeEdge = 'n' | 's' | 'w' | 'e' | 'nw' | 'ne' | 'sw' | 'se'
 export const FLOATING_INPUT_MIN_WIDTH = 180
 export const FLOATING_INPUT_MIN_HEIGHT = 44
 
-// Fixed default covering B站's native chat input while keeping the 36px emote trigger clear above StatusBar.
-export const FLOATING_INPUT_DEFAULT_WIDTH = 205
-export const FLOATING_INPUT_DEFAULT_HEIGHT = 70
-export const FLOATING_INPUT_DEFAULT_RIGHT = 98
-export const FLOATING_INPUT_DEFAULT_BOTTOM = 14
+// Fixed default covering B站's native chat input inside the dark bottom bar while keeping the emote icon above StatusBar.
+export const FLOATING_INPUT_DEFAULT_WIDTH = 203
+export const FLOATING_INPUT_DEFAULT_HEIGHT = 56
+export const FLOATING_INPUT_DEFAULT_RIGHT = 97
+export const FLOATING_INPUT_DEFAULT_BOTTOM = 15
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max))

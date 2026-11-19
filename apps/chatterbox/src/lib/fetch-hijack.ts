@@ -199,13 +199,11 @@ function applyTransforms(url: string, data: any, resp?: Response): void {
   }
 }
 /**
- * Patch `Response.prototype.json`/`.text` rather than `window.fetch`: B站's bundle
- * closes over `fetch` at module init. It closes over these methods too, so the real
- * invariant is landing before that bundle initialises — patching before the response
- * is merely *consumed* is not enough, since the call never routes through a layer
- * added after the capture. `document-start` guarantees it; `vite dev`'s async module
- * graph does not (the hijack evaluates ~600ms in, too late to ever be called), so
- * verify these unlocks against a build.
+ * Wrap `unsafeWindow.fetch` (to stamp `getInfoByUser` request ordering) and patch
+ * `Response.prototype.json`/`.text`/`.clone` (to rewrite payloads and preserve stamps).
+ * B站's bundle closes over `fetch` and these prototype methods at module init, so all
+ * patches must land at `document-start`; `vite dev`'s async graph loads too late (~600ms),
+ * so verify these unlocks against a build.
  */
 ;(() => {
   console.log('[LAPLACE Chatterbox] fetch-hijack loaded on', location.hostname)
