@@ -122,6 +122,16 @@ export async function fetchFansMedalPanel(page = 1): Promise<void> {
   }
 }
 
+/** Load every remaining page so the switcher's search covers all owned medals. */
+export async function fetchAllFansMedals(): Promise<void> {
+  while (fansMedalHasMore.value) {
+    const loaded = fansMedalList.value.length
+    await fetchFansMedalPanel(fansMedalPage.value + 1)
+    // A failed, raced or empty page adds nothing; stop instead of requesting pages forever.
+    if (fansMedalList.value.length <= loaded) return
+  }
+}
+
 async function postMedalAction(
   url: string,
   actingId: number,

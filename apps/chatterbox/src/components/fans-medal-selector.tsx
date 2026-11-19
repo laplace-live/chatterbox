@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals'
-import { IconAward, IconRefresh, IconX } from '@tabler/icons-preact'
+import { IconAward, IconBroadcast, IconExternalLink, IconRefresh, IconUser, IconX } from '@tabler/icons-preact'
 import { cn } from 'cn'
 
 import type { FansMedal } from '../types'
@@ -11,6 +11,7 @@ import {
   fansMedalLoading,
   fansMedalPage,
   fansMedalTotal,
+  fetchAllFansMedals,
   fetchFansMedalPanel,
   refreshFansMedalSwitcher,
   takeOffFansMedal,
@@ -24,6 +25,12 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
+const MEDAL_CENTER_URL = 'https://link.bilibili.com/p/center/index#/user-center/wearing-center/my-medal'
+const HEADER_ICON_CLASS =
+  'm-0 flex size-6 cursor-pointer items-center justify-center rounded border border-solid border-ga3 bg-transparent p-0 text-ga6 transition hover:bg-ga2 disabled:cursor-not-allowed disabled:opacity-50'
+const ROW_LINK_CLASS =
+  'flex size-5 shrink-0 items-center justify-center rounded text-ga5 no-underline transition hover:bg-ga2 hover:text-brand'
+
 /**
  * Fans medal button with a classic Bilibili-style switcher popover. The badge comes from B站's own
  * `getInfoByUser` (via fetch-hijack); opening the switcher refetches it along with the medal list.
@@ -31,6 +38,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 export function FansMedalSelector() {
   const open = useSignal(false)
   const query = useSignal('')
+  const loadingAll = useSignal(false)
 
   const displayed = roomDisplayedMedal.value
   const weared = wearedMedal.value
@@ -52,6 +60,23 @@ export function FansMedalSelector() {
       refreshFansMedalSwitcher()
     } else {
       query.value = ''
+    }
+  }
+
+  const handleListScroll = (e: { currentTarget: HTMLElement }) => {
+    const el = e.currentTarget
+    const nearEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    if (nearEnd && fansMedalHasMore.peek() && !fansMedalLoading.peek()) {
+      void fetchFansMedalPanel(fansMedalPage.peek() + 1)
+    }
+  }
+
+  const loadAll = async () => {
+    loadingAll.value = true
+    try {
+      await fetchAllFansMedals()
+    } finally {
+      loadingAll.value = false
     }
   }
 
@@ -97,7 +122,7 @@ export function FansMedalSelector() {
       <PopoverContent
         side='top'
         align='start'
-        className='flex w-[min(300px,calc(100vw-24px))] flex-col p-2 text-[12px]'
+        className='flex w-[min(320px,calc(100vw-24px))] flex-col p-2 text-[12px]'
       >
         <div class='mb-1.5 flex shrink-0 items-center justify-between gap-2 border-b border-solid border-ga2 pb-1.5'>
           <div class='flex items-center gap-1.5 font-bold'>
@@ -123,29 +148,50 @@ export function FansMedalSelector() {
               onClick={refreshFansMedalSwitcher}
               title='刷新粉丝牌列表'
               aria-label='刷新粉丝牌列表'
-              class='m-0 flex size-6 cursor-pointer items-center justify-center rounded border border-solid border-ga3 bg-transparent p-0 text-ga6 transition hover:bg-ga2 disabled:cursor-not-allowed disabled:opacity-50'
+              class={HEADER_ICON_CLASS}
             >
               <IconRefresh size={13} class={cn(loading && 'animate-spin')} />
             </button>
+            <a
+              href={MEDAL_CENTER_URL}
+              target='_blank'
+              rel='noopener'
+              title='在 B站「我的勋章」中管理'
+              aria-label='在 B站「我的勋章」中管理'
+              class={cn(HEADER_ICON_CLASS, 'no-underline')}
+            >
+              <IconExternalLink size={13} aria-hidden='true' />
+            </a>
           </div>
         </div>
 
         {medals.length > 8 && (
-          <div class='mb-1.5 shrink-0'>
+          <div class='mb-1.5 flex shrink-0 items-center gap-1'>
             <Input
               value={query.value}
               onInput={e => {
                 query.value = e.currentTarget.value
               }}
-              placeholder='搜索粉丝牌或主播名…'
-              className='h-6 text-[11px]'
+              placeholder={hasMore ? `搜索已加载的 ${medals.length} 个粉丝牌…` : '搜索粉丝牌或主播名…'}
+              className='h-6 min-w-0 flex-1 text-[11px]'
             />
+            {hasMore && (
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={loading || loadingAll.value}
+                onClick={() => void loadAll()}
+                title='搜索只覆盖已加载的粉丝牌，加载全部后再搜'
+              >
+                {loadingAll.value ? '加载中…' : '加载全部'}
+              </Button>
+            )}
           </div>
         )}
 
         {error && <div class='mb-1.5 shrink-0 rounded bg-danger/10 px-2 py-1 text-[11px] text-danger'>{error}</div>}
 
-        <div class='max-h-[min(260px,40vh)] min-h-0 shrink overflow-y-auto'>
+        <div class='max-h-[min(260px,40vh)] min-h-0 shrink overflow-y-auto' onScroll={handleListScroll}>
           {loading && medals.length === 0 ? (
             <div class='py-4 text-center text-ga6'>粉丝牌加载中…</div>
           ) : filtered.length === 0 ? (
@@ -157,62 +203,74 @@ export function FansMedalSelector() {
                 const isWorn = isSameFansMedal(weared, medal)
                 const isDisplayedHere = isSameFansMedal(displayed, medal)
                 const isBusy = actingId === medal.medalId
+                const streamer = medal.targetName || `UID ${medal.targetId}`
                 return (
-                  <button
+                  <div
                     key={medal.medalId}
-                    type='button'
-                    disabled={actingId !== null}
-                    onClick={() => void handleSelect(medal)}
                     class={cn(
-                      'm-0 flex w-full cursor-pointer items-center justify-between gap-2 rounded border border-solid px-2 py-1.5 text-left transition',
-                      'disabled:cursor-not-allowed disabled:opacity-60',
-                      isWorn
-                        ? 'border-brand bg-brand/10'
-                        : 'border-transparent bg-transparent hover:border-ga3 hover:bg-ga1'
+                      'flex items-center gap-0.5 rounded border border-solid pr-1 transition',
+                      isWorn ? 'border-brand bg-brand/10' : 'border-transparent hover:border-ga3 hover:bg-ga1'
                     )}
                   >
-                    <div class='flex min-w-0 items-center gap-1.5'>
-                      <FansMedalBadge medal={medal} />
-                      <span class='truncate text-[11px] text-inherit'>
-                        {medal.targetName || `UID ${medal.targetId}`}
-                      </span>
-                      {isRoomMedal && (
-                        <span class='shrink-0 rounded bg-brand/15 px-1 py-px text-[10px] text-brand'>当前</span>
-                      )}
-                    </div>
-                    <div class='flex shrink-0 items-center gap-1.5 text-[10px] text-ga6'>
-                      {medal.dayLimit > 0 && (
-                        <span title='今日亲密度 / 上限'>
-                          {medal.todayFeed}/{medal.dayLimit}
-                        </span>
-                      )}
-                      {isBusy ? (
-                        <span class='text-brand'>处理中…</span>
-                      ) : isWorn ? (
-                        <span class='font-semibold text-brand'>佩戴中</span>
-                      ) : isDisplayedHere ? (
-                        <span class='font-semibold text-brand'>本房展示</span>
-                      ) : null}
-                    </div>
-                  </button>
+                    <button
+                      type='button'
+                      disabled={actingId !== null}
+                      onClick={() => void handleSelect(medal)}
+                      class='m-0 flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 border-none bg-transparent py-1.5 pr-1 pl-2 text-left text-inherit disabled:cursor-not-allowed disabled:opacity-60'
+                    >
+                      <div class='flex min-w-0 items-center gap-1.5'>
+                        <FansMedalBadge medal={medal} />
+                        <span class='truncate text-[11px] text-inherit'>{streamer}</span>
+                        {isRoomMedal && (
+                          <span class='shrink-0 rounded bg-brand/15 px-1 py-px text-[10px] text-brand'>当前</span>
+                        )}
+                      </div>
+                      <div class='flex shrink-0 items-center gap-1.5 text-[10px] text-ga6'>
+                        {medal.dayLimit > 0 && (
+                          <span title='今日亲密度 / 上限'>
+                            {medal.todayFeed}/{medal.dayLimit}
+                          </span>
+                        )}
+                        {isBusy ? (
+                          <span class='text-brand'>处理中…</span>
+                        ) : isWorn ? (
+                          <span class='font-semibold text-brand'>佩戴中</span>
+                        ) : isDisplayedHere ? (
+                          <span class='font-semibold text-brand'>本房展示</span>
+                        ) : null}
+                      </div>
+                    </button>
+                    {medal.targetId > 0 && (
+                      <a
+                        href={`https://space.bilibili.com/${medal.targetId}`}
+                        target='_blank'
+                        rel='noopener'
+                        title={`${streamer} 的空间`}
+                        aria-label={`${streamer} 的空间`}
+                        class={ROW_LINK_CLASS}
+                      >
+                        <IconUser size={13} aria-hidden='true' />
+                      </a>
+                    )}
+                    {medal.roomId > 0 && (
+                      <a
+                        href={`https://live.bilibili.com/${medal.roomId}`}
+                        target='_blank'
+                        rel='noopener'
+                        title={`${streamer} 的直播间`}
+                        aria-label={`${streamer} 的直播间`}
+                        class={ROW_LINK_CLASS}
+                      >
+                        <IconBroadcast size={13} aria-hidden='true' />
+                      </a>
+                    )}
+                  </div>
                 )
               })}
+              {hasMore && loading && <div class='py-1 text-center text-[11px] text-ga6'>加载中…</div>}
             </div>
           )}
         </div>
-
-        {hasMore && (
-          <div class='mt-1.5 flex shrink-0 justify-center border-t border-solid border-ga2 pt-1.5'>
-            <Button
-              variant='outline'
-              size='sm'
-              disabled={loading}
-              onClick={() => void fetchFansMedalPanel(fansMedalPage.value + 1)}
-            >
-              {loading ? '加载中…' : '加载更多'}
-            </Button>
-          </div>
-        )}
       </PopoverContent>
     </Popover>
   )

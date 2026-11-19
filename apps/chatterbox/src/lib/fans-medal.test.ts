@@ -690,6 +690,46 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
     expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
   })
 
+  it('loads every remaining page for search, stopping at a page that fails or adds nothing', async () => {
+    const entry = (id: number) => ({ medal: { medal_id: id, medal_name: `牌${id}`, level: 1 } })
+    const pageOf = (page: number, ids: number[], totalPage: number) =>
+      Response.json({
+        code: 0,
+        data: { list: ids.map(entry), page_info: { current_page: page, total_page: totalPage } },
+      })
+    const pageParam = (url: string) => Number(new URL(url).searchParams.get('page'))
+
+    const complete = await loadFansMedal(url => {
+      const page = pageParam(url)
+      return Promise.resolve(pageOf(page, page === 3 ? [5] : [page * 2 - 1, page * 2], 3))
+    })
+    await complete.fetchFansMedalPanel(1)
+    await complete.fetchAllFansMedals()
+    expect(complete.fansMedalList.value.map(m => m.medalId)).toEqual([1, 2, 3, 4, 5])
+    expect(complete.fansMedalHasMore.value).toBe(false)
+
+    // B站 claiming more pages forever while sending nothing new must not loop.
+    const requested: number[] = []
+    const endless = await loadFansMedal(url => {
+      const page = pageParam(url)
+      requested.push(page)
+      return Promise.resolve(pageOf(page, page === 1 ? [1, 2] : [], 99))
+    })
+    await endless.fetchFansMedalPanel(1)
+    await endless.fetchAllFansMedals()
+    expect(requested).toEqual([1, 2])
+
+    const failing = await loadFansMedal(url =>
+      Promise.resolve(
+        pageParam(url) === 1 ? pageOf(1, [1, 2], 3) : new Response('err', { status: 500, statusText: 'Server Error' })
+      )
+    )
+    await failing.fetchFansMedalPanel(1)
+    await failing.fetchAllFansMedals()
+    expect(failing.fansMedalList.value.map(m => m.medalId)).toEqual([1, 2])
+    expect(failing.fansMedalError.value).toContain('HTTP 500')
+  })
+
   it('retries a failed post-wear room refresh the next time the switcher refreshes', async () => {
     let infoOk = true
     let currShow = { name: '牌A', level: 5, id: 10, ruid: 100 }
