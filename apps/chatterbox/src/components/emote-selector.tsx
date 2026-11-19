@@ -17,6 +17,7 @@ import { enqueueDanmaku, SendPriority } from '../lib/send-queue'
 import { cachedEmoticonPackages, favoriteEmotes } from '../lib/store'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { ScrollArea } from './ui/scroll-area'
 
 // String sentinel can't collide with the numeric `pkg_id`s real packages use.
 const FAVORITES_TAB = 'favorites' as const
@@ -126,7 +127,7 @@ export function EmoteSelector({ contentClassName }: { contentClassName?: string 
           <>
             {/* `border-solid` explicit: preflight is off, so a width-only
                 `border-b` renders nothing. */}
-            <div role='tablist' class='flex shrink-0 gap-1 overflow-x-auto border-b border-solid border-ga2 px-2'>
+            <ScrollArea role='tablist' className='flex shrink-0 gap-1 border-b border-solid border-ga2 px-2'>
               <button
                 key={FAVORITES_TAB}
                 type='button'
@@ -185,12 +186,9 @@ export function EmoteSelector({ contentClassName }: { contentClassName?: string 
                   </button>
                 )
               })}
-            </div>
+            </ScrollArea>
             {/* Fixed height keeps the popover top stationary across tabs; keyed so switching resets scroll. */}
-            <div
-              key={showingFavorites ? FAVORITES_TAB : activePkg?.pkg_id}
-              class='h-[min(240px,38vh)] overflow-y-auto p-2'
-            >
+            <ScrollArea key={showingFavorites ? FAVORITES_TAB : activePkg?.pkg_id} className='h-[min(240px,38vh)] p-2'>
               {showingFavorites ? (
                 favorites.length === 0 ? (
                   <div class='p-3 text-center text-[11px] leading-relaxed text-ga6'>
@@ -246,7 +244,7 @@ export function EmoteSelector({ contentClassName }: { contentClassName?: string 
                   </div>
                 </>
               )}
-            </div>
+            </ScrollArea>
           </>
         )}
       </PopoverContent>

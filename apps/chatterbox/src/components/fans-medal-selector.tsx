@@ -24,6 +24,7 @@ import { FansMedalBadge } from './fans-medal-badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { ScrollArea } from './ui/scroll-area'
 
 const MEDAL_CENTER_URL = 'https://link.bilibili.com/p/center/index#/user-center/wearing-center/my-medal'
 const HEADER_ICON_CLASS =
@@ -191,7 +192,7 @@ export function FansMedalSelector() {
 
         {error && <div class='mb-1.5 shrink-0 rounded bg-danger/10 px-2 py-1 text-[11px] text-danger'>{error}</div>}
 
-        <div class='max-h-[min(260px,40vh)] min-h-0 shrink overflow-y-auto' onScroll={handleListScroll}>
+        <ScrollArea className='max-h-[min(260px,40vh)] min-h-0 shrink' onScroll={handleListScroll}>
           {loading && medals.length === 0 ? (
             <div class='py-4 text-center text-ga6'>粉丝牌加载中…</div>
           ) : filtered.length === 0 ? (
@@ -270,7 +271,7 @@ export function FansMedalSelector() {
               {hasMore && loading && <div class='py-1 text-center text-[11px] text-ga6'>加载中…</div>}
             </div>
           )}
-        </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   )

@@ -5,6 +5,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
+import { ScrollArea } from './scroll-area'
 import { Separator } from './separator'
 
 /** Minimal contract every Combobox option must satisfy; extend via the generic for `renderItem`. */
@@ -230,7 +231,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
 
         <Separator />
 
-        <div ref={listRef} role='listbox' class='max-h-50 overflow-y-auto'>
+        <ScrollArea ref={listRef} role='listbox' className='max-h-50'>
           {options.length === 0 && !showMissing ? (
             // Pre-fetch (no options yet): unloadedText if supplied, else emptyText.
             <div class='px-2 py-1 text-ga5'>{unloadedText ?? emptyText}</div>
@@ -300,7 +301,7 @@ export function Combobox<O extends ComboboxOption = ComboboxOption>({
               </div>
             </>
           )}
-        </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   )

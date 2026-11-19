@@ -18,6 +18,8 @@ export function Textarea({ disabled, className, ...props }: TextareaProps) {
         'bg-bg1 text-inherit',
         'leading-[1.4] outline-none',
         'min-h-10 resize-y',
+        // Stay native inside a ScrollArea, whose `scrollbar-color` would otherwise inherit.
+        '[scrollbar-color:auto]',
         'cursor-text disabled:cursor-not-allowed disabled:opacity-60',
         'transition',
         'focus:border-brand',

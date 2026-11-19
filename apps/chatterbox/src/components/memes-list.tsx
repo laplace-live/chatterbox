@@ -14,6 +14,7 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
+import { ScrollArea } from './ui/scroll-area'
 import { Separator } from './ui/separator'
 
 type MemeSortBy = NonNullable<LaplaceInternal.HTTPS.Workers.MemeListQuery['sortBy']>
@@ -341,10 +342,10 @@ export function MemesList() {
               className='mb-2 w-full'
             />
           )}
-          <div
+          <ScrollArea
             ref={containerRef}
             // Negative margin + inner padding bleeds the scroll area to the dialog edge; fixed max-height (not flex-1) stops it hogging the scrollable tab.
-            class='-mx-2.5 max-h-60 overflow-y-auto px-2.5'
+            className='-mx-2.5 max-h-60 px-2.5'
           >
             {memes.value
               .filter(m => {
@@ -356,7 +357,7 @@ export function MemesList() {
               .map(meme => (
                 <MemeItem key={meme.id} meme={meme} onUpdateCount={updateCount} onTagClick={handleTagClick} />
               ))}
-          </div>
+          </ScrollArea>
         </>
       )}
     </>

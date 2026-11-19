@@ -9,6 +9,7 @@ import {
   type PopoverPlacement,
   type PopoverSide,
 } from '../../lib/popover-position'
+import { ScrollArea } from './scroll-area'
 
 // shadcn-style compound popover. PopoverContent is `position: fixed` (not
 // absolute) so it escapes the Configurator dialog's `overflow` clip near the
@@ -184,17 +185,16 @@ export function PopoverContent({
   if (!open) return null
 
   return (
-    <div
+    <ScrollArea
       ref={contentRef}
       role='dialog'
-      class={cn(
-        // Fixed so the dialog's overflow can't clip us; overflow-y-auto scrolls
-        // tall popovers, overflow-x hidden preserves the rounded edge.
+      className={cn(
+        // Fixed so the dialog's overflow can't clip us; overflow-x hidden preserves the rounded edge.
         'fixed z-50',
         'rounded ring ring-ga6/30',
         'bg-bg1',
         'shadow-md',
-        'overflow-x-hidden overflow-y-auto',
+        'overflow-x-hidden',
         className
       )}
       style={
@@ -209,6 +209,6 @@ export function PopoverContent({
       }
     >
       {children}
-    </div>
+    </ScrollArea>
   )
 }

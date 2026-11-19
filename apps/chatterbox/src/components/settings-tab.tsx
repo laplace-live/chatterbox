@@ -81,6 +81,7 @@ import { Combobox } from './ui/combobox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
+import { ScrollArea } from './ui/scroll-area'
 import { Separator } from './ui/separator'
 
 const SYNC_INTERVAL = 10 * 60 * 1000
@@ -1116,7 +1117,7 @@ export function SettingsTab() {
               </Button>
             </div>
             <div class={HINT_CLASS}>适用于所有直播间，优先级高于云端规则</div>
-            <div class='mb-2 max-h-40 overflow-y-auto'>
+            <ScrollArea className='mb-2 max-h-40'>
               {globalRules.length === 0 ? (
                 <div class={EMPTY_CLASS}>暂无全局替换规则，请在下方添加</div>
               ) : (
@@ -1131,7 +1132,7 @@ export function SettingsTab() {
                   </div>
                 ))
               )}
-            </div>
+            </ScrollArea>
             <div class={ADD_ROW_CLASS}>
               <Input
                 placeholder='替换前'
@@ -1224,7 +1225,7 @@ export function SettingsTab() {
 
             {editingRoomId.value ? (
               <>
-                <div class='mb-2 max-h-40 overflow-y-auto'>
+                <ScrollArea className='mb-2 max-h-40'>
                   {editingRules.length === 0 ? (
                     <div class={EMPTY_CLASS}>暂无此房间的替换规则，请在下方添加</div>
                   ) : (
@@ -1244,7 +1245,7 @@ export function SettingsTab() {
                       </div>
                     ))
                   )}
-                </div>
+                </ScrollArea>
                 <div class={ADD_ROW_CLASS}>
                   <Input
                     placeholder='替换前'
@@ -1310,7 +1311,7 @@ export function SettingsTab() {
               名单中的用户发送的弹幕不会计入「自动融入」统计。在弹幕框点击用户名可将该用户加入 /
               移出名单，或在下方手动输入 UID（可选填昵称）添加。
             </div>
-            <div class='mb-2 max-h-50 overflow-y-auto'>
+            <ScrollArea className='mb-2 max-h-50'>
               {blacklistEntries.length === 0 ? (
                 <div class={EMPTY_CLASS}>暂无黑名单用户</div>
               ) : (
@@ -1333,7 +1334,7 @@ export function SettingsTab() {
                   </div>
                 ))
               )}
-            </div>
+            </ScrollArea>
             <div class={ADD_ROW_CLASS}>
               <Input
                 placeholder='UID，如 2763'
@@ -1389,7 +1390,7 @@ export function SettingsTab() {
               包裹则按正则匹配弹幕中任意位置，如 <code>/口.*交/i</code> 可拦截「口交」「口灰泽满交」等变体（
               <code>i</code> 表示忽略大小写）。在弹幕框点击弹幕可将该消息加入 / 移出名单，或在下方手动添加。
             </div>
-            <div class='mb-2 max-h-50 overflow-y-auto'>
+            <ScrollArea className='mb-2 max-h-50'>
               {messageBlacklistEntries.length === 0 ? (
                 <div class={EMPTY_CLASS}>暂无黑名单消息</div>
               ) : (
@@ -1408,7 +1409,7 @@ export function SettingsTab() {
                   </div>
                 ))
               )}
-            </div>
+            </ScrollArea>
             <div class={ADD_ROW_CLASS}>
               <Input
                 placeholder='精确匹配，或 /正则/i'

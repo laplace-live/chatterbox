@@ -33,6 +33,7 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { ScrollArea } from './ui/scroll-area'
 
 const ROW_CLASS = 'flex gap-2 items-center flex-wrap mb-2'
 
@@ -203,7 +204,7 @@ export function AiChatSection() {
             {candidates.length === 0 ? (
               <div class='text-ga4'>暂无候选 — 等待观众消息或转录文本触发生成</div>
             ) : (
-              <div class='max-h-45 overflow-y-auto'>
+              <ScrollArea className='max-h-45'>
                 {/* Engine appends to the end; reverse for newest-first display. */}
                 {[...candidates].reverse().map(cand => (
                   <div key={cand.id} class='border-b-solid border-b border-b-ga2 py-1'>
@@ -258,7 +259,7 @@ export function AiChatSection() {
                     )}
                   </div>
                 ))}
-              </div>
+              </ScrollArea>
             )}
           </div>
         )}
@@ -270,13 +271,13 @@ export function AiChatSection() {
             {history.length > 0 && <span class='font-normal text-ga6'> ({history.length})</span>}
           </AccordionTrigger>
           <AccordionContent>
-            <div class='max-h-40 overflow-y-auto'>
+            <ScrollArea className='max-h-40'>
               {history.length === 0 ? (
                 <div class='text-ga4'>暂无决策记录</div>
               ) : (
                 [...history].reverse().map(entry => <HistoryRow key={entry.id} entry={entry} />)
               )}
-            </div>
+            </ScrollArea>
             {history.length > 0 && (
               <div class='mt-1'>
                 <Button variant='outline' size='sm' onClick={() => clearAiChatHistory()}>

@@ -14,6 +14,7 @@ import { NormalSendTab } from './normal-send-tab'
 import { SettingsTab } from './settings-tab'
 import { SttTab } from './stt-tab'
 import { Tabs } from './tabs'
+import { ScrollArea } from './ui/scroll-area'
 
 // MIN keeps action rows on one line; MAX caps drag on widescreen; margin clamps smaller windows tighter.
 const DIALOG_MIN_WIDTH = 180
@@ -39,12 +40,13 @@ export function Configurator() {
       // Horizontal padding lives on the per-tab wrapper, not the dialog (which also holds `<Tabs />`).
       'px-[10px]',
       !active && 'hidden',
-      active && optimized && 'min-h-0 flex-1 overflow-y-auto',
-      active && !optimized && 'block'
+      active && optimized && 'min-h-0 flex-1',
+      // Visible overflow keeps the dialog as the sticky accordion headers' scroll container.
+      active && !optimized && 'block overflow-visible'
     )
 
   return (
-    <div
+    <ScrollArea
       id='laplace-chatterbox-dialog'
       // Visible+optimized: flex column, overflow-hidden (children opt back into scroll). Non-optimized: legacy block growing to viewport height.
       // z-index sits one below the status bar so its popovers (trapped in the bar's stacking context) can render over this dialog.
@@ -53,14 +55,14 @@ export function Configurator() {
         'min-w-12.5 rounded bg-bg1 shadow-md ring ring-ga6/30',
         !visible && 'hidden',
         visible && optimized && 'flex h-[calc(100vh-110px)] flex-col overflow-hidden',
-        visible && !optimized && 'block max-h-[calc(100vh-110px)] overflow-y-auto'
+        visible && !optimized && 'block max-h-[calc(100vh-110px)]'
       )}
       style={{ width: `${width}px`, '--laplace-chatterbox-dialog-width': `${width}px` }}
     >
       <ResizeHandle />
       <Tabs />
 
-      <div class={panelClass(tab === 'fasong')}>
+      <ScrollArea className={panelClass(tab === 'fasong')}>
         <AutoSendControls />
         <div class='my-1'>
           <AutoBlendControls />
@@ -72,28 +74,28 @@ export function Configurator() {
           <MemesList />
         </div>
         <NormalSendTab />
-      </div>
+      </ScrollArea>
 
-      <div class={panelClass(tab === 'tongchuan')}>
+      <ScrollArea className={panelClass(tab === 'tongchuan')}>
         <SttTab />
-      </div>
+      </ScrollArea>
 
-      <div class={panelClass(tab === 'ninja')}>
+      <ScrollArea className={panelClass(tab === 'ninja')}>
         <CopyNinjaTab />
-      </div>
+      </ScrollArea>
 
-      <div class={panelClass(tab === 'settings')}>
+      <ScrollArea className={panelClass(tab === 'settings')}>
         <SettingsTab />
-      </div>
+      </ScrollArea>
 
-      <div class={panelClass(tab === 'about')}>
+      <ScrollArea className={panelClass(tab === 'about')}>
         <AboutTab />
-      </div>
+      </ScrollArea>
 
       <div class='px-2.5 pb-1.25'>
         <LogPanel />
       </div>
-    </div>
+    </ScrollArea>
   )
 }
 
