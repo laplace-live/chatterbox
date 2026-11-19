@@ -313,7 +313,6 @@ describe('parseGetInfoByUserMedal', () => {
     })
     expect(blankName?.displayed?.medalName).toBe('兜底名')
 
-    expect(parseGetInfoByUserMedal({ code: -101, message: '未登录' })).toEqual({ displayed: null, weared: null })
     expect(parseGetInfoByUserMedal({ code: -400, message: 'bad request' })).toBeNull()
   })
 })
@@ -425,19 +424,6 @@ describe('isSameFansMedal & room-keyed display', () => {
       danmakuLimit.cachedRoomId.value = 99999
       medalRoom.applyGetInfoByUserMedal({ code: -400, message: 'bad' }, { roomId: 99999 })
       expect(medalRoom.roomDisplayedMedal.peek()?.medalName).toBe('艾薯条')
-
-      // -101 clears all recorded rooms (including other previously cached rooms) and worn medal.
-      medalRoom.applyGetInfoByUserMedal(
-        { code: 0, data: { medal: { is_weared: false, curr_show: { name: '别房牌', level: 5, id: 88, ruid: 12 } } } },
-        { roomId: 77777 }
-      )
-      medalRoom.applyGetInfoByUserMedal({ code: -101, message: '未登录' }, { roomId: 99999 })
-      expect(medalRoom.roomDisplayedMedal.peek()).toBeNull()
-      expect(medalRoom.roomDisplayedMedalKnown.peek()).toBe(true)
-      expect(medalRoom.wearedMedal.peek()).toBeNull()
-      danmakuLimit.cachedRoomId.value = 77777
-      expect(medalRoom.roomDisplayedMedalKnown.peek()).toBe(false)
-      expect(medalRoom.roomDisplayedMedal.peek()).toBeNull()
     } finally {
       medalRoom.resetRoomDisplayedMedals()
       danmakuLimit.resetRoomDanmakuLimits()
@@ -700,14 +686,6 @@ describe('fansMedalPanel, wear/takeOff & fetchRoomDisplayedMedal', () => {
 
     danmakuLimit.cachedRoomId.value = 81004
     expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004, authoritative: true })).toBe('applied')
-    expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
-    expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
-
-    // A logout is current whenever it arrives, and replies after it (a re-login) count fully again.
-    expect(medalRoom.applyGetInfoByUserMedal({ code: -101, message: '未登录' }, { roomId: 81004 })).toBe('applied')
-    expect(medalRoom.roomDisplayedMedal.value).toBeNull()
-    expect(medalRoom.wearedMedal.value).toBeNull()
-    expect(medalRoom.applyGetInfoByUserMedal(wornA, { roomId: 81004 })).toBe('applied')
     expect(medalRoom.roomDisplayedMedal.value?.medalName).toBe('牌A')
     expect(medalRoom.wearedMedal.value?.medalId).toBe(10)
   })

@@ -155,15 +155,13 @@ export function isSameFansMedal(a: FansMedal | null, b: FansMedal | null): boole
 
 export interface ParsedRoomMedalInfo {
   displayed: FansMedal | null
-  /** Undefined when absent from payload; `null` when explicitly unworn or unauthenticated. */
+  /** Undefined when absent from payload; `null` when explicitly unworn. */
   weared?: FansMedal | null
 }
 
 /** Parse `getInfoByUser` `data.medal` into room-displayed (`curr_show`) and globally worn (`curr_weared_v2`) medals. */
 export function parseGetInfoByUserMedal(payload: unknown): ParsedRoomMedalInfo | null {
-  if (!isRecord(payload)) return null
-  if (payload.code === -101) return { displayed: null, weared: null }
-  if (payload.code !== 0 || !isRecord(payload.data) || !isRecord(payload.data.medal)) return null
+  if (!isRecord(payload) || payload.code !== 0 || !isRecord(payload.data) || !isRecord(payload.data.medal)) return null
 
   const medalObj = payload.data.medal
   const currWearedMeta = normalizeV2OrRoomMedal(medalObj.curr_weared)
