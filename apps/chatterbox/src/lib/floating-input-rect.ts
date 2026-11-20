@@ -12,10 +12,10 @@ export interface ViewportSize {
 
 export const FLOATING_INPUT_MIN_WIDTH = 180
 // Move bar, one textarea line and the medal/emote row.
-export const FLOATING_INPUT_MIN_HEIGHT = 64
+export const FLOATING_INPUT_MIN_HEIGHT = 66
 
 /** First-run rect: bottom-right, just above the StatusBar. After that the user's last rect is remembered. */
-export const DEFAULT_FLOATING_RECT: Readonly<FloatingRect> = { right: 8, bottom: 44, width: 240, height: 80 }
+export const DEFAULT_FLOATING_RECT: Readonly<FloatingRect> = { right: 8, bottom: 44, width: 240, height: 84 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max))

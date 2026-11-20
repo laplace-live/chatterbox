@@ -98,7 +98,7 @@ export function FloatingInputBox() {
     <div
       id='laplace-chatterbox-floating-input'
       // z-2147483645 sits beneath Configurator (2147483646) and StatusBar (2147483647), keeping popovers bounded inside this stacking context.
-      class='fixed z-2147483645 box-border flex flex-col rounded-md bg-bg1 text-[12px] shadow-md ring ring-ga4/50'
+      class='fixed z-2147483645 box-border flex flex-col rounded-md bg-bg1 text-[13px] shadow-md ring ring-ga4/50'
       style={{
         right: `${renderRect.right}px`,
         bottom: `${renderRect.bottom}px`,
@@ -142,12 +142,12 @@ export function FloatingInputBox() {
             onKeyDown={handleNormalSendKeyDown}
             placeholder={normalSendYolo.value && llmReady ? 'YOLO：Enter 润色发送' : '发送弹幕…'}
             class={cn(
-              'h-full w-full resize-none border-none bg-transparent px-0 py-0.5 text-[12px] leading-snug text-inherit outline-none',
+              'h-full w-full resize-none border-none bg-transparent px-0 py-0.5 leading-snug text-inherit outline-none',
               'placeholder:text-ga5 read-only:cursor-not-allowed read-only:opacity-60'
             )}
           />
           {charCount > 0 && (
-            <span class='pointer-events-none absolute right-0 bottom-0.5 text-[10px] leading-none text-ga5'>
+            <span class='pointer-events-none absolute right-0 bottom-0.5 text-[11px] leading-none text-ga5'>
               {msgCount > 1 ? `${msgCount}条·${charCount}` : charCount}
             </span>
           )}
