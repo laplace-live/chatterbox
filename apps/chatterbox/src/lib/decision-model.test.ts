@@ -315,7 +315,7 @@ describe('evaluateDecision', () => {
     const client = await harness()
     const pending = client.evaluateDecision({ provider: target, preset, state })
     client.respond(response)
-    await expect(pending).rejects.toThrow('拒绝')
+    await expect(pending).rejects.toThrow('决策模型拒绝判断该弹幕')
   })
 
   test('surfaces prompt_feedback.block_reason before inspecting answers', async () => {
