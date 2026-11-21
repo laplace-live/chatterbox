@@ -204,11 +204,12 @@ export interface ChatCompletionOptions {
   onPromptTokens?: (tokens: number) => void
 }
 
-/** Which media an HTTP 4xx rejection blames ('video' wins; 'payload' = any other 413); null otherwise or for response_format errors. */
+/** Which media an HTTP 4xx rejection of the input blames ('video' wins; 'payload' = any other 413); null otherwise or for response_format errors. */
 export function classifyMediaRejection(err: unknown): 'video' | 'image' | 'payload' | null {
   if (!(err instanceof Error)) return null
+  // Only statuses that refuse the input itself: a 429, 401, 402 or 403 can name a "vision" model yet says nothing about support.
   // Anchored: a 5xx body can quote an upstream 4xx.
-  const status = /^HTTP (4\d\d)\b/.exec(err.message)?.[1]
+  const status = /^HTTP (400|404|413|415|422)\b/.exec(err.message)?.[1]
   if (!status) return null
   const text = err.message.toLowerCase()
   if (text.includes('response_format')) return null
