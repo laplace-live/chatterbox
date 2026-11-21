@@ -700,44 +700,68 @@ describe('AI chat stream vision', () => {
     expect(userText(h.call())).not.toContain('上一个画面')
   })
 
-  test('caption mode adds a [当前画面] note from the scene memory, else a fresh caption', async () => {
+  test('caption mode adds a [当前画面] note of the last 15 s and asks only whether the reply uses it', async () => {
     const h = await createHarness()
     h.settings.visionEnabled.value = true
     h.settings.visionMode.value = 'caption'
-    h.fakes.current = frame(10_000, 120)
-    h.fakes.scenes.push({ at: 0, scene: '主播在唱歌', source: 'caption' })
+    h.advance(20_000)
+    h.fakes.freshScene = { at: 28_000, scene: '主播在唱歌', source: 'caption' }
     await h.triggerNow()
 
+    expect(h.requestFreshScene).toHaveBeenCalledWith(15_000, 8_000)
     const options = h.call()
     expect(options.messages[1].content).toBe(`${VIEWER_ONLY}\n[当前画面]: 主播在唱歌`)
     expect(systemText(options)).toContain(SCENE_TEXT_HINT)
     expect(systemText(options)).not.toContain(VISION_RULES)
-    expect(h.requestFreshScene).not.toHaveBeenCalled()
+    expect(systemText(options)).toContain('包含四个字段')
+    expect(systemText(options)).toContain('"uses_scene" (boolean)')
+    expect(systemText(options)).not.toContain('"scene" (string)')
+    expect(options.responseFormat).toMatchObject({
+      json_schema: { schema: { required: ['send', 'message', 'reason', 'uses_scene'] } },
+    })
     expect(h.grabCurrentFrame).not.toHaveBeenCalled()
+    expect(h.recordScene).not.toHaveBeenCalled()
     expect(h.engine.pendingCandidates.value).toMatchObject([
       { decision: { scene: '主播在唱歌', usesScene: false }, frames: [], stale: false },
     ])
-
-    h.advance(20_000)
-    h.fakes.freshScene = { at: 30_000, scene: '主播在打游戏', source: 'caption' }
-    await h.triggerNow()
-    expect(h.requestFreshScene).toHaveBeenCalledWith(15_000, 8_000)
-    expect(h.call().messages[1].content).toEndWith('"""\n\n[当前画面]: 主播在打游戏')
-    expect(h.recordScene).not.toHaveBeenCalled()
   })
 
-  test('caption mode asks a visual round for a caption taken after the cut', async () => {
+  test('caption mode never takes a caption from before the latest cut', async () => {
     const h = await createHarness()
     h.settings.visionEnabled.value = true
     h.settings.visionMode.value = 'caption'
     h.settings.visionVisualTrigger.value = true
-    h.fakes.scenes.push({ at: 5_000, scene: '切换前的画面', source: 'caption' })
-    h.fakes.freshScene = { at: 10_000, scene: '主播换了游戏', source: 'caption' }
-    h.cut({ at: 10_000, before: frame(9_000, 0), after: frame(10_000, 200) })
+    h.advance(20_000)
+    h.fakes.freshScene = { at: 30_000, scene: '主播换了游戏', source: 'caption' }
+    h.cut({ at: 29_000, before: frame(27_000, 0), after: frame(29_000, 200) })
     await h.fire(500)
-
-    expect(h.requestFreshScene).toHaveBeenCalledWith(3_000, 8_000)
+    expect(h.requestFreshScene).toHaveBeenLastCalledWith(29_000, 8_000)
     expect(h.call().messages[1].content).toEndWith('\n[当前画面]: 主播换了游戏')
+
+    h.advance(5_000)
+    await h.triggerNow()
+    expect(h.requestFreshScene).toHaveBeenLastCalledWith(29_000, 8_000)
+  })
+
+  test('a reply that uses a text picture note is dropped once a cut follows the note’s picture', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.visionMode.value = 'caption'
+    h.settings.aiChatAutoSend.value = true
+    h.fakes.freshScene = { at: 8_000, scene: '主播在唱歌', source: 'caption' }
+    h.replies.push(reply({ uses_scene: true }))
+    await h.triggerNow()
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
+
+    // The cut lands while the second round is being generated.
+    h.chatCompletion.mockImplementationOnce(async () => {
+      h.cut({ at: 10_500, before: frame(8_000, 0), after: frame(10_500, 200) })
+      return reply({ uses_scene: true })
+    })
+    h.advance(1_000)
+    await h.triggerNow()
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
+    expect(h.engine.aiChatHistory.value.at(-1)).toMatchObject({ message: '', reason: '画面已变化，放弃可能过时的弹幕' })
   })
 
   test('a clip goes out as video_url, and a video rejection retries with frames for the rest of the session', async () => {
@@ -1001,11 +1025,35 @@ describe('AI chat stream vision', () => {
     expect(frameLabels(h.call())).toEqual(['【10 秒前】', '【当前】'])
   })
 
-  test('reported prompt tokens feed aiChatLastPromptTokens', async () => {
+  test('reported prompt tokens feed aiChatLastPromptTokens, and a call without them clears it', async () => {
     const h = await createHarness()
     expect(h.engine.aiChatLastPromptTokens.value).toBeNull()
     await h.triggerNow()
     expect(h.engine.aiChatLastPromptTokens.value).toBe(1234)
+    h.chatCompletion.mockImplementationOnce(async () => reply())
+    await h.triggerNow()
+    expect(h.engine.aiChatLastPromptTokens.value).toBeNull()
+  })
+
+  test('changing the active provider or model clears the vision note', async () => {
+    const h = await createHarness()
+    h.engine.aiChatVisionNote.value = '当前模型不支持图片输入，已改为纯文本'
+    h.settings.activeLlmProvider.value = { ...h.provider, model: 'other-model' }
+    expect(h.engine.aiChatVisionNote.value).toBe('')
+  })
+
+  test('a scene cut within 10 s of STT hearing speech start is not silence', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.visionVisualTrigger.value = true
+    const now = h.advance(60_000)
+    h.settings.sttUtteranceStartedAt.value = now - 5_000
+    const event: SceneCutEvent = { at: now, before: frame(now - 2_000, 0), after: frame(now, 200) }
+    h.cut(event)
+    expect(h.pendingDelays()).toEqual([])
+    h.advance(5_000)
+    h.cut(event)
+    expect(h.pendingDelays()).toEqual([500])
   })
 
   test('later rounds see each earlier picture note as a [画面] line in the context', async () => {

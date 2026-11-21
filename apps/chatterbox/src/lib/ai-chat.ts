@@ -154,6 +154,9 @@ let stopBufferEffect: (() => void) | null = null
 let scheduledTimer: ReturnType<typeof setTimeout> | null = null
 let scheduledReason: TriggerReason | null = null
 let lastVisualTriggerAt: number | null = null
+/** Sample time of the latest scene cut, for checking text-only picture notes before sending. */
+let lastSceneCutAt: number | null = null
+let stopProviderEffect: (() => void) | null = null
 let inflight = false
 let startCount = 0
 /** Bumped on teardown; a send from an older session is dropped, even from the send queue. */
@@ -178,9 +181,9 @@ const VIEWER_VISION_WINDOW_MS = 12_000
 const UNCHANGED_SCENE_MAX_AGE_MS = 60_000
 const CAPTION_FRESH_MS = 15_000
 const CAPTION_WAIT_MS = 8_000
-/** A visual round needs a caption of the new picture, not the pre-cut one. */
-const VISUAL_CAPTION_FRESH_MS = 3_000
 const VISUAL_MIN_INTERVAL_MS = 60_000
+/** A scene cut this soon after STT heard speech start (with no final text yet) isn't silence. */
+const VISUAL_SPEECH_GRACE_MS = 10_000
 /** Same reason as LLM_CALL_TIMEOUT_MS: a stuck frame grab or clip finalize must not hold `inflight`. */
 const VISION_GATHER_TIMEOUT_MS = 10_000
 const SCENE_MAX_CHARS = 40
@@ -207,9 +210,29 @@ interface GatheredVision {
   note: string
   /** Picture description carried as text in `note` (caption or unchanged picture); '' otherwise. */
   textScene: string
+  /** Capture time of the picture `textScene` describes; null without one. */
+  textSceneAt: number | null
 }
 
-const NO_VISION: GatheredVision = { frameParts: [], clipParts: null, frames: [], note: '', textScene: '' }
+const NO_VISION: GatheredVision = {
+  frameParts: [],
+  clipParts: null,
+  frames: [],
+  note: '',
+  textScene: '',
+  textSceneAt: null,
+}
+
+/** Timing of the scene cut behind a 'visual' round. */
+interface CutTimes {
+  /** Sample time that detected the cut. */
+  at: number
+  /** Capture time of the last frame kept before the cut; null when none. */
+  beforeAt: number | null
+}
+
+/** Reply fields about the picture: none, just `uses_scene` (picture given as text), or `scene` too (media attached). */
+type SceneFields = 'none' | 'uses' | 'full'
 
 /** Session media downgrades per provider:base:model: 'frames' = clips rejected, 'none' = images rejected too. */
 const mediaDowngrades = new Map<string, 'frames' | 'none'>()
@@ -290,8 +313,8 @@ function isReadyForGen(buffer: string): boolean {
   return false
 }
 
-/** `withScene` (media attached) also reads the model's `scene` / `uses_scene`. */
-function parseDecision(content: string, maxLen: number, withScene: boolean): AiChatDecision {
+/** Also reads the model's `uses_scene` and, for 'full', its `scene`. */
+function parseDecision(content: string, maxLen: number, fields: SceneFields): AiChatDecision {
   let obj: unknown
   try {
     obj = JSON.parse(content)
@@ -306,9 +329,12 @@ function parseDecision(content: string, maxLen: number, withScene: boolean): AiC
   let message = typeof obj.message === 'string' ? obj.message.trim() : ''
   if (message.length > maxLen) message = message.slice(0, maxLen)
   const reason = typeof obj.reason === 'string' ? obj.reason : ''
-  if (!withScene) return { send, message, reason, scene: '', usesScene: false }
+  if (fields === 'none') return { send, message, reason, scene: '', usesScene: false }
   // Cut by code point so an emoji is never split.
-  const scene = typeof obj.scene === 'string' ? Array.from(obj.scene.trim()).slice(0, SCENE_MAX_CHARS).join('') : ''
+  const scene =
+    fields === 'full' && typeof obj.scene === 'string'
+      ? Array.from(obj.scene.trim()).slice(0, SCENE_MAX_CHARS).join('')
+      : ''
   return { send, message, reason, scene, usesScene: obj.uses_scene === true }
 }
 
@@ -319,7 +345,7 @@ const responseFormatModes = new Map<string, ResponseFormatMode>()
 function buildResponseFormat(
   mode: ResponseFormatMode,
   maxLen: number,
-  withScene: boolean
+  fields: SceneFields
 ): ChatCompletionResponseFormat | undefined {
   if (mode === 'none') return undefined
   if (mode === 'json_object') return { type: 'json_object' }
@@ -327,10 +353,8 @@ function buildResponseFormat(
     send: { type: 'boolean' },
     message: { type: 'string', maxLength: maxLen },
     reason: { type: 'string' },
-    ...(withScene && {
-      scene: { type: 'string', maxLength: SCENE_MAX_CHARS },
-      uses_scene: { type: 'boolean' },
-    }),
+    ...(fields === 'full' && { scene: { type: 'string', maxLength: SCENE_MAX_CHARS } }),
+    ...(fields !== 'none' && { uses_scene: { type: 'boolean' } }),
   }
   return {
     type: 'json_schema',
@@ -347,22 +371,26 @@ function buildResponseFormat(
   }
 }
 
-/** JSON reply instructions for the system prompt; `withScene` adds the picture fields. */
-function replyFormatInstructions(maxLen: number, withScene: boolean): string {
-  const sceneFields = withScene
-    ? '- "scene" (string)：用不超过 20 个字记录当前画面要点，仅供你之后参考，不会发送\n' +
-      '- "uses_scene" (boolean)：message 是否依赖画面内容\n'
-    : ''
+/** JSON reply instructions for the system prompt, with the picture fields `fields` asks for. */
+function replyFormatInstructions(maxLen: number, fields: SceneFields): string {
+  const sceneLine =
+    fields === 'full' ? '- "scene" (string)：用不超过 20 个字记录当前画面要点，仅供你之后参考，不会发送\n' : ''
+  const usesLine = fields === 'none' ? '' : '- "uses_scene" (boolean)：message 是否依赖画面内容\n'
   // Literal example required by DeepSeek's json_object mode; harmless elsewhere.
-  const example = withScene
-    ? '{"send": true, "message": "要发送的弹幕", "reason": "简短理由", "scene": "画面要点", "uses_scene": false}'
-    : '{"send": true, "message": "要发送的弹幕", "reason": "简短理由"}'
+  const example =
+    fields === 'full'
+      ? '{"send": true, "message": "要发送的弹幕", "reason": "简短理由", "scene": "画面要点", "uses_scene": false}'
+      : fields === 'uses'
+        ? '{"send": true, "message": "要发送的弹幕", "reason": "简短理由", "uses_scene": false}'
+        : '{"send": true, "message": "要发送的弹幕", "reason": "简短理由"}'
+  const count = fields === 'full' ? '五' : fields === 'uses' ? '四' : '三'
   return (
-    `你必须返回一个 JSON 对象，包含${withScene ? '五' : '三'}个字段：\n` +
+    `你必须返回一个 JSON 对象，包含${count}个字段：\n` +
     '- "send" (boolean)：当前内容是否值得作为弹幕发送\n' +
     `- "message" (string)：要发送的弹幕，长度不超过 ${maxLen} 个字符；send 为 false 时为空串\n` +
     '- "reason" (string)：你做此决定的简短理由\n' +
-    sceneFields +
+    sceneLine +
+    usesLine +
     `返回示例：${example}\n`
   )
 }
@@ -402,12 +430,12 @@ function mediaKey(provider: LlmProviderProfile): string {
   return `${provider.id}:${provider.apiBase}:${provider.model}`
 }
 
-/** Earliest capture time a round's frames may come from: the utterance (≤ 20 s), the viewer burst, or just before the cut (`preCutAt`: capture time of the last frame kept before it). */
+/** Earliest capture time a round's frames may come from: the utterance (≤ 20 s), the viewer burst, or just before the cut. */
 function visionWindowStart(
   reason: TriggerReason,
   now: number,
   utteranceStartedAt: number | null,
-  preCutAt: number | null
+  cut: CutTimes | null
 ): number {
   switch (reason) {
     case 'transcript': {
@@ -417,7 +445,7 @@ function visionWindowStart(
     case 'viewer':
       return now - VIEWER_VISION_WINDOW_MS
     case 'visual':
-      return (preCutAt ?? now - 3000) - 500
+      return (cut?.beforeAt ?? now - 3000) - 500
     case 'manual':
       return now
   }
@@ -432,19 +460,20 @@ function unchangedScene(current: VisionFrame, now: number): string | null {
   return note && note.at >= lastUpload.at ? note.scene : null
 }
 
-async function gatherCaptionVision(reason: TriggerReason): Promise<GatheredVision> {
+/** The caption must show the picture after the latest cut (the 'visual' round's own included), not one taken before it. */
+async function gatherCaptionVision(cut: CutTimes | null): Promise<GatheredVision> {
   aiChatVisionNote.value = ''
-  const note =
-    (reason === 'visual' ? null : latestScene(CAPTION_FRESH_MS)) ??
-    (await requestFreshScene(reason === 'visual' ? VISUAL_CAPTION_FRESH_MS : CAPTION_FRESH_MS, CAPTION_WAIT_MS))
-  return note ? { ...NO_VISION, note: `[当前画面]: ${note.scene}`, textScene: note.scene } : NO_VISION
+  const notBefore = Math.max(Date.now() - CAPTION_FRESH_MS, cut?.at ?? 0, lastSceneCutAt ?? 0)
+  const note = await requestFreshScene(notBefore, CAPTION_WAIT_MS)
+  if (!note) return NO_VISION
+  return { ...NO_VISION, note: `[当前画面]: ${note.scene}`, textScene: note.scene, textSceneAt: note.at }
 }
 
 async function gatherDirectVision(
   provider: LlmProviderProfile,
   reason: TriggerReason,
   utteranceStartedAt: number | null,
-  preCutAt: number | null
+  cut: CutTimes | null
 ): Promise<GatheredVision> {
   const downgrade = mediaDowngrades.get(mediaKey(provider))
   if (downgrade === 'none') {
@@ -466,11 +495,13 @@ async function gatherDirectVision(
   const frames = selectFrames({
     kept: getKeptFrames(),
     current,
-    from: visionWindowStart(reason, now, utteranceStartedAt, preCutAt),
+    from: visionWindowStart(reason, now, utteranceStartedAt, cut),
     max: reason === 'manual' ? 1 : clampVisionFrames(visionMaxFrames.value),
   })
   const unchanged = frames.length === 1 ? unchangedScene(current, now) : null
-  if (unchanged) return { ...NO_VISION, note: `（画面与上次基本相同：${unchanged}）`, textScene: unchanged }
+  if (unchanged) {
+    return { ...NO_VISION, note: `（画面与上次基本相同：${unchanged}）`, textScene: unchanged, textSceneAt: current.at }
+  }
   // 512 px is about what 'low' detail downsamples to anyway; the hint just saves tokens.
   const lowDetail = resolveVisionEdge(visionMaxEdge.value) === 512
   const frameParts: LlmContentPart[] = [
@@ -493,7 +524,7 @@ async function gatherVision(
   provider: LlmProviderProfile,
   reason: TriggerReason,
   utteranceStartedAt: number | null,
-  preCutAt: number | null
+  cut: CutTimes | null
 ): Promise<GatheredVision> {
   if (!visionEnabled.value) return NO_VISION
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -506,8 +537,8 @@ async function gatherVision(
   try {
     const gathered =
       visionMode.value === 'caption'
-        ? gatherCaptionVision(reason)
-        : gatherDirectVision(provider, reason, utteranceStartedAt, preCutAt)
+        ? gatherCaptionVision(cut)
+        : gatherDirectVision(provider, reason, utteranceStartedAt, cut)
     return await Promise.race([gathered, timedOut])
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -576,26 +607,30 @@ async function callAiChatLlm(
   const timeoutId = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
   try {
     while (true) {
-      const withScene = media.length > 0
-      const visionHint = withScene ? VISION_RULES : vision.textScene ? SCENE_TEXT_HINT : ''
+      const withMedia = media.length > 0
+      const fields: SceneFields = withMedia ? 'full' : vision.textScene ? 'uses' : 'none'
+      const visionHint = withMedia ? VISION_RULES : vision.textScene ? SCENE_TEXT_HINT : ''
       try {
+        let promptTokens: number | null = null
         const content = await chatCompletion({
           base: provider.apiBase,
           apiKey: provider.apiKey,
           model: provider.model,
           messages: [
-            { role: 'system', content: systemHead + visionHint + replyFormatInstructions(maxLen, withScene) },
-            { role: 'user', content: withScene ? [{ type: 'text', text: userText }, ...media] : userText },
+            { role: 'system', content: systemHead + visionHint + replyFormatInstructions(maxLen, fields) },
+            { role: 'user', content: withMedia ? [{ type: 'text', text: userText }, ...media] : userText },
           ],
           temperature: aiChatTemperature.value,
-          responseFormat: buildResponseFormat(rfMode, maxLen, withScene),
+          responseFormat: buildResponseFormat(rfMode, maxLen, fields),
           signal: controller.signal,
           onPromptTokens: tokens => {
-            aiChatLastPromptTokens.value = tokens
+            promptTokens = tokens
           },
         })
-        const decision = parseDecision(content, maxLen, withScene)
-        const frames = withScene ? attachedFrames(vision, clip) : []
+        // A provider that reports no usage clears the readout rather than leaving an older call's count.
+        aiChatLastPromptTokens.value = promptTokens
+        const decision = parseDecision(content, maxLen, fields)
+        const frames = withMedia ? attachedFrames(vision, clip) : []
         rememberUpload(frames, decision.scene)
         return { decision, frames }
       } catch (err) {
@@ -608,7 +643,7 @@ async function callAiChatLlm(
           appendLog(`ℹ️ [AI 融入] 服务商不支持当前结构化输出格式，已降级为 ${next === 'none' ? '纯提示词' : next} 重试`)
           continue
         }
-        const rejection = withScene ? classifyMediaRejection(err) : null
+        const rejection = withMedia ? classifyMediaRejection(err) : null
         if (rejection === null) throw err
         // Any media complaint about a clip may still leave frames usable; about frames, only text is left.
         if (clip) {
@@ -733,14 +768,18 @@ function addPendingCandidate(
 }
 
 /** A picture-dependent reply whose picture cut away while it was being generated. */
-function isStale(decision: AiChatDecision, frames: readonly LabeledFrame[]): boolean {
+function isStale(decision: AiChatDecision, frames: readonly LabeledFrame[], textSceneAt: number | null): boolean {
   if (!decision.usesScene) return false
   const newest = frames.at(-1)
-  const latest = getLatestLuma()
-  return !!newest && !!latest && lumaDiff(latest, newest.luma) >= SCENE_CUT_DIFF
+  if (newest) {
+    const latest = getLatestLuma()
+    return !!latest && lumaDiff(latest, newest.luma) >= SCENE_CUT_DIFF
+  }
+  // A text note has no luma to diff; any cut after its picture was captured outdates it.
+  return textSceneAt !== null && lastSceneCutAt !== null && lastSceneCutAt > textSceneAt
 }
 
-async function runGeneration(reason: TriggerReason, preCutAt: number | null = null): Promise<void> {
+async function runGeneration(reason: TriggerReason, cut: CutTimes | null = null): Promise<void> {
   if (inflight) return
   const isCurrent = sessionGuard()
   // Snapshot + clear atomically; content landing during the await starts the next round.
@@ -765,7 +804,7 @@ async function runGeneration(reason: TriggerReason, preCutAt: number | null = nu
   try {
     const config = readAiChatConfig()
     if (!config) return
-    const vision = await gatherVision(config.provider, reason, utteranceStartedAt, preCutAt)
+    const vision = await gatherVision(config.provider, reason, utteranceStartedAt, cut)
     if (!isCurrent()) return
     // A picture-change round that can't see the picture has nothing to react to.
     if (reason === 'visual' && vision.frames.length === 0 && !vision.textScene) return
@@ -780,7 +819,7 @@ async function runGeneration(reason: TriggerReason, preCutAt: number | null = nu
     const frames = result.frames.map(({ thumbUrl, label }) => ({ thumbUrl, label }))
 
     if (decision.send && decision.message.trim()) {
-      const stale = isStale(decision, result.frames)
+      const stale = isStale(decision, result.frames, vision.textSceneAt)
       if (aiChatAutoSend.value) {
         if (stale) {
           recordSkip(transcript, STALE_SKIP_REASON, frames, decision.scene)
@@ -826,7 +865,7 @@ function clearScheduled(): void {
 }
 
 /** Returns whether a round was scheduled. */
-function scheduleGeneration(delay: number, reason: TriggerReason, preCutAt: number | null = null): boolean {
+function scheduleGeneration(delay: number, reason: TriggerReason, cut: CutTimes | null = null): boolean {
   // Gate here so a later LLM configure flips it via the parent effect's tracking,
   // without an engine restart.
   if (!isLlmReady('aiChat')) return false
@@ -837,20 +876,24 @@ function scheduleGeneration(delay: number, reason: TriggerReason, preCutAt: numb
     scheduledTimer = null
     const r = scheduledReason ?? reason
     scheduledReason = null
-    void runGeneration(r, preCutAt)
+    void runGeneration(r, cut)
   }, delay)
   return true
 }
 
-/** Scene-cut listener: lets a big picture change fill a silence, at most once a minute. */
+/** Scene-cut listener: records the cut for the freshness check, and lets a big picture change fill a silence, at most once a minute. */
 function handleSceneCut(event: SceneCutEvent): void {
+  lastSceneCutAt = event.at
   if (!visionEnabled.value || !visionVisualTrigger.value) return
   if (inflight || scheduledTimer || sttTranscriptBuffer.value.trim()) return
   const now = Date.now()
+  // STT stamps speech on its first interim, before any final reaches the buffer.
+  const speechStartedAt = sttUtteranceStartedAt.value
+  if (speechStartedAt !== null && now - speechStartedAt < VISUAL_SPEECH_GRACE_MS) return
   const lastGenAt = aiChatLastGenAt.value
   if (lastGenAt !== null && now - lastGenAt < VISUAL_MIN_INTERVAL_MS) return
   if (lastVisualTriggerAt !== null && now - lastVisualTriggerAt < VISUAL_MIN_INTERVAL_MS) return
-  if (!scheduleGeneration(DEBOUNCE_READY_MS, 'visual', event.before?.at ?? null)) return
+  if (!scheduleGeneration(DEBOUNCE_READY_MS, 'visual', { at: event.at, beforeAt: event.before?.at ?? null })) return
   lastVisualTriggerAt = now
 }
 
@@ -934,7 +977,13 @@ export function startAiChatEngine(): void {
   sttTranscriptBuffer.value = ''
   sttEndpointReached.value = false
   sttUtteranceStartedAt.value = null
+  lastSceneCutAt = null
 
+  // A vision note belongs to the model that produced it; the next round re-checks the new one.
+  stopProviderEffect = effect(() => {
+    void activeLlmProvider.value
+    aiChatVisionNote.value = ''
+  })
   unsubscribeSceneCut = onSceneCut(handleSceneCut)
   unsubscribeDanmaku = subscribeDanmaku({
     onMessage: (ev: DanmakuEvent) => {
@@ -1000,6 +1049,8 @@ export function stopAiChatEngine(): void {
     stopBufferEffect()
     stopBufferEffect = null
   }
+  stopProviderEffect?.()
+  stopProviderEffect = null
   clearScheduled()
   aiChatStatus.value = 'disabled'
 }

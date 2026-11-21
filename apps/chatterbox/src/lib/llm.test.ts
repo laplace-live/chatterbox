@@ -141,6 +141,7 @@ describe('classifyMediaRejection', () => {
     ['HTTP 400 : this model does not support vision', 'image'],
     ['HTTP 400 : Multimodal input is not supported', 'image'],
     ['HTTP 413 Payload Too Large', 'payload'],
+    ['HTTP 413 Payload Too Large: image exceeds the size limit', 'payload'],
     ['HTTP 413 ', 'payload'],
     ['HTTP 400 : response_format json_schema cannot be combined with image input', null],
     ['HTTP 400 : max_tokens is too large', null],

@@ -204,7 +204,7 @@ export interface ChatCompletionOptions {
   onPromptTokens?: (tokens: number) => void
 }
 
-/** Which media an HTTP 4xx rejection blames ('video' wins over 'image'; 'payload' = a bare 413); null otherwise or for response_format errors. */
+/** Which media an HTTP 4xx rejection blames ('video' wins; 'payload' = any other 413); null otherwise or for response_format errors. */
 export function classifyMediaRejection(err: unknown): 'video' | 'image' | 'payload' | null {
   if (!(err instanceof Error)) return null
   // Anchored: a 5xx body can quote an upstream 4xx.
@@ -213,8 +213,9 @@ export function classifyMediaRejection(err: unknown): 'video' | 'image' | 'paylo
   const text = err.message.toLowerCase()
   if (text.includes('response_format')) return null
   if (text.includes('video')) return 'video'
-  if (/image|vision|multi-?modal/.test(text)) return 'image'
-  return status === '413' ? 'payload' : null
+  // A too-large image is still a supported one.
+  if (status === '413') return 'payload'
+  return /image|vision|multi-?modal/.test(text) ? 'image' : null
 }
 
 /**

@@ -131,7 +131,9 @@ async function runCaption(target: CaptionConfig, runSession: number): Promise<Sc
     return sceneNotes.peek().at(-1) ?? null
   } catch (err) {
     if (runSession !== session) return null
-    if (classifyMediaRejection(err)) {
+    const rejection = classifyMediaRejection(err)
+    // A 413 means too large, not unsupported: leave it retryable.
+    if (rejection === 'image' || rejection === 'video') {
       unsupportedKey = target.key
       appendLog('❌ [画面识别] 画面描述模型不支持图片输入')
     } else {
@@ -198,17 +200,26 @@ export function stopCaptioner(): void {
   captionerStatus.value = 'off'
 }
 
-/** Newest note ≤ maxAgeMs old; otherwise run one caption now, bounded by timeoutMs (default 8000). null when not running, unavailable or failed. */
-export async function requestFreshScene(maxAgeMs: number, timeoutMs = 8_000): Promise<SceneNote | null> {
+/** Caption now; when the call joined in flight captured its picture before `notBefore`, caption once more. */
+async function captionSince(notBefore: number): Promise<SceneNote | null> {
+  const joined = await caption()
+  if (!joined || joined.at >= notBefore) return joined
+  const next = await caption()
+  return next && next.at >= notBefore ? next : null
+}
+
+/** Newest note of a picture captured at or after `notBefore`, else a new caption, bounded by timeoutMs (default 8000). null when not running, unavailable or failed. */
+export async function requestFreshScene(notBefore: number, timeoutMs = 8_000): Promise<SceneNote | null> {
   if (startCount === 0) return null
-  const fresh = latestScene(maxAgeMs, Date.now())
+  const now = Date.now()
+  const fresh = latestScene(now - notBefore, now)
   if (fresh) return fresh
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<null>(resolve => {
     timer = setTimeout(() => resolve(null), timeoutMs)
   })
   try {
-    return await Promise.race([caption(), timeout])
+    return await Promise.race([captionSince(notBefore), timeout])
   } finally {
     clearTimeout(timer)
   }

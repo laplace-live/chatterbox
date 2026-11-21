@@ -150,7 +150,7 @@ describe('caption request', () => {
     const h = await createHarness([frame(START - 6_000, 0)])
     h.memory.recordScene('主播在聊天', 'caption', START - 20_000)
     h.startCaptioner()
-    const pending = h.requestFreshScene(15_000)
+    const pending = h.requestFreshScene(h.clock.now() - 15_000)
     await flush()
     expect(h.calls).toHaveLength(1)
     const { messages, signal, ...settings } = h.calls[0].options
@@ -184,7 +184,7 @@ describe('caption request', () => {
     h.model.value = ' vision-pro '
     h.memory.recordScene('很久以前的画面', 'caption', START - 120_000)
     h.startCaptioner()
-    void h.requestFreshScene(15_000)
+    void h.requestFreshScene(h.clock.now() - 15_000)
     await flush()
     expect(h.calls[0].options.model).toBe('vision-pro')
     expect(h.calls[0].options.messages[1].content).toEqual([
@@ -207,7 +207,7 @@ describe('scene notes', () => {
   ])('records %j as a caption note', async (reply, scene) => {
     const h = await createHarness()
     h.startCaptioner()
-    const pending = h.requestFreshScene(15_000)
+    const pending = h.requestFreshScene(h.clock.now() - 15_000)
     await flush()
     h.calls[0].reply(reply)
     expect(await pending).toEqual({ at: START, scene, source: 'caption' })
@@ -218,7 +218,7 @@ describe('scene notes', () => {
   test.each(['', '{"scene": "", "event": ""}'])('records nothing for %j', async reply => {
     const h = await createHarness()
     h.startCaptioner()
-    const pending = h.requestFreshScene(15_000)
+    const pending = h.requestFreshScene(h.clock.now() - 15_000)
     await flush()
     h.calls[0].reply(reply)
     expect(await pending).toBeNull()
@@ -236,12 +236,28 @@ describe('triggers', () => {
     await flush()
     await h.clock.advance(10_000)
     h.cut()
-    const joined = h.requestFreshScene(15_000)
+    const joined = h.requestFreshScene(h.clock.now() - 15_000)
     await flush()
     expect(h.calls).toHaveLength(1)
     h.calls[0].reply('{"scene": "画面一"}')
     expect(await joined).toEqual({ at: START, scene: '画面一', source: 'caption' })
     expect(h.calls).toHaveLength(1)
+  })
+
+  test('a joined call of a picture from before `notBefore` is followed by one more caption', async () => {
+    const h = await createHarness()
+    h.startCaptioner()
+    h.cut()
+    await flush()
+    await h.clock.advance(2_000)
+    const pending = h.requestFreshScene(h.clock.now() - 500)
+    await flush()
+    expect(h.calls).toHaveLength(1)
+    h.calls[0].reply('{"scene": "切换前"}')
+    await flush()
+    expect(h.calls).toHaveLength(2)
+    h.calls[1].reply('{"scene": "切换后"}')
+    expect(await pending).toEqual({ at: START + 2_000, scene: '切换后', source: 'caption' })
   })
 
   test('captions a scene cut at most once per 10 s', async () => {
@@ -278,7 +294,7 @@ describe('triggers', () => {
     h.startCaptioner()
     h.cut()
     await h.clock.advance(60_000)
-    expect(await h.requestFreshScene(15_000)).toBeNull()
+    expect(await h.requestFreshScene(h.clock.now() - 15_000)).toBeNull()
     expect(h.calls).toHaveLength(0)
     expect(h.captionerStatus.value).toBe('idle')
     h.availability.value = 'ok'
@@ -302,7 +318,7 @@ describe('failures', () => {
     expect(h.log.mock.calls).toEqual([[UNSUPPORTED]])
     await h.clock.advance(120_000)
     h.cut()
-    expect(await h.requestFreshScene(15_000)).toBeNull()
+    expect(await h.requestFreshScene(h.clock.now() - 15_000)).toBeNull()
     expect(h.calls).toHaveLength(1)
     change(h)
     expect(h.captionerStatus.value).toBe('idle')
@@ -310,6 +326,20 @@ describe('failures', () => {
     await flush()
     expect(h.calls).toHaveLength(2)
     expect(h.log).toHaveBeenCalledTimes(1)
+  })
+
+  test('an oversized request (HTTP 413) is a failed call, not an unsupported model', async () => {
+    const h = await createHarness()
+    h.startCaptioner()
+    h.cut()
+    await flush()
+    h.calls[0].fail(new Error('HTTP 413 Payload Too Large: image exceeds the size limit'))
+    await flush()
+    expect(h.captionerStatus.value).toBe('error')
+    await h.clock.advance(10_000)
+    h.cut()
+    await flush()
+    expect(h.calls).toHaveLength(2)
   })
 
   test('switching back to a rejected model tries it again', async () => {
@@ -399,7 +429,7 @@ describe('failures', () => {
     expect(h.captionerStatus.value).toBe('error')
     h.cut()
     await h.clock.advance(60_000)
-    expect(await h.requestFreshScene(15_000)).toBeNull()
+    expect(await h.requestFreshScene(h.clock.now() - 15_000)).toBeNull()
     h.provider.value = { ...PROVIDER, apiKey: '' }
     expect(h.captionerStatus.value).toBe('error')
     expect(h.calls).toHaveLength(0)
@@ -412,7 +442,7 @@ describe('failures', () => {
 describe('requestFreshScene', () => {
   test('returns null while stopped', async () => {
     const h = await createHarness()
-    expect(await h.requestFreshScene(15_000)).toBeNull()
+    expect(await h.requestFreshScene(h.clock.now() - 15_000)).toBeNull()
     expect(h.calls).toHaveLength(0)
   })
 
@@ -420,7 +450,11 @@ describe('requestFreshScene', () => {
     const h = await createHarness()
     h.memory.recordScene('主播在聊天', 'chat', START - 5_000)
     h.startCaptioner()
-    expect(await h.requestFreshScene(15_000)).toEqual({ at: START - 5_000, scene: '主播在聊天', source: 'chat' })
+    expect(await h.requestFreshScene(h.clock.now() - 15_000)).toEqual({
+      at: START - 5_000,
+      scene: '主播在聊天',
+      source: 'chat',
+    })
     expect(h.calls).toHaveLength(0)
   })
 
@@ -428,8 +462,8 @@ describe('requestFreshScene', () => {
     const h = await createHarness()
     h.memory.recordScene('主播在聊天', 'chat', START - 5_000)
     h.startCaptioner()
-    const first = h.requestFreshScene(3_000)
-    const second = h.requestFreshScene(3_000)
+    const first = h.requestFreshScene(h.clock.now() - 3_000)
+    const second = h.requestFreshScene(h.clock.now() - 3_000)
     await flush()
     expect(h.calls).toHaveLength(1)
     h.calls[0].reply('{"scene": "主播开始做饭", "event": "端出了一盘菜"}')
@@ -442,7 +476,7 @@ describe('requestFreshScene', () => {
     const h = await createHarness()
     h.startCaptioner()
     let settled = false
-    const pending = h.requestFreshScene(15_000, 8_000).finally(() => {
+    const pending = h.requestFreshScene(h.clock.now() - 15_000, 8_000).finally(() => {
       settled = true
     })
     await h.clock.advance(7_999)

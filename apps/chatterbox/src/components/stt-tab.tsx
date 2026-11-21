@@ -551,6 +551,8 @@ export function SttTab() {
       translationModeRef.current = translationEnabledForHook
       sessionTarget.current = targetLanguage
       sessionHasSource.current = !isOpenAiCompat
+      // An earlier session's interim-only utterance never finalized; don't let it stretch the next frame window.
+      if (!sttTranscriptBuffer.peek()) sttUtteranceStartedAt.value = null
       // Engine acquires audio/socket directly and reports failure via onError.
       recording.start()
     } else if (state.value === 'starting') {
