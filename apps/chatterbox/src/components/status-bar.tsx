@@ -99,10 +99,12 @@ export function StatusBarCollapsible({ children }: { children: ComponentChildren
 export function StatusBarFold({
   collapsed,
   onToggle,
+  label = '主播信息',
   children,
 }: {
   collapsed: boolean
   onToggle: () => void
+  label?: string
   children: ComponentChildren
 }) {
   const groupRef = useRef<HTMLDivElement>(null)
@@ -130,8 +132,10 @@ export function StatusBarFold({
     if (from === to) {
       group.style.transition = ''
       group.style.width = ''
+      group.style.overflow = ''
       return
     }
+    group.style.overflow = 'hidden'
     group.style.transition = 'none'
     group.style.width = `${from}px`
     void group.offsetWidth
@@ -150,6 +154,7 @@ export function StatusBarFold({
       cleanup()
       group.style.transition = ''
       group.style.width = ''
+      group.style.overflow = ''
     }
     const scheduleSettle = () => {
       clearTimeout(timer)
@@ -184,7 +189,7 @@ export function StatusBarFold({
         ref={groupRef}
         data-status-bar-fold=''
         inert={collapsed}
-        class={cn('min-w-0 overflow-hidden', collapsed ? 'w-0' : 'w-auto')}
+        class={cn('min-w-0', collapsed ? 'w-0 overflow-hidden' : 'w-auto')}
       >
         <div ref={contentRef} class='flex w-max items-center gap-1'>
           {children}
@@ -194,8 +199,8 @@ export function StatusBarFold({
         type='button'
         id='laplace-status-bar-fold'
         onClick={toggle}
-        title={collapsed ? '展开主播信息' : '折叠主播信息'}
-        aria-label={collapsed ? '展开主播信息' : '折叠主播信息'}
+        title={collapsed ? `展开${label}` : `折叠${label}`}
+        aria-label={collapsed ? `展开${label}` : `折叠${label}`}
         aria-expanded={!collapsed}
         class={cn(STATUS_BAR_BUTTON_CLASS, 'w-7 justify-center px-0', 'bg-ga6')}
       >
