@@ -62,11 +62,12 @@ export function isLlmReady(feature: LlmPromptFeature): boolean {
 /**
  * Rewrite the user's text via the configured LLM; returns trimmed, dequoted output.
  * Throws specific user-facing errors when unusable; AbortError propagates untouched.
+ * A non-blank `opts.scene` (text note of the stream picture) is appended to the system prompt as context.
  */
 export async function polishWithLlm(
   feature: LlmPromptFeature,
   userText: string,
-  opts: { signal?: AbortSignal } = {}
+  opts: { signal?: AbortSignal; scene?: string } = {}
 ): Promise<string> {
   const systemPrompt = getActiveLlmPrompt(feature)
   if (!systemPrompt.trim()) {
@@ -80,12 +81,16 @@ export async function polishWithLlm(
   const provider = activeLlmProvider.value
   if (!provider) throw new Error('未配置 LLM 服务商')
 
+  const scene = opts.scene?.trim()
   const response = await chatCompletion({
     base: provider.apiBase,
     apiKey: provider.apiKey,
     model: provider.model,
     messages: [
-      { role: 'system', content: systemPrompt },
+      {
+        role: 'system',
+        content: scene ? `${systemPrompt}\n\n当前直播画面（仅供理解语境，不要描述画面）：${scene}` : systemPrompt,
+      },
       { role: 'user', content: trimmedUser },
     ],
     signal: opts.signal,

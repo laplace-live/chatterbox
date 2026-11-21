@@ -5,6 +5,7 @@ import type { DanmakuEvent } from './danmaku-stream'
 
 import * as blacklist from './message-blacklist'
 import * as utils from './utils'
+import * as sceneMemory from './vision/scene-memory'
 
 interface Decision {
   send: boolean
@@ -45,12 +46,17 @@ async function createHarness() {
     invisibleChar: signal('\u200b'),
     randomChar: signal(false),
     randomColor: signal(false),
+    visionEnabled: signal(false),
   }
   const decisionSettings = { autoBlendDecisionEnabled: signal(true) }
-  const decide = mock(async (_text: string, _context: string[], _signal?: AbortSignal): Promise<Decision> => {
-    return { send: true, reason: '符合当前判断规则' }
-  })
-  const polish = mock(async (_slot: string, text: string, _options?: { signal?: AbortSignal }) => `${text}！`)
+  const decide = mock(
+    async (_text: string, _context: string[], _signal?: AbortSignal, _scene?: string): Promise<Decision> => {
+      return { send: true, reason: '符合当前判断规则' }
+    }
+  )
+  const polish = mock(
+    async (_slot: string, text: string, _options?: { signal?: AbortSignal; scene?: string }) => `${text}！`
+  )
   const enqueue = mock(
     async (
       _text: string,
@@ -104,6 +110,7 @@ async function createHarness() {
     './send-queue': { enqueueDanmaku: enqueue, SendPriority: { AUTO: 1 } },
     './store': settings,
     './utils': utils,
+    './vision/scene-memory': sceneMemory,
     clock: {
       Date: { now: () => now },
       setInterval: (callback: () => void) => {
@@ -167,11 +174,13 @@ async function createHarness() {
       now += ms
       tick?.()
     },
+    recordScene: (scene: string, ageMs: number) => sceneMemory.recordScene(scene, 'chat', now - ageMs),
   }
 }
 
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup()
+  sceneMemory.clearScenes()
 })
 
 describe('automatic blend decision gate', () => {
@@ -426,5 +435,38 @@ describe('automatic blend decision gate', () => {
     expect(h.enqueue).toHaveBeenCalledTimes(1)
     expect(h.enqueue.mock.calls[0]?.[0]).toBe('新趋势')
     expect(h.engine.decisionPending.value).toBe(false)
+  })
+})
+
+describe('automatic blend stream scene', () => {
+  test('passes the fresh scene note to the decision and the YOLO polish when vision is on', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.autoBlendYolo.value = true
+    h.recordScene('主播在打 Boss', 30_000)
+    h.qualify()
+    await flush()
+    expect(h.decide.mock.calls[0]?.[3]).toBe('主播在打 Boss')
+    expect(h.polish).toHaveBeenCalledWith('autoBlend', '好耶', {
+      signal: h.decide.mock.calls[0]?.[2],
+      scene: '主播在打 Boss',
+    })
+    expect(h.enqueue.mock.calls[0]?.[0]).toBe('好耶！')
+  })
+
+  test.each([
+    ['vision is off', false, 0],
+    ['no scene was noted', true, null],
+    ['the newest note is over 30 s old', true, 30_001],
+  ] as const)('passes no scene when %s', async (_case, enabled, ageMs) => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = enabled
+    h.settings.autoBlendYolo.value = true
+    if (ageMs !== null) h.recordScene('主播在打 Boss', ageMs)
+    h.qualify()
+    await flush()
+    expect(h.decide.mock.calls[0]?.[3]).toBeUndefined()
+    expect(h.polish.mock.calls[0]?.[2]?.scene).toBeUndefined()
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
   })
 })

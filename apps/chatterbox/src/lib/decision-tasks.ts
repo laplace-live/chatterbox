@@ -5,7 +5,8 @@ import { resolveDecisionConfig } from './decision-settings'
 export async function decideAutoBlendCandidate(
   candidate: string,
   recentMessages: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  scene?: string
 ): Promise<{ send: boolean; reason: string }> {
   const config = resolveDecisionConfig()
   if (typeof config === 'string') throw new Error(config)
@@ -13,7 +14,7 @@ export async function decideAutoBlendCandidate(
   const { sendProbability } = await evaluateDecision({
     provider,
     preset,
-    state: { candidate, recentMessages },
+    state: { candidate, recentMessages, scene },
     signal,
   })
   // Floor to 0.1% so a probability just under the threshold never prints as equal to it.

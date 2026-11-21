@@ -68,6 +68,7 @@ import {
   sttProvider,
   sttRunning,
   sttTranscriptBuffer,
+  sttUtteranceStartedAt,
   sttWrapBrackets,
 } from '../lib/store'
 import { translationCapabilities } from '../lib/stt/capabilities'
@@ -340,6 +341,10 @@ export function SttTab() {
     if (translationModeRef.current && sessionHasSource.current && chunks.some(chunk => chunk.kind === 'original')) {
       sourceFinalText.value = (sourceFinalText.peek() + original.newFinal).slice(-500)
       sourceNonFinalText.value = original.nonFinal
+    }
+    // Non-final text counts too: AI 融入 frames the whole utterance, which starts before its first final.
+    if (sttUtteranceStartedAt.peek() === null && (original.newFinal + original.nonFinal).trim()) {
+      sttUtteranceStartedAt.value = Date.now()
     }
     if (original.newFinal) sttTranscriptBuffer.value += original.newFinal
   }

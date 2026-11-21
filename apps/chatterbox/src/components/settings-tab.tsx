@@ -83,6 +83,7 @@ import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
 import { ScrollArea } from './ui/scroll-area'
 import { Separator } from './ui/separator'
+import { VisionSettings } from './vision-settings'
 
 const SYNC_INTERVAL = 10 * 60 * 1000
 
@@ -104,6 +105,12 @@ const ADD_ROW_CLASS = 'flex gap-1 items-center flex-wrap'
 const FILL_INPUT_CLASS = 'flex-1 min-w-[80px]'
 
 const DELETE_BTN_CLASS = 'text-[red]'
+
+const MODALITY_TAGS = [
+  { modality: 'image', label: '图片' },
+  { modality: 'video', label: '视频' },
+] as const
+const MODALITY_TAG_CLASS = 'rounded border border-solid border-ga3 px-1 text-[11px] leading-tight'
 
 interface RemoteKeywords {
   global?: { keywords?: Record<string, string> }
@@ -302,13 +309,16 @@ function LlmProviderSettings() {
               // Built inline: the cached list only changes on 刷新, and the Combobox handles identity changes.
               options={provider.models.map(m => {
                 const priceStr = formatLlmPricing(m.pricing)
+                const tags = MODALITY_TAGS.filter(t => m.inputModalities?.includes(t.modality)).map(t => t.label)
                 return {
                   value: m.id,
                   // Use the id, not `m.name`: friendly names are longer and push pricing off-row.
                   label: m.id,
-                  searchText: [m.id, m.name, priceStr].filter(Boolean).join(' '),
+                  // Tags are searchable, so typing 图片 lists the vision-capable models.
+                  searchText: [m.id, m.name, priceStr, ...tags].filter(Boolean).join(' '),
                   model: m,
                   priceStr,
+                  tags,
                 }
               })}
               onChange={v => updateLlmProvider(provider.id, { model: v })}
@@ -321,7 +331,16 @@ function LlmProviderSettings() {
               renderItem={opt => (
                 <div class='flex flex-col gap-0.5'>
                   <span class={cn('break-all', opt.value === provider.model && 'font-bold')}>{opt.value}</span>
-                  {opt.priceStr && <span class='text-ga6'>{opt.priceStr}</span>}
+                  {(opt.priceStr || opt.tags.length > 0) && (
+                    <span class='flex flex-wrap items-center gap-1 text-ga6'>
+                      {opt.priceStr && <span>{opt.priceStr}</span>}
+                      {opt.tags.map(tag => (
+                        <span key={tag} class={MODALITY_TAG_CLASS}>
+                          {tag}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
               )}
             />
@@ -1586,6 +1605,8 @@ export function SettingsTab() {
       </AccordionItem>
 
       <DecisionModelSettings />
+
+      <VisionSettings />
 
       <AccordionItem
         open={settingsAutoSeekOpen.value}

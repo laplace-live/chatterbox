@@ -2,15 +2,20 @@ import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 
 import {
+  type AiChatFrameThumb,
   type AiChatHistoryEntry,
   acceptCandidate,
   aiChatHistory,
   aiChatLastGenAt,
+  aiChatLastPromptTokens,
+  aiChatModelRejectsImages,
   aiChatStatus,
   aiChatViewerCount,
+  aiChatVisionNote,
   clearAiChatHistory,
   pendingCandidates,
   skipCandidate,
+  TEXT_ONLY_MODEL_NOTE,
   triggerNow,
 } from '../lib/ai-chat'
 import { describeLlmGap } from '../lib/llm-tasks'
@@ -26,7 +31,12 @@ import {
   llmActivePromptAiChat,
   llmPromptsAiChat,
   sttRunning,
+  visionEnabled,
+  visionMode,
 } from '../lib/store'
+import { describeAvailability, describeCaptionerStatus } from '../lib/vision/availability'
+import { captionerStatus } from '../lib/vision/captioner'
+import { visionAvailability } from '../lib/vision/frame-sampler'
 import { PromptPicker } from './prompt-picker'
 import { AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { Button } from './ui/button'
@@ -68,6 +78,33 @@ function truncateForRow(text: string, max = 60): string {
   return `${trimmed.slice(0, max)}…`
 }
 
+/** `画面：` readout; in direct mode a model that can't take images outranks frame availability. */
+function visionFrameText(): string {
+  if (visionMode.value === 'direct') {
+    if (aiChatVisionNote.value) return aiChatVisionNote.value
+    if (aiChatModelRejectsImages()) return TEXT_ONLY_MODEL_NOTE
+  }
+  return describeAvailability(visionAvailability.value)
+}
+
+/** Thumbnails of the frames an AI 融入 call carried. */
+function FrameThumbs({ frames }: { frames: AiChatFrameThumb[] }) {
+  if (frames.length === 0) return null
+  return (
+    <div class='mt-0.5 flex flex-wrap gap-1'>
+      {frames.map((frame, i) => (
+        <img
+          key={i}
+          src={frame.thumbUrl}
+          alt={`直播画面（${frame.label}）`}
+          title={frame.label}
+          class='block h-9 rounded-sm'
+        />
+      ))}
+    </div>
+  )
+}
+
 function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
   // Empty message = skip (⏭); non-empty + !sent = enqueue failed (❌).
   const isSkip = !entry.message
@@ -84,6 +121,8 @@ function HistoryRow({ entry }: { entry: AiChatHistoryEntry }) {
         )}
       </div>
       {entry.transcript && <div class='break-all text-ga6'>主播: {truncateForRow(entry.transcript, 80)}</div>}
+      {entry.scene && <div class='break-all text-ga6'>画面: {entry.scene}</div>}
+      <FrameThumbs frames={entry.frames} />
     </div>
   )
 }
@@ -149,6 +188,14 @@ export function AiChatSection() {
             }}
             label='启用 AI 融入'
           />
+          <Checkbox
+            id='aiChatVision'
+            checked={visionEnabled.value}
+            onInput={e => {
+              visionEnabled.value = e.currentTarget.checked
+            }}
+            label='看画面'
+          />
           {/* Auto / Review toggle; filled when active. */}
           <Button
             variant={autoSend ? 'default' : 'outline'}
@@ -182,6 +229,24 @@ export function AiChatSection() {
           <span>本次观众消息：{aiChatViewerCount.value}</span>
           <span>·</span>
           <span>上次生成：{relativeTime(aiChatLastGenAt.value, now.value)}</span>
+          {visionEnabled.value && (
+            <>
+              <span>·</span>
+              <span>画面：{visionFrameText()}</span>
+              {visionMode.value === 'caption' && (
+                <>
+                  <span>·</span>
+                  <span>描述：{describeCaptionerStatus(captionerStatus.value)}</span>
+                </>
+              )}
+            </>
+          )}
+          {aiChatLastPromptTokens.value !== null && (
+            <>
+              <span>·</span>
+              <span>输入 {aiChatLastPromptTokens.value} tokens</span>
+            </>
+          )}
         </div>
 
         {/* Latest outcome inline — skips otherwise only live in the collapsed 最近决策 list. */}
@@ -251,10 +316,17 @@ export function AiChatSection() {
                             跳过
                           </Button>
                         </div>
+                        {cand.stale && (
+                          <div class='text-[#c98a00]' title='生成期间画面变化较大，这条弹幕可能已经过时'>
+                            ⚠ 画面已变化
+                          </div>
+                        )}
                         {cand.transcript && (
                           <div class='break-all text-ga6'>主播: {truncateForRow(cand.transcript, 80)}</div>
                         )}
                         {cand.decision.reason && <div class='break-all text-ga6'>理由: {cand.decision.reason}</div>}
+                        {cand.decision.scene && <div class='break-all text-ga6'>画面: {cand.decision.scene}</div>}
+                        <FrameThumbs frames={cand.frames} />
                       </div>
                     )}
                   </div>
@@ -393,7 +465,8 @@ export function AiChatSection() {
             <div class='text-ga6'>
               观众触发：累积一定数量的新观众弹幕后自动调用 LLM。观众窗口：每次提示词中携带的最近 N
               条观众消息。上下文上限：发送到 LLM 的上下文（历史 +
-              观众）字符总数预算。未启动转录时仅由观众弹幕与「立即生成」触发。
+              观众）字符总数预算。未启动转录时仅由观众弹幕、「立即生成」与画面变化（需在「设置 →
+              画面识别」中开启）触发。
             </div>
           </AccordionContent>
         </AccordionItem>

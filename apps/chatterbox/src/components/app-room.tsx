@@ -21,6 +21,7 @@ import {
   optimizeLayout,
 } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
+import { startVisionController, stopVisionController } from '../lib/vision/controller'
 import { AudioOnlyControls } from './audio-only-controls'
 import { AudioOnlyModeSelect } from './audio-only-mode-select'
 import { Configurator, clampWidth } from './configurator'
@@ -88,6 +89,12 @@ export function AppRoom() {
   useEffect(() => {
     startAutoSeek()
     return () => stopAutoSeek()
+  }, [])
+
+  // Signal-driven: samples frames only while vision is on and AI 融入 / 自动融入 can use them.
+  useEffect(() => {
+    startVisionController()
+    return () => stopVisionController()
   }, [])
 
   // One-shot: polls for `livePlayer`, switches to 原画, stops. Runtime toggling intentionally

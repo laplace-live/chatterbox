@@ -20,6 +20,14 @@ export interface LlmModel {
   name?: string
   /** Per-token pricing when the API exposes it. */
   pricing?: LlmModelPricing
+  /** Input modalities from OpenRouter-style `architecture.input_modalities`, e.g. ['text', 'image']. */
+  inputModalities?: string[]
+}
+
+/** Whether `modelId`'s cached entry lists input modalities without 'image'; false when unknown. */
+export function modelRejectsImages(models: readonly LlmModel[], modelId: string): boolean {
+  const modalities = models.find(model => model.id === modelId)?.inputModalities
+  return !!modalities?.length && !modalities.includes('image')
 }
 
 /** Format per-token pricing as a compact USD-per-1M string; null when nothing usable. */
@@ -57,6 +65,15 @@ function parsePricing(raw: unknown): LlmModelPricing | undefined {
   if (prompt !== undefined) out.prompt = prompt
   if (completion !== undefined) out.completion = completion
   return out
+}
+
+function parseInputModalities(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const modalities: string[] = []
+  for (const entry of raw) {
+    if (typeof entry === 'string' && entry.trim()) modalities.push(entry.trim())
+  }
+  return modalities.length > 0 ? modalities : undefined
 }
 
 /** GET `${base}/models` and return the sorted model list; throws Error with user-readable message. */
@@ -131,6 +148,8 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
     if (name && name !== id) model.name = name
     const pricing = parsePricing(entry.pricing)
     if (pricing) model.pricing = pricing
+    const inputModalities = parseInputModalities(readPath(entry, 'architecture', 'input_modalities'))
+    if (inputModalities) model.inputModalities = inputModalities
     models.push(model)
   }
   if (models.length === 0) throw new Error('返回模型列表为空')
@@ -140,10 +159,17 @@ export async function fetchLlmModels(base: string, apiKey: string): Promise<LlmM
   return models
 }
 
+/** One OpenAI-style multimodal content part. */
+export type LlmContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } }
+  | { type: 'video_url'; video_url: { url: string } }
+
 /** One OpenAI-style chat message; only `role` + `content` are used. */
 export interface LlmChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  /** Plain text, or parts for multimodal input. */
+  content: string | LlmContentPart[]
 }
 
 /** OpenAI-style structured-output directive. Vendor support varies (DeepSeek 400s on `json_schema`, only takes `json_object`), so still instruct JSON via the system prompt and parse defensively. */
@@ -174,6 +200,21 @@ export interface ChatCompletionOptions {
   responseFormat?: ChatCompletionResponseFormat
   /** Abort signal to cancel in-flight requests. */
   signal?: AbortSignal
+  /** Receives `usage.prompt_tokens` when the response reports it. */
+  onPromptTokens?: (tokens: number) => void
+}
+
+/** Which media an HTTP 4xx rejection blames ('video' wins over 'image'; 'payload' = a bare 413); null otherwise or for response_format errors. */
+export function classifyMediaRejection(err: unknown): 'video' | 'image' | 'payload' | null {
+  if (!(err instanceof Error)) return null
+  // Anchored: a 5xx body can quote an upstream 4xx.
+  const status = /^HTTP (4\d\d)\b/.exec(err.message)?.[1]
+  if (!status) return null
+  const text = err.message.toLowerCase()
+  if (text.includes('response_format')) return null
+  if (text.includes('video')) return 'video'
+  if (/image|vision|multi-?modal/.test(text)) return 'image'
+  return status === '413' ? 'payload' : null
 }
 
 /**
@@ -251,6 +292,9 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<strin
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`返回内容不是合法 JSON：${msg}`)
   }
+
+  const promptTokens = readPath(json, 'usage', 'prompt_tokens')
+  if (typeof promptTokens === 'number') opts.onPromptTokens?.(promptTokens)
 
   // OpenAI shape: { choices: [{ message: { role, content } }] }; empty choices (e.g. filtered) is an error.
   const choices = readPath(json, 'choices')

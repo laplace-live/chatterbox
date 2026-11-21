@@ -228,6 +228,18 @@ export function readPath(value: unknown, ...keys: string[]): unknown {
   return current
 }
 
+/** JSON.parse of the outermost `{…}` in `text`, for JSON wrapped in prose or a code fence; undefined when absent or invalid. */
+export function parseEmbeddedJson(text: string): unknown {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end <= start) return undefined
+  try {
+    return JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return undefined
+  }
+}
+
 /** `module_author` of the `MODULE_TYPE_AUTHOR` entry in an opus `__INITIAL_STATE__`; `pub_ts` is Unix seconds. */
 function findOpusModuleAuthor(initialState: unknown): unknown {
   const modules = readPath(initialState, 'detail', 'modules')

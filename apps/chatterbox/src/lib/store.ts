@@ -251,6 +251,31 @@ export const aiChatViewerWindow = gmSignal('aiChatViewerWindow', 50)
 export const aiChatViewerInterval = gmSignal('aiChatViewerInterval', 10)
 export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
 
+/** How player frames reach AI 融入: as images (`direct`) or as notes from a caption model (`caption`). */
+export type VisionMode = 'direct' | 'caption'
+/** Master switch for stream vision (看画面). */
+export const visionEnabled = gmSignal('visionEnabled', false)
+export const visionMode = gmSignal<VisionMode>('visionMode', 'direct')
+/** Max frames per AI 融入 call; clamp with `clampVisionFrames`. */
+export const visionMaxFrames = gmSignal('visionMaxFrames', 2)
+/** Long edge (px) of uploaded frames; coerce with `resolveVisionEdge`. */
+export const visionMaxEdge = gmSignal('visionMaxEdge', 768)
+/** Let a big scene change during silence trigger an AI 融入 generation. */
+export const visionVisualTrigger = gmSignal('visionVisualTrigger', false)
+/** Experimental: send a short clip (`video_url`) instead of frames in direct mode. */
+export const visionClipEnabled = gmSignal('visionClipEnabled', false)
+/** LLM provider profile id for caption mode; '' = none chosen. */
+export const visionCaptionProviderId = gmSignal('visionCaptionProviderId', '')
+/** Caption model override; '' = the profile's own `model`. */
+export const visionCaptionModel = gmSignal('visionCaptionModel', '')
+export const settingsVisionOpen = gmSignal('settingsVisionOpen', false)
+/** Caption provider profile, or null when unset or stale. */
+export const visionCaptionProvider = computed<LlmProviderProfile | null>(() => {
+  const id = visionCaptionProviderId.value
+  if (!id) return null
+  return llmProviders.value.find(p => p.id === id) ?? null
+})
+
 // Speech-to-text settings: provider-specific credentials and models, shared capture and output.
 export const sttProvider = gmSignal<SttProvider>('sttProvider', 'soniox')
 
@@ -341,6 +366,8 @@ export const autoSeekCurrentRate = signal(1)
 // Ephemeral STT → AI Chat bridge; `sttEndpointReached` flips on Soniox's `<end>` token. Kept out of GM so a reload mid-stream doesn't leave a stale buffer for the next mount.
 export const sttTranscriptBuffer = signal('')
 export const sttEndpointReached = signal(false)
+/** Wall-clock ms of the first STT chunk since AI 融入 last consumed the transcript; null when none. */
+export const sttUtteranceStartedAt = signal<number | null>(null)
 
 let sendStateRestored = false
 let autoBlendStateRestored = false

@@ -36,8 +36,10 @@ import {
   invisibleChar,
   randomChar,
   randomColor,
+  visionEnabled,
 } from './store'
 import { addRandomCharacter, trimDanmakuByUnits } from './utils'
+import { latestScene } from './vision/scene-memory'
 
 interface Counter {
   uniqueUids: Set<string>
@@ -77,6 +79,8 @@ const COOLDOWN_FLOOR_SEC = 2
 const COOLDOWN_CEILING_SEC = 60
 // Stealth factor: ~K/60 other messages land between our sends at any chat speed.
 const COOLDOWN_STEALTH_K = 300
+
+const SCENE_MAX_AGE_MS = 30_000
 
 const counters = new Map<string, Counter>()
 // Timestamps (ms) of every non-self danmaku; tracks ROOM activity, so includes
@@ -301,6 +305,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
         .filter(entry => entry.receivedAt >= contextCutoff)
         .map(entry => findEmoticon(entry.text)?.emoji || entry.text)
     : []
+  const scene = visionEnabled.value ? latestScene(SCENE_MAX_AGE_MS, now)?.scene : undefined
   // Engage the freeze and clear counters before the await; read cooldown fresh (not the snapshot signal)
   // so a bursty room gets an aggressive cooldown the moment it triggers.
   cooldownUntil = now + getEffectiveCooldownSec(now) * 1000
@@ -327,7 +332,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
       decisionPending.value = true
       try {
         const candidate = emote?.emoji || originalText
-        const decision = await decideAutoBlendCandidate(candidate, decisionContext, controller.signal)
+        const decision = await decideAutoBlendCandidate(candidate, decisionContext, controller.signal, scene)
         if (!isCurrent()) return
         appendLog(`🧭 自动融入决策${decision.send ? '通过' : '跳过'}：${decision.reason}：${originalText}`)
         if (!decision.send) {
@@ -352,7 +357,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
     // Re-read so turning YOLO off during the decision skips the paid polish.
     if (shouldPolish && autoBlendYolo.value) {
       try {
-        const polished = await polishWithLlm('autoBlend', originalText, { signal: controller.signal })
+        const polished = await polishWithLlm('autoBlend', originalText, { signal: controller.signal, scene })
         if (!isCurrent()) return
         if (!polished.trim()) {
           // Empty polish = refusal; bail rather than send an empty danmaku.

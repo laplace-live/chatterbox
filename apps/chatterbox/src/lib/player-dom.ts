@@ -37,6 +37,12 @@ export function isNativePlayerStreaming(video: Pick<HTMLVideoElement, 'src'>): b
   return video.src.startsWith('blob:')
 }
 
+/** The native player's `<video>` while it streams the room, else `null`. */
+export function getStreamingPlayerVideo(): HTMLVideoElement | null {
+  const video = getPlayerVideo()
+  return video && isNativePlayerStreaming(video) ? video : null
+}
+
 /** The slice of a frame `window` that {@link resolveLivePlayer} reads. */
 interface PlayerFrame {
   livePlayer?: unknown
