@@ -40,6 +40,8 @@ export default defineConfig({
           'generativelanguage.googleapis.com',
           'api.typesafe.ai',
           'openrouter.ai',
+          'api.perplexity.ai',
+          'api.cloudflare.com',
           'api.openai.com',
           'localhost',
           '127.0.0.1',
