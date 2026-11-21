@@ -885,6 +885,27 @@ describe('AI chat stream vision', () => {
     expect(h.engine.pendingCandidates.value).toMatchObject([{ decision: { message: '这个手办好看' }, stale: true }])
   })
 
+  test('a picture-dependent reply still queued when the picture cuts away is cancelled at dispatch', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.aiChatAutoSend.value = true
+    h.fakes.current = frame(10_000, 100)
+    h.fakes.latestLuma = frame(10_000, 100).luma
+    h.replies.push(reply({ message: '这个手办好看', scene: '主播展示手办', uses_scene: true }))
+    const queued = h.deferSend(false)
+    await h.triggerNow()
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
+
+    h.fakes.latestLuma = frame(11_000, 220).luma
+    expect(queued.dispatch()).toBe(false)
+    await h.settle()
+    expect(h.engine.aiChatHistory.value.at(-1)).toMatchObject({
+      message: '',
+      reason: '画面已变化，放弃可能过时的弹幕',
+      sent: false,
+    })
+  })
+
   test('a scene cut during silence schedules one visual round that runs with an empty transcript', async () => {
     const h = await createHarness()
     h.settings.visionEnabled.value = true

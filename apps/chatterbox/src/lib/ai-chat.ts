@@ -684,7 +684,12 @@ function sessionGuard(): () => boolean {
   return () => session === startedIn
 }
 
-async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Promise<boolean> {
+/** `canDispatch` is rechecked when the queue reaches the send; false cancels it. */
+async function sendAiChatDanmaku(
+  message: string,
+  isCurrent: () => boolean,
+  canDispatch: () => boolean = () => true
+): Promise<boolean> {
   try {
     const roomId = await ensureRoomId()
     // A torn-down session must not queue a send.
@@ -696,7 +701,7 @@ async function sendAiChatDanmaku(message: string, isCurrent: () => boolean): Pro
     }
     let unmark: (() => void) | undefined
     const result = await enqueueDanmaku(message, roomId, csrfToken, SendPriority.AUTO, 'ai', () => {
-      if (!isCurrent()) return false
+      if (!isCurrent() || !canDispatch()) return false
       // Mark at dispatch so cancelled queue entries never suppress viewer chat.
       unmark = markOutgoing(message)
       return true
@@ -825,8 +830,17 @@ async function runGeneration(reason: TriggerReason, cut: CutTimes | null = null)
           recordSkip(transcript, STALE_SKIP_REASON, frames, decision.scene)
           return
         }
-        const ok = await sendAiChatDanmaku(decision.message, isCurrent)
+        // Sends can wait in the queue behind STT and manual ones; the picture may cut away meanwhile.
+        let staleAtDispatch = false
+        const ok = await sendAiChatDanmaku(decision.message, isCurrent, () => {
+          staleAtDispatch = isStale(decision, result.frames, vision.textSceneAt)
+          return !staleAtDispatch
+        })
         if (!isCurrent()) return
+        if (staleAtDispatch) {
+          recordSkip(transcript, STALE_SKIP_REASON, frames, decision.scene)
+          return
+        }
         recordConvHistory(transcript, decision.message, !ok, decision.scene)
         appendHistory({
           id: nextEntryId++,
