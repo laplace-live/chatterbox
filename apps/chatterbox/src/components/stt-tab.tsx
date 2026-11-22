@@ -68,6 +68,7 @@ import {
   sttProvider,
   sttRunning,
   sttTranscriptBuffer,
+  sttUtteranceStartedAt,
   sttWrapBrackets,
 } from '../lib/store'
 import { translationCapabilities } from '../lib/stt/capabilities'
@@ -341,6 +342,10 @@ export function SttTab() {
       sourceFinalText.value = (sourceFinalText.peek() + original.newFinal).slice(-500)
       sourceNonFinalText.value = original.nonFinal
     }
+    // Non-final text counts too: AI 融入 frames the whole utterance, which starts before its first final.
+    if (sttUtteranceStartedAt.peek() === null && (original.newFinal + original.nonFinal).trim()) {
+      sttUtteranceStartedAt.value = Date.now()
+    }
     if (original.newFinal) sttTranscriptBuffer.value += original.newFinal
   }
 
@@ -546,6 +551,8 @@ export function SttTab() {
       translationModeRef.current = translationEnabledForHook
       sessionTarget.current = targetLanguage
       sessionHasSource.current = !isOpenAiCompat
+      // An earlier session's interim-only utterance never finalized; don't let it stretch the next frame window.
+      if (!sttTranscriptBuffer.peek()) sttUtteranceStartedAt.value = null
       // Engine acquires audio/socket directly and reports failure via onError.
       recording.start()
     } else if (state.value === 'starting') {

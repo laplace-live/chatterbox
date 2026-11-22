@@ -16,6 +16,7 @@ import {
   insertRandomChar,
   isHttpUrl,
   parseCustomChar,
+  parseEmbeddedJson,
   processDanmakuMessages,
   resolveInvisibleChar,
   trimDanmakuByUnits,
@@ -443,5 +444,17 @@ describe('getDanmakuUnits & trimDanmakuByUnits', () => {
         trimLines: true,
       })
     ).toBe(1)
+  })
+})
+
+describe('parseEmbeddedJson', () => {
+  test.each([
+    ['{"a": 1}', { a: 1 }],
+    ['好的：\n```json\n{"a": {"b": 2}}\n```', { a: { b: 2 } }],
+    ['no json', undefined],
+    ['} reversed {', undefined],
+    ['{"a": } broken', undefined],
+  ])('%j', (text, expected) => {
+    expect(parseEmbeddedJson(text)).toEqual(expected)
   })
 })

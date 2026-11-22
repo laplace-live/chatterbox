@@ -26,7 +26,7 @@ import {
 } from './danmaku-limit'
 import { gmSignal, migrateGmKey } from './gm-signal'
 import { appendLog } from './log'
-import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT, DEFAULT_KANCHI_PROMPT } from './prompts'
+import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT, DEFAULT_KANCHI_PROMPT, READ_THE_ROOM_PROMPT } from './prompts'
 import { resolveInvisibleChar } from './utils'
 
 export { cachedRoomId, danmakuMaxChars, danmakuMaxUnits, roomDanmakuChars, roomDanmakuUnits }
@@ -233,6 +233,14 @@ export const llmActivePromptAutoBlend = gmSignal('llmActivePromptAutoBlend', 0)
 export const llmPromptsAutoSend = gmSignal<string[]>('llmPromptsAutoSend', [])
 export const llmActivePromptAutoSend = gmSignal('llmActivePromptAutoSend', 0)
 
+// One-shot: append 读空气融入 to lists saved before it shipped; the flag lets a later deletion stick.
+;(() => {
+  if (GM_getValue<boolean>('aiChatReadTheRoomSeeded', false) === true) return
+  const stored = GM_getValue<unknown>('llmPromptsAiChat', undefined)
+  // An emptied list stays empty: index 0 would silently make the new persona active.
+  if (Array.isArray(stored) && stored.length > 0) GM_setValue('llmPromptsAiChat', [...stored, READ_THE_ROOM_PROMPT])
+  GM_setValue('aiChatReadTheRoomSeeded', true)
+})()
 export const llmPromptsAiChat = gmSignal<string[]>('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
 export const llmActivePromptAiChat = gmSignal('llmActivePromptAiChat', 0)
 // 感知忍術: Copy Ninja mirrors rewrite master actions with these instead of copying verbatim.
@@ -250,6 +258,31 @@ export const aiChatMaxMessageLength = gmSignal('aiChatMaxMessageLength', 40)
 export const aiChatViewerWindow = gmSignal('aiChatViewerWindow', 50)
 export const aiChatViewerInterval = gmSignal('aiChatViewerInterval', 10)
 export const aiChatTemperature = gmSignal('aiChatTemperature', 0.7)
+
+/** How player frames reach AI 融入: as images (`direct`) or as notes from a caption model (`caption`). */
+export type VisionMode = 'direct' | 'caption'
+/** Master switch for stream vision (看画面). */
+export const visionEnabled = gmSignal('visionEnabled', false)
+export const visionMode = gmSignal<VisionMode>('visionMode', 'direct')
+/** Max frames per AI 融入 call; clamp with `clampVisionFrames`. */
+export const visionMaxFrames = gmSignal('visionMaxFrames', 2)
+/** Long edge (px) of uploaded frames; coerce with `resolveVisionEdge`. */
+export const visionMaxEdge = gmSignal('visionMaxEdge', 768)
+/** Let a big scene change during silence trigger an AI 融入 generation. */
+export const visionVisualTrigger = gmSignal('visionVisualTrigger', false)
+/** Experimental: send a short clip (`video_url`) instead of frames in direct mode. */
+export const visionClipEnabled = gmSignal('visionClipEnabled', false)
+/** LLM provider profile id for caption mode; '' = none chosen. */
+export const visionCaptionProviderId = gmSignal('visionCaptionProviderId', '')
+/** Caption model override; '' = the profile's own `model`. */
+export const visionCaptionModel = gmSignal('visionCaptionModel', '')
+export const settingsVisionOpen = gmSignal('settingsVisionOpen', false)
+/** Caption provider profile, or null when unset or stale. */
+export const visionCaptionProvider = computed<LlmProviderProfile | null>(() => {
+  const id = visionCaptionProviderId.value
+  if (!id) return null
+  return llmProviders.value.find(p => p.id === id) ?? null
+})
 
 // Speech-to-text settings: provider-specific credentials and models, shared capture and output.
 export const sttProvider = gmSignal<SttProvider>('sttProvider', 'soniox')
@@ -341,6 +374,8 @@ export const autoSeekCurrentRate = signal(1)
 // Ephemeral STT → AI Chat bridge; `sttEndpointReached` flips on Soniox's `<end>` token. Kept out of GM so a reload mid-stream doesn't leave a stale buffer for the next mount.
 export const sttTranscriptBuffer = signal('')
 export const sttEndpointReached = signal(false)
+/** Wall-clock ms of the first STT chunk since AI 融入 last consumed the transcript; null when none. */
+export const sttUtteranceStartedAt = signal<number | null>(null)
 
 let sendStateRestored = false
 let autoBlendStateRestored = false
