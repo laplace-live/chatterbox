@@ -1,6 +1,6 @@
 import { type ReadonlySignal, type Signal, signal } from '@preact/signals'
 
-import type { SceneCutEvent, VisionAvailability, VisionFrame } from './types'
+import type { LumaSample, SceneCutEvent, VisionAvailability, VisionFrame } from './types'
 
 import { appendLog } from '../log'
 import { isTabHidden } from '../page-visibility'
@@ -17,6 +17,7 @@ import {
   rgbaToLuma,
   SCENE_CUT_DIFF,
 } from './luma'
+import { recordSceneCut } from './scene-memory'
 
 const TICK_MS = 1000
 /** No frame progress for longer than this reads as a frozen stream. */
@@ -65,8 +66,8 @@ export interface FrameSampler {
   stop: () => void
   keptFrames: () => readonly VisionFrame[]
   grabCurrentFrame: () => Promise<VisionFrame | null>
-  /** Luma of the newest 'ok' sample, kept or not. */
-  latestLuma: () => Uint8Array | null
+  /** Capture time and luma of the newest 'ok' sample, kept or not. */
+  latestSample: () => LumaSample | null
   onSceneCut: (listener: (event: SceneCutEvent) => void) => () => void
 }
 
@@ -82,7 +83,7 @@ export function createFrameSampler<V extends SamplerVideo>(
   let busy = false
   let cancelTimer: (() => void) | null = null
   let kept: VisionFrame[] = []
-  let latestLuma: Uint8Array | null = null
+  let latestSample: LumaSample | null = null
   let progress: { video: V; time: number; frames: number; at: number } | null = null
   let errorLogged = false
 
@@ -153,7 +154,7 @@ export function createFrameSampler<V extends SamplerVideo>(
         return
       }
       const last = kept.at(-1)
-      const cut = latestLuma !== null && lumaDiff(latestLuma, luma) >= SCENE_CUT_DIFF
+      const cut = latestSample !== null && lumaDiff(latestSample.luma, luma) >= SCENE_CUT_DIFF
       const keep = cut || !last || now - last.at >= REFRESH_MS || lumaDiff(last.luma, luma) >= KEEP_DIFF
       const frame = keep ? await encode(found.video, now, luma) : null
       if (current !== run) return
@@ -161,7 +162,7 @@ export function createFrameSampler<V extends SamplerVideo>(
         kept = [...kept, frame]
         prune(now)
       }
-      latestLuma = luma
+      latestSample = { at: now, luma }
       availability.value = 'ok'
       if (cut && frame) notify({ at: now, before: last ?? null, after: frame })
     } catch (err) {
@@ -200,7 +201,7 @@ export function createFrameSampler<V extends SamplerVideo>(
       cancelTimer = null
       run++
       kept = []
-      latestLuma = null
+      latestSample = null
       progress = null
       errorLogged = false
       availability.value = 'off'
@@ -221,7 +222,7 @@ export function createFrameSampler<V extends SamplerVideo>(
         return null
       }
     },
-    latestLuma: () => latestLuma,
+    latestSample: () => latestSample,
     onSceneCut(listener) {
       listeners.add(listener)
       return () => {
@@ -309,7 +310,10 @@ export const visionAvailability = signal<VisionAvailability>('off')
 let pageSampler: FrameSampler | null = null
 
 function sampler(): FrameSampler {
-  pageSampler ??= createFrameSampler(browserDeps(), visionAvailability)
+  if (!pageSampler) {
+    pageSampler = createFrameSampler(browserDeps(), visionAvailability)
+    pageSampler.onSceneCut(event => recordSceneCut(event.at))
+  }
   return pageSampler
 }
 
@@ -333,9 +337,9 @@ export function grabCurrentFrame(): Promise<VisionFrame | null> {
   return sampler().grabCurrentFrame()
 }
 
-/** Luma of the latest successful sample, or null. */
-export function getLatestLuma(): Uint8Array | null {
-  return sampler().latestLuma()
+/** Capture time and luma of the latest successful sample, or null. */
+export function getLatestSample(): LumaSample | null {
+  return sampler().latestSample()
 }
 
 /** Subscribe to scene cuts; returns unsubscribe. */

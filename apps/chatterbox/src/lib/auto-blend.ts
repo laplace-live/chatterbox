@@ -39,7 +39,7 @@ import {
   visionEnabled,
 } from './store'
 import { addRandomCharacter, trimDanmakuByUnits } from './utils'
-import { latestScene } from './vision/scene-memory'
+import { currentScene } from './vision/scene-memory'
 
 interface Counter {
   uniqueUids: Set<string>
@@ -305,7 +305,7 @@ async function triggerSend(originalText: string, uniqueUsers: number, totalCount
         .filter(entry => entry.receivedAt >= contextCutoff)
         .map(entry => findEmoticon(entry.text)?.emoji || entry.text)
     : []
-  const scene = visionEnabled.value ? latestScene(SCENE_MAX_AGE_MS, now)?.scene : undefined
+  const scene = visionEnabled.value ? currentScene(SCENE_MAX_AGE_MS, now)?.scene : undefined
   // Engage the freeze and clear counters before the await; read cooldown fresh (not the snapshot signal)
   // so a bursty room gets an aggressive cooldown the moment it triggers.
   cooldownUntil = now + getEffectiveCooldownSec(now) * 1000

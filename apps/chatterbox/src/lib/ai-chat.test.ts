@@ -5,7 +5,7 @@ import type { SendDanmakuResult } from './api'
 import type { DanmakuEvent } from './danmaku-stream'
 import type { ChatCompletionOptions, LlmContentPart } from './llm'
 import type { LlmProviderProfile, VisionMode } from './store'
-import type { RecentClip, SceneCutEvent, SceneNote, VisionAvailability, VisionFrame } from './vision/types'
+import type { LumaSample, RecentClip, SceneCutEvent, SceneNote, VisionAvailability, VisionFrame } from './vision/types'
 
 import { loadWithFakeGm } from '../testing/fake-gm'
 import { loadWithMocks } from '../testing/load-with-mocks'
@@ -76,7 +76,7 @@ function frameLabels(options: ChatCompletionOptions): string[] {
 interface VisionFakes {
   kept: VisionFrame[]
   current: VisionFrame | null
-  latestLuma: Uint8Array | null
+  latestSample: LumaSample | null
   clip: RecentClip | null
   scenes: SceneNote[]
   freshScene: SceneNote | null
@@ -148,7 +148,7 @@ async function createHarness() {
   })
   const log = mock((..._args: unknown[]) => {})
   const visionAvailability = signal<VisionAvailability>('ok')
-  const fakes: VisionFakes = { kept: [], current: null, latestLuma: null, clip: null, scenes: [], freshScene: null }
+  const fakes: VisionFakes = { kept: [], current: null, latestSample: null, clip: null, scenes: [], freshScene: null }
   const grabCurrentFrame = mock(async () => fakes.current)
   const getRecentClip = mock(async () => fakes.clip)
   const requestFreshScene = mock(async (_maxAgeMs: number, _timeoutMs?: number) => fakes.freshScene)
@@ -185,7 +185,7 @@ async function createHarness() {
     './vision/config': { clampVisionFrames, resolveVisionEdge },
     './vision/frame-sampler': {
       getKeptFrames: () => fakes.kept,
-      getLatestLuma: () => fakes.latestLuma,
+      getLatestSample: () => fakes.latestSample,
       grabCurrentFrame,
       onSceneCut: (listener: (event: SceneCutEvent) => void) => {
         sceneCutListener = listener
@@ -608,7 +608,7 @@ describe('AI chat stream vision', () => {
     const current = frame(10_000, 120)
     h.fakes.kept = [frame(5_000, 0)]
     h.fakes.current = current
-    h.fakes.latestLuma = current.luma
+    h.fakes.latestSample = { at: current.at, luma: current.luma }
     h.replies.push(reply({ message: '好看', scene: '  主播在画一只猫  ', uses_scene: true }))
     await h.say('看我画的', 6_000)
 
@@ -900,7 +900,7 @@ describe('AI chat stream vision', () => {
     h.settings.visionEnabled.value = true
     h.settings.aiChatAutoSend.value = true
     h.fakes.current = frame(10_000, 0)
-    h.fakes.latestLuma = frame(10_000, 200).luma
+    h.fakes.latestSample = { at: 11_000, luma: frame(11_000, 200).luma }
     h.replies.push(reply({ message: '这个手办好看', scene: '主播展示手办', uses_scene: true }))
     await h.triggerNow()
 
@@ -925,18 +925,77 @@ describe('AI chat stream vision', () => {
     expect(h.engine.pendingCandidates.value).toMatchObject([{ decision: { message: '这个手办好看' }, stale: true }])
   })
 
+  test('a sample from before the uploaded picture never marks a reply stale', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.aiChatAutoSend.value = true
+    h.fakes.current = frame(10_000, 0)
+    // The 1 Hz sampler last saw the picture before a cut that the grab already caught.
+    h.fakes.latestSample = { at: 9_500, luma: frame(9_500, 200).luma }
+    h.replies.push(reply({ message: '这个手办好看', uses_scene: true }))
+    await h.triggerNow()
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
+  })
+
+  test('nothing gathered while 看画面 is switched off goes out', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.visionMode.value = 'caption'
+    const note = Promise.withResolvers<SceneNote | null>()
+    h.requestFreshScene.mockImplementationOnce(() => note.promise)
+    h.engine.triggerNow()
+    await flush()
+    h.settings.visionEnabled.value = false
+    note.resolve({ at: 10_000, scene: '主播在打 Boss', source: 'caption' })
+    await h.settle()
+    expect(h.chatCompletion).toHaveBeenCalledTimes(1)
+    expect(h.call().messages[1].content).toBe(VIEWER_ONLY)
+  })
+
+  test('a retry after 看画面 is switched off sends no pictures', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.fakes.current = frame(10_000, 120)
+    h.chatCompletion.mockImplementationOnce(async () => {
+      h.settings.visionEnabled.value = false
+      throw new Error('HTTP 400 Bad Request: response_format is not supported')
+    })
+    await h.triggerNow()
+    expect(h.chatCompletion).toHaveBeenCalledTimes(2)
+    expect(userParts(h.call(0))).toContainEqual(image(10_000))
+    expect(h.call(1).messages[1].content).toBe(VIEWER_ONLY)
+  })
+
+  test('a clip too large for the provider retries this round with frames and keeps clips for later rounds', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.visionClipEnabled.value = true
+    h.fakes.current = frame(10_000, 120)
+    h.fakes.clip = { dataUrl: 'data:video/mp4;base64,clip', mimeType: 'video/mp4', durationMs: 4_000, endedAt: 10_000 }
+    h.replies.push(new Error('HTTP 413 Payload Too Large'), reply())
+    await h.triggerNow()
+    expect(h.chatCompletion).toHaveBeenCalledTimes(2)
+    expect(userParts(h.call(1))).toContainEqual(image(10_000))
+    expect(h.log).toHaveBeenCalledWith('⚠️ [AI 融入] 视频片段过大被服务商拒绝（HTTP 413），本轮改用截图')
+
+    h.advance(5_000)
+    h.fakes.current = frame(15_000, 30)
+    await h.triggerNow()
+    expect(userParts(h.call())).toContainEqual({ type: 'video_url', video_url: { url: 'data:video/mp4;base64,clip' } })
+  })
+
   test('a picture-dependent reply still queued when the picture cuts away is cancelled at dispatch', async () => {
     const h = await createHarness()
     h.settings.visionEnabled.value = true
     h.settings.aiChatAutoSend.value = true
     h.fakes.current = frame(10_000, 100)
-    h.fakes.latestLuma = frame(10_000, 100).luma
+    h.fakes.latestSample = { at: 10_000, luma: frame(10_000, 100).luma }
     h.replies.push(reply({ message: '这个手办好看', scene: '主播展示手办', uses_scene: true }))
     const queued = h.deferSend(false)
     await h.triggerNow()
     expect(h.enqueue).toHaveBeenCalledTimes(1)
 
-    h.fakes.latestLuma = frame(11_000, 220).luma
+    h.fakes.latestSample = { at: 11_000, luma: frame(11_000, 220).luma }
     expect(queued.dispatch()).toBe(false)
     await h.settle()
     expect(h.engine.aiChatHistory.value.at(-1)).toMatchObject({

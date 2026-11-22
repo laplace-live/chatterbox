@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { clearScenes, latestScene, recordScene, sceneNotes } from './scene-memory'
+import { clearScenes, currentScene, latestScene, recordScene, recordSceneCut, sceneNotes } from './scene-memory'
 
 beforeEach(clearScenes)
 
@@ -56,5 +56,24 @@ describe('latestScene', () => {
     recordScene('画面', 'chat', 1_000)
     clearScenes()
     expect(latestScene(60_000, 1_000)).toBeNull()
+  })
+})
+
+describe('currentScene', () => {
+  test('skips a note captured before the latest cut until a newer one arrives', () => {
+    recordScene('打 Boss', 'caption', 1_000)
+    expect(currentScene(10_000, 5_000)?.scene).toBe('打 Boss')
+    recordSceneCut(2_000)
+    expect(currentScene(10_000, 5_000)).toBeNull()
+    expect(latestScene(10_000, 5_000)?.scene).toBe('打 Boss')
+    recordScene('聊天', 'chat', 2_000)
+    expect(currentScene(10_000, 5_000)?.scene).toBe('聊天')
+  })
+
+  test('clearScenes forgets the cut', () => {
+    recordSceneCut(2_000)
+    clearScenes()
+    recordScene('打 Boss', 'caption', 1_000)
+    expect(currentScene(10_000, 5_000)?.scene).toBe('打 Boss')
   })
 })

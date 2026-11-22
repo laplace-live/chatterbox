@@ -23,7 +23,21 @@ export function latestScene(maxAgeMs: number, now = Date.now()): SceneNote | nul
   return newest && now - newest.at <= maxAgeMs ? newest : null
 }
 
-/** Forget every scene note. */
+let lastCutAt: number | null = null
+
+/** Remember the latest scene cut, so `currentScene` skips notes of the picture before it. */
+export function recordSceneCut(at: number): void {
+  lastCutAt = at
+}
+
+/** `latestScene`, unless that note's picture was captured before the latest cut. */
+export function currentScene(maxAgeMs: number, now = Date.now()): SceneNote | null {
+  const note = latestScene(maxAgeMs, now)
+  return note && (lastCutAt === null || note.at >= lastCutAt) ? note : null
+}
+
+/** Forget every scene note and the latest cut. */
 export function clearScenes(): void {
   sceneNotes.value = []
+  lastCutAt = null
 }

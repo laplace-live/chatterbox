@@ -175,6 +175,7 @@ async function createHarness() {
       tick?.()
     },
     recordScene: (scene: string, ageMs: number) => sceneMemory.recordScene(scene, 'chat', now - ageMs),
+    sceneCut: (ageMs: number) => sceneMemory.recordSceneCut(now - ageMs),
   }
 }
 
@@ -468,6 +469,19 @@ describe('automatic blend stream scene', () => {
     expect(h.decide).toHaveBeenCalledTimes(1)
     expect(h.decide.mock.calls[0]?.[3]).toBeUndefined()
     expect(h.polish).toHaveBeenCalledTimes(1)
+    expect(h.polish.mock.calls[0]?.[2]?.scene).toBeUndefined()
+    expect(h.enqueue).toHaveBeenCalledTimes(1)
+  })
+
+  test('passes no scene noted before the latest scene cut', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.autoBlendYolo.value = true
+    h.recordScene('主播在打 Boss', 5_000)
+    h.sceneCut(1_000)
+    h.qualify()
+    await flush()
+    expect(h.decide.mock.calls[0]?.[3]).toBeUndefined()
     expect(h.polish.mock.calls[0]?.[2]?.scene).toBeUndefined()
     expect(h.enqueue).toHaveBeenCalledTimes(1)
   })

@@ -266,7 +266,7 @@ describe('availability', () => {
     await h.start()
     expect(h.status()).toBe('error')
     expect(h.sampler.keptFrames()).toEqual([])
-    expect(h.sampler.latestLuma()).toBeNull()
+    expect(h.sampler.latestSample()).toBeNull()
     h.env.encodeError = null
     await h.tick()
     expect(h.status()).toBe('ok')
@@ -333,17 +333,21 @@ describe('kept frames', () => {
     expect(h.keptAt()).toEqual(Array.from({ length: 12 }, (_, i) => (i + 3) * 1000))
   })
 
-  test('getLatestLuma follows the newest ok sample, kept or not', async () => {
+  test('latestSample follows the newest ok sample, kept or not, with its capture time', async () => {
     const h = setup()
-    expect(h.sampler.latestLuma()).toBeNull()
+    expect(h.sampler.latestSample()).toBeNull()
     await h.start()
     h.env.luma = picture(102)
     await h.tick()
     expect(h.sampler.keptFrames()).toHaveLength(1)
-    expect(h.sampler.latestLuma()).toEqual(picture(102))
+    expect(h.sampler.latestSample()).toEqual({ at: T0 + 1000, luma: picture(102) })
+    h.env.luma = picture(103)
+    await h.tick()
+    expect(h.sampler.keptFrames()).toHaveLength(1)
+    expect(h.sampler.latestSample()).toEqual({ at: T0 + 2000, luma: picture(103) })
     h.env.luma = blank()
     await h.tick()
-    expect(h.sampler.latestLuma()).toEqual(picture(102))
+    expect(h.sampler.latestSample()).toEqual({ at: T0 + 2000, luma: picture(103) })
   })
 })
 
@@ -430,7 +434,7 @@ describe('start and stop', () => {
     expect(h.activeTimers()).toHaveLength(0)
     expect(h.status()).toBe('off')
     expect(h.sampler.keptFrames()).toEqual([])
-    expect(h.sampler.latestLuma()).toBeNull()
+    expect(h.sampler.latestSample()).toBeNull()
 
     h.sampler.stop()
     const events: SceneCutEvent[] = []
@@ -456,7 +460,7 @@ describe('start and stop', () => {
     await settle()
     expect(h.status()).toBe('off')
     expect(h.sampler.keptFrames()).toEqual([])
-    expect(h.sampler.latestLuma()).toBeNull()
+    expect(h.sampler.latestSample()).toBeNull()
     expect(h.edges).toHaveLength(encodes)
   })
 
@@ -500,7 +504,7 @@ describe('grabCurrentFrame', () => {
     })
     expect(h.edges).toEqual([1024, 1024])
     expect(h.keptAt()).toEqual([0])
-    expect(h.sampler.latestLuma()).toEqual(picture(100))
+    expect(h.sampler.latestSample()?.luma).toEqual(picture(100))
   })
 
   const unavailable: [string, Partial<Env>][] = [
@@ -546,7 +550,7 @@ describe('page sampler', () => {
   test('stays inert while stopped and reports through visionAvailability', async () => {
     expect(mod.visionAvailability.value).toBe('off')
     expect(mod.getKeptFrames()).toEqual([])
-    expect(mod.getLatestLuma()).toBeNull()
+    expect(mod.getLatestSample()).toBeNull()
     expect(await mod.grabCurrentFrame()).toBeNull()
     const unsubscribe = mod.onSceneCut(() => {})
     unsubscribe()

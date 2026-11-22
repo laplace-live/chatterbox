@@ -10,6 +10,9 @@ export interface VisionFrame {
   thumbUrl: string
 }
 
+/** A sampled picture's capture time and luma, without the JPEGs. */
+export type LumaSample = Pick<VisionFrame, 'at' | 'luma'>
+
 /** A frame chosen for a call, with its time label. */
 export interface LabeledFrame extends VisionFrame {
   /** '当前' or 'N 秒前'. */

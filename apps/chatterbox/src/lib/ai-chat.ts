@@ -47,7 +47,13 @@ import { describeAvailability } from './vision/availability'
 import { requestFreshScene } from './vision/captioner'
 import { getRecentClip } from './vision/clip-recorder'
 import { clampVisionFrames, resolveVisionEdge } from './vision/config'
-import { getKeptFrames, getLatestLuma, grabCurrentFrame, onSceneCut, visionAvailability } from './vision/frame-sampler'
+import {
+  getKeptFrames,
+  getLatestSample,
+  grabCurrentFrame,
+  onSceneCut,
+  visionAvailability,
+} from './vision/frame-sampler'
 import { lumaDiff, SAME_SCENE_DIFF, SCENE_CUT_DIFF } from './vision/luma'
 import { latestScene, recordScene } from './vision/scene-memory'
 import { selectFrames } from './vision/select-frames'
@@ -633,6 +639,8 @@ async function callAiChatLlm(
   const timeoutId = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
   try {
     while (true) {
+      // A retry after 看画面 was switched off goes text-only.
+      if (!visionEnabled.value) media = []
       const withMedia = media.length > 0
       const fields: SceneFields = withMedia ? 'full' : vision.textScene ? 'uses' : 'none'
       const visionHint = withMedia ? VISION_RULES : vision.textScene ? SCENE_TEXT_HINT : ''
@@ -675,8 +683,13 @@ async function callAiChatLlm(
         if (clip) {
           clip = false
           media = vision.frameParts
-          mediaDowngrades.set(mediaKey(provider), 'frames')
-          appendLog('ℹ️ [AI 融入] 当前模型不支持视频片段，已改用截图')
+          if (rejection === 'payload') {
+            // Too large isn't unsupported: later rounds still send clips.
+            appendLog('⚠️ [AI 融入] 视频片段过大被服务商拒绝（HTTP 413），本轮改用截图')
+          } else {
+            mediaDowngrades.set(mediaKey(provider), 'frames')
+            appendLog('ℹ️ [AI 融入] 当前模型不支持视频片段，已改用截图')
+          }
         } else if (rejection === 'payload') {
           // Too large isn't unsupported: smaller frames may pass, so only this round goes text-only.
           media = []
@@ -810,8 +823,9 @@ function isStale(decision: AiChatDecision, frames: readonly LabeledFrame[], text
   if (!decision.usesScene) return false
   const newest = frames.at(-1)
   if (newest) {
-    const latest = getLatestLuma()
-    return !!latest && lumaDiff(latest, newest.luma) >= SCENE_CUT_DIFF
+    // Only a sample taken after the uploaded picture shows a change; an older one can predate a cut the grab already caught.
+    const latest = getLatestSample()
+    return !!latest && latest.at > newest.at && lumaDiff(latest.luma, newest.luma) >= SCENE_CUT_DIFF
   }
   // A text note has no luma to diff; any cut after its picture was captured outdates it.
   return textSceneAt !== null && lastSceneCutAt !== null && lastSceneCutAt > textSceneAt
@@ -842,8 +856,10 @@ async function runGeneration(reason: TriggerReason, cut: CutTimes | null = null)
   try {
     const config = readAiChatConfig()
     if (!config) return
-    const vision = await gatherVision(config.provider, reason, utteranceStartedAt, cut)
+    const gathered = await gatherVision(config.provider, reason, utteranceStartedAt, cut)
     if (!isCurrent()) return
+    // 看画面 switched off while gathering: nothing gathered may go out.
+    const vision = visionEnabled.value ? gathered : NO_VISION
     // A picture-change round that can't see the picture has nothing to react to.
     if (reason === 'visual' && vision.frames.length === 0 && !vision.textScene) return
     const result = await callAiChatLlm(config, transcript.trim(), reason, vision)
