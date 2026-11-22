@@ -5,6 +5,7 @@ import { aiChatEnabled, autoBlendEnabled, autoBlendYolo, visionClipEnabled, visi
 import { startCaptioner, stopCaptioner } from './captioner'
 import { isClipRecordingSupported, startClipRecorder, stopClipRecorder } from './clip-recorder'
 import { startFrameSampler, stopFrameSampler } from './frame-sampler'
+import { clearScenes } from './scene-memory'
 
 interface Demand {
   sampler: boolean
@@ -21,7 +22,11 @@ let disposeEffect: (() => void) | null = null
 function apply(next: Demand): void {
   if (running.clip && !next.clip) stopClipRecorder()
   if (running.captioner && !next.captioner) stopCaptioner()
-  if (running.sampler && !next.sampler) stopFrameSampler()
+  if (running.sampler && !next.sampler) {
+    stopFrameSampler()
+    // Nothing watched the picture while stopped, so notes from before can't describe what comes after.
+    clearScenes()
+  }
   if (next.sampler && !running.sampler) startFrameSampler()
   if (next.captioner && !running.captioner) startCaptioner()
   if (next.clip && !running.clip) startClipRecorder()

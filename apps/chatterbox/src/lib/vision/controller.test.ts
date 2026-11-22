@@ -42,6 +42,7 @@ async function createHarness(initial: Partial<Settings> = {}, clipSupported = tr
   const captioner = part('captioner')
   const clip = part('clip')
   let clipChecks = 0
+  let sceneClears = 0
   const controller = await loadWithMocks<typeof import('./controller')>(new URL('./controller.ts', import.meta.url), {
     '@preact/signals': signals,
     '../decision-settings': { autoBlendDecisionEnabled: settings.autoBlendDecisionEnabled },
@@ -56,6 +57,11 @@ async function createHarness(initial: Partial<Settings> = {}, clipSupported = tr
       stopClipRecorder: clip.stop,
     },
     './frame-sampler': { startFrameSampler: sampler.start, stopFrameSampler: sampler.stop },
+    './scene-memory': {
+      clearScenes: () => {
+        sceneClears++
+      },
+    },
   })
   cleanups.push(() => controller.stopVisionController())
 
@@ -81,7 +87,7 @@ async function createHarness(initial: Partial<Settings> = {}, clipSupported = tr
   }
 
   set(initial)
-  return { ...controller, events, logLines, set, running, clipChecks: () => clipChecks }
+  return { ...controller, events, logLines, set, running, clipChecks: () => clipChecks, sceneClears: () => sceneClears }
 }
 
 afterEach(() => {
@@ -182,5 +188,20 @@ describe('start and stop pairing', () => {
     h.logLines.value = []
     expect(h.clipChecks()).toBe(1)
     expect(h.running()).toEqual(['clip', 'sampler'])
+  })
+})
+
+describe('scene notes', () => {
+  test('stopping the sampler forgets scene notes, so a restart needs fresh ones', async () => {
+    const h = await createHarness({ visionEnabled: true, visionMode: 'caption', aiChatEnabled: true })
+    h.startVisionController()
+    h.set({ visionMode: 'direct' })
+    expect(h.running()).toEqual(['sampler'])
+    expect(h.sceneClears()).toBe(0)
+    h.set({ visionEnabled: false })
+    expect(h.running()).toEqual([])
+    expect(h.sceneClears()).toBe(1)
+    h.set({ visionEnabled: true })
+    expect(h.sceneClears()).toBe(1)
   })
 })
