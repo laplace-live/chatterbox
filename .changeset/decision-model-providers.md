@@ -1,5 +1,0 @@
----
-"laplace-chatterbox": minor
----
-
-Add Perplexity Decisions (`pplx-decider-latest`, `POST /v1/decisions`), OpenAI Decisions (`gpt-6-luna`, `POST /v1/decisions` with a single `predicate` question whose instructions carry `trueCriteria` / `falseCriteria`, since predicates have no `criteria` field) and Cloudflare Workers AI (`@cf/cloudflare/clef` on an account-scoped `…/accounts/{account_id}/ai` base that also accepts a pasted `…/ai/run/@cf/cloudflare/<model>` URL, with the REST `result` envelope unwrapped) as decision providers; rename the TypeSafe protocol to System One（TypeSafe 及兼容服务）, since Vercel AI Gateway, Liquid AI, 阿里云百炼, Ollama and other `POST /systemone` services speak it too (the stored `typesafe` id is unchanged, so saved profiles and settings backups keep working); move the OpenRouter default model from the pinned `typesafe/jev-1.13` to the `~typesafe/jev-latest` alias, leaving saved profiles on their model; report a `refusal` answer as 决策模型拒绝判断该弹幕 instead of an invalid send decision; and hide the model picker and 刷新列表 for providers without a decision-model list (Perplexity, OpenAI, Cloudflare), keeping the 模型 ID field.
