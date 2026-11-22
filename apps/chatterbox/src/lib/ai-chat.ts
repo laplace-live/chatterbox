@@ -55,7 +55,7 @@ import {
   visionAvailability,
 } from './vision/frame-sampler'
 import { lumaDiff, SAME_SCENE_DIFF, SCENE_CUT_DIFF } from './vision/luma'
-import { latestScene, recordScene } from './vision/scene-memory'
+import { recordScene } from './vision/scene-memory'
 import { selectFrames } from './vision/select-frames'
 
 export interface ViewerChatEntry {
@@ -264,7 +264,7 @@ type SceneFields = 'none' | 'uses' | 'full'
 const mediaDowngrades = new Map<string, 'frames' | 'none'>()
 
 /** Newest frame of the last request that carried media; drives the unchanged-picture dedupe. */
-let lastUpload: { at: number; luma: Uint8Array } | null = null
+let lastUpload: { at: number; luma: Uint8Array; scene: string } | null = null
 
 function pruneRecentOutgoing(): void {
   const now = Date.now()
@@ -481,13 +481,11 @@ function visionWindowStart(
   }
 }
 
-/** The last upload's scene note when the picture still matches it, else null. */
+/** The last upload's own scene note while the picture still matches it, else null. */
 function unchangedScene(current: VisionFrame, now: number): string | null {
   if (!lastUpload || now - lastUpload.at >= UNCHANGED_SCENE_MAX_AGE_MS) return null
   if (lumaDiff(current.luma, lastUpload.luma) >= SAME_SCENE_DIFF) return null
-  const note = latestScene(UNCHANGED_SCENE_MAX_AGE_MS)
-  // A note older than the upload describes an earlier picture.
-  return note && note.at >= lastUpload.at ? note.scene : null
+  return lastUpload.scene || null
 }
 
 /** The caption must show the picture after the latest cut (the 'visual' round's own included), not one taken before it. */
@@ -589,7 +587,7 @@ function attachedFrames(vision: GatheredVision, clip: boolean): LabeledFrame[] {
 function rememberUpload(frames: readonly LabeledFrame[], scene: string): void {
   const newest = frames.at(-1)
   if (!newest) return
-  lastUpload = { at: newest.at, luma: newest.luma }
+  lastUpload = { at: newest.at, luma: newest.luma, scene }
   if (scene) recordScene(scene, 'chat', newest.at)
 }
 
@@ -629,21 +627,26 @@ async function callAiChatLlm(
   const userBody = contextSummary
     ? `上下文（最近的发送 / 观众弹幕）：\n"""\n${contextSummary}\n"""\n\n${sourceLabel}：\n"""\n${sourceText}\n"""\n`
     : `${sourceLabel}："${sourceText}"`
-  const userText = vision.note ? `${userBody}\n${vision.note}` : userBody
   const modeKey = `${provider.id}:${provider.apiBase}`
   let rfMode = responseFormatModes.get(modeKey) ?? 'json_schema'
   let media = vision.clipParts ?? vision.frameParts
   let clip = vision.clipParts !== null
+  let { note, textScene } = vision
   // Bound the request so a stalled fetch can't wedge the engine (see LLM_CALL_TIMEOUT_MS).
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), LLM_CALL_TIMEOUT_MS)
   try {
     while (true) {
-      // A retry after 看画面 was switched off goes text-only.
-      if (!visionEnabled.value) media = []
+      // A retry after 看画面 was switched off goes out as if vision had been off.
+      if (!visionEnabled.value) {
+        media = []
+        note = ''
+        textScene = ''
+      }
       const withMedia = media.length > 0
-      const fields: SceneFields = withMedia ? 'full' : vision.textScene ? 'uses' : 'none'
-      const visionHint = withMedia ? VISION_RULES : vision.textScene ? SCENE_TEXT_HINT : ''
+      const fields: SceneFields = withMedia ? 'full' : textScene ? 'uses' : 'none'
+      const visionHint = withMedia ? VISION_RULES : textScene ? SCENE_TEXT_HINT : ''
+      const userText = note ? `${userBody}\n${note}` : userBody
       try {
         let promptTokens: number | null = null
         const content = await chatCompletion({

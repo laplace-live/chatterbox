@@ -740,6 +740,21 @@ describe('AI chat stream vision', () => {
     expect(userText(h.call())).not.toContain('上一个画面')
   })
 
+  test('the unchanged-picture shortcut reuses only the note of the matching upload', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.fakes.current = frame(10_000, 120)
+    h.replies.push(reply({ scene: '主播在画画' }))
+    await h.triggerNow()
+    // A newer note of another picture, e.g. from 画面描述 mode in between.
+    h.fakes.scenes.push({ at: 20_000, scene: '主播在打游戏', source: 'caption' })
+
+    h.advance(20_000)
+    h.fakes.current = frame(30_000, 121)
+    await h.triggerNow()
+    expect(h.call().messages[1].content).toEndWith('（画面与上次基本相同：主播在画画）')
+  })
+
   test('caption mode adds a [当前画面] note of the last 15 s and asks only whether the reply uses it', async () => {
     const h = await createHarness()
     h.settings.visionEnabled.value = true
@@ -964,6 +979,22 @@ describe('AI chat stream vision', () => {
     expect(h.chatCompletion).toHaveBeenCalledTimes(2)
     expect(userParts(h.call(0))).toContainEqual(image(10_000))
     expect(h.call(1).messages[1].content).toBe(VIEWER_ONLY)
+  })
+
+  test('a retry after 看画面 is switched off drops the picture note too', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.settings.visionMode.value = 'caption'
+    h.fakes.freshScene = { at: 10_000, scene: '主播在打 Boss', source: 'caption' }
+    h.chatCompletion.mockImplementationOnce(async () => {
+      h.settings.visionEnabled.value = false
+      throw new Error('HTTP 400 Bad Request: response_format is not supported')
+    })
+    await h.triggerNow()
+    expect(h.chatCompletion).toHaveBeenCalledTimes(2)
+    expect(userText(h.call(0))).toContain('[当前画面]: 主播在打 Boss')
+    expect(h.call(1).messages[1].content).toBe(VIEWER_ONLY)
+    expect(systemText(h.call(1))).not.toContain(SCENE_TEXT_HINT)
   })
 
   test('a clip too large for the provider retries this round with frames and keeps clips for later rounds', async () => {
