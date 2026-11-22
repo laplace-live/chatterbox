@@ -1052,6 +1052,8 @@ export function startAiChatEngine(): void {
   sttEndpointReached.value = false
   sttUtteranceStartedAt.value = null
   lastSceneCutAt = null
+  // The history that saw the last upload is gone, so a new session starts with a fresh picture.
+  lastUpload = null
 
   // A vision note belongs to the model that produced it; the next round re-checks the new one.
   stopProviderEffect = effect(() => {

@@ -755,6 +755,21 @@ describe('AI chat stream vision', () => {
     expect(h.call().messages[1].content).toEndWith('（画面与上次基本相同：主播在画画）')
   })
 
+  test('a restarted engine uploads the picture again instead of reusing the last session’s note', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.fakes.current = frame(10_000, 120)
+    h.replies.push(reply({ scene: '主播在画画' }))
+    await h.triggerNow()
+
+    h.restart()
+    h.advance(10_000)
+    h.fakes.current = frame(20_000, 121)
+    await h.triggerNow()
+    expect(frameLabels(h.call())).toEqual(['【当前】'])
+    expect(userText(h.call())).not.toContain('主播在画画')
+  })
+
   test('caption mode adds a [当前画面] note of the last 15 s and asks only whether the reply uses it', async () => {
     const h = await createHarness()
     h.settings.visionEnabled.value = true
