@@ -331,6 +331,37 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup()
 })
 
+describe('AI chat context', () => {
+  test('viewer chat over half the context budget keeps its newest lines', async () => {
+    const h = await createHarness()
+    // Budget 40: the header and two 13-char lines fit (37), a third would not (51).
+    h.settings.aiChatContextMaxChars.value = 80
+    for (const text of ['第一条弹幕内容', '第二条弹幕内容', '第三条弹幕内容']) h.message(text)
+    await h.fire(3_000)
+    expect(h.call().messages[1].content).toBe(
+      '上下文（最近的发送 / 观众弹幕）：\n"""\n[最近观众弹幕]:\n  观众: 第二条弹幕内容\n  观众: 第三条弹幕内容\n"""\n\n' +
+        '主播刚刚说：\n"""\n（暂无主播语音；请仅基于上下文中的观众弹幕做出反应）\n"""\n'
+    )
+  })
+
+  test('a review-mode candidate counts as said, as sent once accepted, and as unsaid once skipped', async () => {
+    const h = await createHarness()
+    h.replies.push(reply({ message: '泡沫的真没怎么见过' }), reply({ message: '干粉最常见' }))
+    await h.say('泡沫的我都没怎么见过')
+    await h.say('最常见的是干粉')
+    expect(userText(h.call())).toContain('[主播]: 泡沫的我都没怎么见过\n[你已发送]: [候选:泡沫的真没怎么见过]\n')
+
+    const [first, second] = h.engine.pendingCandidates.value
+    h.engine.acceptCandidate(first.id, '泡沫的是少见')
+    await flush()
+    h.engine.skipCandidate(second.id)
+    await h.say('嗯 就是')
+    expect(userText(h.call())).toContain(
+      '[主播]: 泡沫的我都没怎么见过\n[你已发送]: 泡沫的是少见\n\n[主播]: 最常见的是干粉\n[你已发送]: [未采用:干粉最常见]\n'
+    )
+  })
+})
+
 describe('AI chat echo markers across restarts', () => {
   test('ignores an in-flight send echo before and after the send completes', async () => {
     const h = await createHarness()
@@ -516,14 +547,23 @@ describe('AI chat stream vision', () => {
         role: 'system',
         content:
           `${PROMPT}\n\n当前时间：${time}\n\n` +
-          '主播的语音文字来自实时语音识别，可能是片段化的句子。上下文中包含最近的发送记录与最新观众弹幕，请综合理解后再决定是否发送。\n\n' +
+          '上下文中 [你已发送] 后面是你每一轮的结果：直接写出的弹幕是你发出的；[候选:…] 是你提出、等待用户确认的，也算你说过的话；' +
+          '[未采用:…] 是用户没有采用、没有发出的，不算你说过的话，也不要再提；[跳过:…] 是你没有发言的轮次。' +
+          '你始终是同一位观众：不要和自己说过的话相矛盾或改口，也不要重复说过的话；弹幕区的说法和你之前说的相反时，跳过本次发送。\n\n' +
+          '主播的话来自实时语音识别，只能用来大致了解主播在聊什么、情绪如何，不能当作原话：\n' +
+          '- 常有同音、近音的错字或多余的字，例如把「粤语版」识别成「越越版」\n' +
+          '- 夹杂的日语、英语等外语会被识别成读音相近的中文词，例如把日语「苦しい」（好难受）识别成「苦肉计」\n' +
+          '- 读得通的中文也可能识别错了，句子也常是片段\n' +
+          '所以不要在弹幕里引用或复述识别出的字词，也不要围绕其中的具体说法（人名、歌名、术语、数字等）发挥，具体说法以观众弹幕和画面为准；' +
+          '上下文中的 [主播] 和角色设定里提到的「主播刚说的内容」同样如此。看不出主播大概在说什么时，跳过本次发送。\n' +
+          '上下文中包含最近的发送记录与最新观众弹幕，请综合理解后再决定是否发送。\n\n' +
           '你必须返回一个 JSON 对象，包含三个字段：\n' +
           '- "send" (boolean)：当前内容是否值得作为弹幕发送\n' +
           '- "message" (string)：要发送的弹幕，长度不超过 100 个字符；send 为 false 时为空串\n' +
           '- "reason" (string)：你做此决定的简短理由\n' +
           '返回示例：{"send": true, "message": "要发送的弹幕", "reason": "简短理由"}\n',
       },
-      { role: 'user', content: '主播刚刚说："大家好"' },
+      { role: 'user', content: '主播刚刚说（语音识别，仅供参考）："大家好"' },
     ])
     expect(JSON.stringify(options.responseFormat)).toBe(
       '{"type":"json_schema","json_schema":{"name":"ai_chat_response","strict":true,"schema":{"type":"object",' +
@@ -574,7 +614,7 @@ describe('AI chat stream vision', () => {
 
     const options = h.call()
     expect(options.messages[1].content).toEqual([
-      { type: 'text', text: '主播刚刚说："看我画的"' },
+      { type: 'text', text: '主播刚刚说（语音识别，仅供参考）："看我画的"' },
       FRAMES_HEADER,
       { type: 'text', text: '【5 秒前】' },
       image(5_000),

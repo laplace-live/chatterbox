@@ -269,7 +269,7 @@ export function AiChatSection() {
             {candidates.length === 0 ? (
               <div class='text-ga4'>暂无候选 — 等待观众消息或转录文本触发生成</div>
             ) : (
-              <ScrollArea className='max-h-45'>
+              <ScrollArea className='max-h-90'>
                 {/* Engine appends to the end; reverse for newest-first display. */}
                 {[...candidates].reverse().map(cand => (
                   <div key={cand.id} class='border-b-solid border-b border-b-ga2 py-1'>

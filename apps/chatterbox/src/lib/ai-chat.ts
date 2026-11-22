@@ -129,8 +129,14 @@ export const aiChatLastPromptTokens = signal<number | null>(null)
 /** Most-recent N viewer messages (ring; trimmed to `aiChatViewerWindow`). */
 const viewerBuffer: ViewerChatEntry[] = []
 
-/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary; `unsent` marks a reply that never posted, `scene` is the round's picture note. */
-const conversationHistory: { transcript: string; chat: string; unsent?: boolean; scene: string }[] = []
+/** Rolling (transcript, emitted-or-skipped) pairs fed into the context summary; `unsent` marks a reply that never posted, `scene` is the round's picture note, `candidateId` the review-mode candidate the entry stands for. */
+const conversationHistory: {
+  transcript: string
+  chat: string
+  unsent?: boolean
+  scene: string
+  candidateId?: number
+}[] = []
 
 let viewerReceivedSinceLastGen = 0
 
@@ -192,9 +198,23 @@ const VISION_RULES =
   '你能看到直播画面（按时间先后排列，最后一张或视频结尾是当前画面）。\n' +
   '- 像真实观众一样对看到的内容做反应，不要描述或复述画面（不要说"画面中""我看到"）\n' +
   '- 只在画面里有具体、值得一提的细节时才提及；看不清或不确定的细节不要说\n' +
-  '- 画面里的滚动文字、聊天框通常是叠加的弹幕，不是主播在说话\n' +
+  '- 画面里的文字（游戏界面、字幕、叠加的聊天框等）不是主播在说话，也不代表观众此刻的弹幕；观众在说什么只看上下文中的 [最近观众弹幕]\n' +
   '- 不评论主播的身材、长相，不读出画面中的个人信息\n\n'
 const SCENE_TEXT_HINT = '上下文中的 [当前画面] / [画面] 是直播画面的文字描述，仅供理解语境，不要复述。\n\n'
+/** Every round, whatever the persona: the history legend, and one viewer never contradicts itself. */
+const SELF_RULES =
+  '上下文中 [你已发送] 后面是你每一轮的结果：直接写出的弹幕是你发出的；[候选:…] 是你提出、等待用户确认的，也算你说过的话；' +
+  '[未采用:…] 是用户没有采用、没有发出的，不算你说过的话，也不要再提；[跳过:…] 是你没有发言的轮次。' +
+  '你始终是同一位观众：不要和自己说过的话相矛盾或改口，也不要重复说过的话；弹幕区的说法和你之前说的相反时，跳过本次发送。\n\n'
+/** For rounds with speech, whatever the persona: STT text only hints at the topic and is never quoted. */
+const TRANSCRIPT_RULES =
+  '主播的话来自实时语音识别，只能用来大致了解主播在聊什么、情绪如何，不能当作原话：\n' +
+  '- 常有同音、近音的错字或多余的字，例如把「粤语版」识别成「越越版」\n' +
+  '- 夹杂的日语、英语等外语会被识别成读音相近的中文词，例如把日语「苦しい」（好难受）识别成「苦肉计」\n' +
+  '- 读得通的中文也可能识别错了，句子也常是片段\n' +
+  '所以不要在弹幕里引用或复述识别出的字词，也不要围绕其中的具体说法（人名、歌名、术语、数字等）发挥，具体说法以观众弹幕和画面为准；' +
+  '上下文中的 [主播] 和角色设定里提到的「主播刚说的内容」同样如此。看不出主播大概在说什么时，跳过本次发送。\n' +
+  '上下文中包含最近的发送记录与最新观众弹幕，请综合理解后再决定是否发送。\n\n'
 const IMAGE_UNSUPPORTED_NOTE = '当前模型不支持图片输入，已改为纯文本'
 const STALE_SKIP_REASON = '画面已变化，放弃可能过时的弹幕'
 
@@ -273,10 +293,9 @@ function isLikelySelfEcho(text: string): boolean {
 }
 
 /**
- * Compose the rolling context block for the LLM user message (newest history
- * at the bottom). Viewer-chat block is prepended only if it fits the first half
- * of the char budget, else it pushes off too much history. Budget is chars not
- * tokens — that's what the user configures (`aiChatContextMaxChars`).
+ * Compose the rolling context for the LLM user message: history (newest at the
+ * bottom), then viewer chat trimmed to its newest lines within half the budget
+ * so it can't crowd out history. Budget is chars, not tokens (`aiChatContextMaxChars`).
  */
 function buildContextSummary(
   history: typeof conversationHistory,
@@ -285,13 +304,18 @@ function buildContextSummary(
 ): string {
   const combined: string[] = []
   let totalLength = 0
-  if (viewerChats.length > 0) {
-    const chatLines = viewerChats.map(c => `  ${c.uname ?? '观众'}: ${c.text}`).join('\n')
-    const viewerBlock = `[最近观众弹幕]:\n${chatLines}`
-    if (viewerBlock.length < Math.max(1, Math.floor(maxChars / 2))) {
-      combined.push(viewerBlock)
-      totalLength += viewerBlock.length
-    }
+  const viewerBudget = Math.max(1, Math.floor(maxChars / 2))
+  const viewerLines = ['[最近观众弹幕]:']
+  let viewerLength = viewerLines[0].length
+  for (let i = viewerChats.length - 1; i >= 0; i--) {
+    const line = `  ${viewerChats[i].uname ?? '观众'}: ${viewerChats[i].text}`
+    if (viewerLength + 1 + line.length >= viewerBudget) break
+    viewerLines.splice(1, 0, line)
+    viewerLength += 1 + line.length
+  }
+  if (viewerLines.length > 1) {
+    combined.push(viewerLines.join('\n'))
+    totalLength += viewerLength
   }
   for (let i = history.length - 1; i >= 0; i--) {
     const { transcript, chat, unsent, scene } = history[i]
@@ -586,17 +610,19 @@ async function callAiChatLlm(
       ? '（主播没有说话；本轮由直播画面变化触发）'
       : '（暂无主播语音；请仅基于上下文中的观众弹幕做出反应）')
   const sourceFraming = transcript
-    ? '主播的语音文字来自实时语音识别，可能是片段化的句子。上下文中包含最近的发送记录与最新观众弹幕，请综合理解后再决定是否发送。\n\n'
+    ? TRANSCRIPT_RULES
     : reason === 'visual'
       ? '主播目前没有说话，本轮由直播画面的明显变化触发。上下文中包含最近的发送记录与最新观众弹幕；画面变化不值得回应时不要发送。\n\n'
       : '当前未启用主播语音识别，没有主播语音文字。上下文中包含最近的发送记录与最新观众弹幕，请仅基于观众弹幕综合判断后再决定是否发送。\n\n'
   const systemHead =
     `${systemPrompt}\n\n` +
     `当前时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n` +
+    SELF_RULES +
     sourceFraming
+  const sourceLabel = transcript ? '主播刚刚说（语音识别，仅供参考）' : '主播刚刚说'
   const userBody = contextSummary
-    ? `上下文（最近的发送 / 观众弹幕）：\n"""\n${contextSummary}\n"""\n\n主播刚刚说：\n"""\n${sourceText}\n"""\n`
-    : `主播刚刚说："${sourceText}"`
+    ? `上下文（最近的发送 / 观众弹幕）：\n"""\n${contextSummary}\n"""\n\n${sourceLabel}：\n"""\n${sourceText}\n"""\n`
+    : `${sourceLabel}："${sourceText}"`
   const userText = vision.note ? `${userBody}\n${vision.note}` : userBody
   const modeKey = `${provider.id}:${provider.apiBase}`
   let rfMode = responseFormatModes.get(modeKey) ?? 'json_schema'
@@ -723,7 +749,7 @@ function appendHistory(entry: AiChatHistoryEntry): void {
   aiChatHistory.value = next
 }
 
-function recordConvHistory(transcript: string, chat: string, unsent = false, scene = ''): void {
+function recordConvHistory(transcript: string, chat: string, unsent = false, scene = '', candidateId?: number): void {
   // Collapse consecutive viewer-only skips: without STT they'd flood the context
   // with identical [跳过] blocks and bias the LLM into a keep-skipping spiral.
   const last = conversationHistory[conversationHistory.length - 1]
@@ -733,8 +759,13 @@ function recordConvHistory(transcript: string, chat: string, unsent = false, sce
     last.scene = scene
     return
   }
-  conversationHistory.push({ transcript, chat, unsent, scene })
+  conversationHistory.push({ transcript, chat, unsent, scene, candidateId })
   while (conversationHistory.length > HISTORY_ENTRIES_CAP) conversationHistory.shift()
+}
+
+/** The history entry of a review-mode candidate, while it's still in the window. */
+function candidateHistoryEntry(candidateId: number) {
+  return conversationHistory.find(entry => entry.candidateId === candidateId)
 }
 
 /** Record a skipped round so we don't loop on the same content. */
@@ -753,12 +784,13 @@ function recordSkip(transcript: string, reason: string, frames: AiChatFrameThumb
   })
 }
 
+/** Returns the new candidate's id. */
 function addPendingCandidate(
   transcript: string,
   decision: AiChatDecision,
   frames: AiChatFrameThumb[],
   stale: boolean
-): void {
+): number {
   const cand: AiChatCandidate = {
     id: nextEntryId++,
     transcript,
@@ -770,6 +802,7 @@ function addPendingCandidate(
   const next = [...pendingCandidates.value, cand]
   while (next.length > PENDING_CAP) next.shift()
   pendingCandidates.value = next
+  return cand.id
 }
 
 /** A picture-dependent reply whose picture cut away while it was being generated. */
@@ -855,8 +888,8 @@ async function runGeneration(reason: TriggerReason, cut: CutTimes | null = null)
       } else {
         // Review mode — record with a `[候选]` marker so the LLM won't re-propose
         // before the user acts.
-        addPendingCandidate(transcript, decision, frames, stale)
-        recordConvHistory(transcript, `[候选:${decision.message}]`, false, decision.scene)
+        const candidateId = addPendingCandidate(transcript, decision, frames, stale)
+        recordConvHistory(transcript, `[候选:${decision.message}]`, false, decision.scene, candidateId)
       }
     } else {
       recordSkip(transcript, decision.reason, frames, decision.scene)
@@ -930,6 +963,12 @@ export function acceptCandidate(id: number, editedMessage?: string): void {
   void (async () => {
     const ok = await sendAiChatDanmaku(message, isCurrent)
     if (!isCurrent()) return
+    // Later rounds stay consistent with what the room saw: the possibly edited text, not the proposal.
+    const entry = candidateHistoryEntry(id)
+    if (entry) {
+      entry.chat = message
+      entry.unsent = !ok
+    }
     appendHistory({
       id: nextEntryId++,
       transcript: cand.transcript,
@@ -947,6 +986,8 @@ export function skipCandidate(id: number): void {
   const cand = pendingCandidates.value.find(c => c.id === id)
   if (!cand) return
   pendingCandidates.value = pendingCandidates.value.filter(c => c.id !== id)
+  const entry = candidateHistoryEntry(id)
+  if (entry) entry.chat = `[未采用:${cand.decision.message}]`
   appendHistory({
     id: nextEntryId++,
     transcript: cand.transcript,
