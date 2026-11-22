@@ -523,12 +523,26 @@ describe('evaluateDecision', () => {
     expect(JSON.parse(client.sent().input)).toEqual({ ...state, scene: '主播在打 Boss' })
     client.respond({ answers: { send: { type: 'noul', noul: 0.5 } } })
     await geminiPending
+
+    const openaiPending = client.evaluateDecision({
+      provider: openaiProvider,
+      preset,
+      state: { ...state, scene: ' 主播在打 Boss ' },
+    })
+    const openaiBody = client.sent()
+    expect(JSON.parse(openaiBody.input)).toEqual({ ...state, scene: '主播在打 Boss' })
+    expect(openaiBody.questions[0].instructions).toBe(
+      `${preamble}\`scene\` 是直播画面的文字描述，同样只作理解语境的背景。\n${preset.instructions}`
+    )
+    client.respond({ answers: [{ type: 'predicate', name: 'send', probability: 0.5 }] })
+    await openaiPending
   })
 
   test.each([
-    ['TypeSafe', provider],
-    ['Gemini', geminiProvider],
-  ] as const)('keeps the %s request byte-identical without a scene', async (_name, target) => {
+    ['TypeSafe', provider, { answers: { send: { type: 'noul', noul: 0.5 } } }],
+    ['Gemini', geminiProvider, { answers: { send: { type: 'noul', noul: 0.5 } } }],
+    ['OpenAI', openaiProvider, { answers: [{ type: 'predicate', name: 'send', probability: 0.5 }] }],
+  ] as const)('keeps the %s request byte-identical without a scene', async (_name, target, answer) => {
     const client = await harness()
     for (const sceneState of [
       state,
@@ -537,7 +551,7 @@ describe('evaluateDecision', () => {
       { ...state, scene: ' \n ' },
     ]) {
       const pending = client.evaluateDecision({ provider: target, preset, state: sceneState })
-      client.respond({ answers: { send: { type: 'noul', noul: 0.5 } } })
+      client.respond(answer)
       await pending
     }
     const [baseline, ...rest] = client.requests.map(request => String(request.options.data))
