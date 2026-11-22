@@ -1,13 +1,14 @@
 import { useSignal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 
-import type { DecisionPreset, DecisionProviderProfile } from '../lib/decision-model'
+import type { DecisionPreset, DecisionProtocol, DecisionProviderProfile } from '../lib/decision-model'
 
 import {
   DECISION_PROVIDER_DEFAULTS,
   fetchDecisionModels,
   isDecisionProtocol,
   normalizeDecisionModelId,
+  supportsDecisionModelList,
 } from '../lib/decision-model'
 import {
   activeDecisionPreset,
@@ -32,6 +33,22 @@ import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
+
+const PROTOCOL_LABELS: Record<DecisionProtocol, string> = {
+  gemini: 'Google AI Studio (Gemini Decisions)',
+  typesafe: 'System One（TypeSafe 及兼容服务）',
+  openrouter: 'OpenRouter Decisions',
+  perplexity: 'Perplexity Decisions',
+  openai: 'OpenAI Decisions',
+  cloudflare: 'Cloudflare Workers AI',
+}
+
+const PROTOCOL_HINTS: Partial<Record<DecisionProtocol, string>> = {
+  typesafe:
+    '兼容 TypeSafe System One 协议的服务均可使用（如 Vercel AI Gateway、Liquid AI、阿里云百炼、Ollama），请求发送至「API 地址/systemone」。',
+  cloudflare:
+    '请将 API 地址中的 {account_id} 替换为 Cloudflare 账户 ID，并使用具备 Workers AI 权限的 API 令牌；模型 ID 可填 clef、clef-flash 或 clef-omni。',
+}
 
 /** Accordion section configuring decision providers, structured presets, and the send threshold. */
 export function DecisionModelSettings() {
@@ -104,8 +121,9 @@ export function DecisionModelSettings() {
       <AccordionTrigger>决策模型</AccordionTrigger>
       <AccordionContent className='pt-2 pb-2'>
         <div class='mb-2 text-ga6'>
-          判断自动融入候选弹幕是否发送。可保存多个服务商配置，支持 Google AI Studio（Gemini Decision 1）、TypeSafe 与
-          OpenRouter Decisions，API 地址与模型 ID 均可自定义。
+          判断自动融入候选弹幕是否发送。可保存多个服务商配置，支持 Google AI Studio（Gemini Decision 1）、System
+          One（TypeSafe 及兼容服务）、OpenRouter、Perplexity、OpenAI 与 Cloudflare Workers AI，API 地址与模型 ID
+          均可自定义。
         </div>
         <div class='mb-2 flex flex-wrap items-center gap-2'>
           <Label htmlFor='decisionProvider'>服务商</Label>
@@ -177,9 +195,11 @@ export function DecisionModelSettings() {
                     updateConnection({ protocol, ...DECISION_PROVIDER_DEFAULTS[protocol], apiKey: '' })
                 }}
               >
-                <option value='gemini'>Google AI Studio (Gemini Decisions)</option>
-                <option value='typesafe'>TypeSafe</option>
-                <option value='openrouter'>OpenRouter Decisions</option>
+                {Object.entries(PROTOCOL_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </NativeSelect>
             </div>
             <div class='flex flex-wrap items-center gap-2'>
@@ -224,7 +244,7 @@ export function DecisionModelSettings() {
                   <code>generativelanguage.googleapis.com</code> 的反向代理地址。
                 </>
               ) : (
-                '自定义地址须兼容所选决策 API 协议。'
+                (PROTOCOL_HINTS[provider.protocol] ?? '自定义地址须兼容所选决策 API 协议。')
               )}
             </div>
             <div class='flex flex-wrap items-center gap-2'>
@@ -237,32 +257,38 @@ export function DecisionModelSettings() {
                 onInput={e => updateDecisionProvider(provider.id, { model: e.currentTarget.value })}
               />
             </div>
-            <div class='flex flex-wrap items-center gap-2'>
-              <Combobox
-                id='decisionModelPicker'
-                title='从模型列表选择'
-                className='min-w-25 flex-1'
-                value={normalizeDecisionModelId(provider.protocol, provider.model)}
-                options={provider.models.map(model => ({ value: model.id, label: model.name || model.id }))}
-                onChange={model => updateDecisionProvider(provider.id, { model })}
-                placeholder='从模型列表选择'
-                unloadedText='可手动填写模型 ID，或刷新列表'
-                // Only once a list is loaded; before that `unloadedText` explains the empty picker.
-                missingLabel={provider.models.length > 0 ? model => `${model}（已保存，不在当前列表中）` : undefined}
-              />
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={fetching || !provider.apiBase.trim()}
-                onClick={() => void refreshModels()}
-              >
-                {fetching ? '加载中…' : '刷新列表'}
-              </Button>
-            </div>
-            {fetchState.value && (
-              <div class={fetchState.value.kind === 'failed' ? 'break-words text-[red]' : 'text-ga6'}>
-                {fetchState.value.text}
-              </div>
+            {supportsDecisionModelList(provider.protocol) && (
+              <>
+                <div class='flex flex-wrap items-center gap-2'>
+                  <Combobox
+                    id='decisionModelPicker'
+                    title='从模型列表选择'
+                    className='min-w-25 flex-1'
+                    value={normalizeDecisionModelId(provider.protocol, provider.model)}
+                    options={provider.models.map(model => ({ value: model.id, label: model.name || model.id }))}
+                    onChange={model => updateDecisionProvider(provider.id, { model })}
+                    placeholder='从模型列表选择'
+                    unloadedText='可手动填写模型 ID，或刷新列表'
+                    // Only once a list is loaded; before that `unloadedText` explains the empty picker.
+                    missingLabel={
+                      provider.models.length > 0 ? model => `${model}（已保存，不在当前列表中）` : undefined
+                    }
+                  />
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={fetching || !provider.apiBase.trim()}
+                    onClick={() => void refreshModels()}
+                  >
+                    {fetching ? '加载中…' : '刷新列表'}
+                  </Button>
+                </div>
+                {fetchState.value && (
+                  <div class={fetchState.value.kind === 'failed' ? 'break-words text-[red]' : 'text-ga6'}>
+                    {fetchState.value.text}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -361,9 +387,9 @@ export function DecisionModelSettings() {
         )}
         {decisionPresets.value.length === 0 && <div class='mb-2 text-ga4'>暂无预设，点击「添加预设」创建发送条件</div>}
         <div class='mb-2 text-ga6'>
-          编写建议（适用于 Google AI Studio、TypeSafe 与 OpenRouter
-          Decisions）：「核心判断问题」请用肯定句聚焦单一条件，避免双重否定或宽泛形容词；正例特征与易混反例请分别写入「应该发送
-          / 应该跳过」（将作为协议原生 <code>criteria</code> 发送，勿塞进同一段）。
+          编写建议：「核心判断问题」请用肯定句聚焦单一条件，避免双重否定或宽泛形容词；正例特征与易混反例请分别写入「应该发送
+          / 应该跳过」（作为协议原生 <code>criteria</code> 发送；OpenAI Decisions
+          无此字段，将附加在判断问题之后），勿塞进同一段。
         </div>
         <div class='my-2 flex flex-wrap items-center gap-2'>
           <Label htmlFor='decisionThreshold'>发送概率阈值</Label>
