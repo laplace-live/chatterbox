@@ -80,6 +80,8 @@ interface VisionFakes {
   clip: RecentClip | null
   scenes: SceneNote[]
   freshScene: SceneNote | null
+  /** Stands in for scene memory's epoch; bump it to model the controller clearing notes. */
+  sceneEpoch: number
 }
 
 async function createHarness() {
@@ -148,7 +150,15 @@ async function createHarness() {
   })
   const log = mock((..._args: unknown[]) => {})
   const visionAvailability = signal<VisionAvailability>('ok')
-  const fakes: VisionFakes = { kept: [], current: null, latestSample: null, clip: null, scenes: [], freshScene: null }
+  const fakes: VisionFakes = {
+    kept: [],
+    current: null,
+    latestSample: null,
+    clip: null,
+    scenes: [],
+    freshScene: null,
+    sceneEpoch: 0,
+  }
   const grabCurrentFrame = mock(async () => fakes.current)
   const getRecentClip = mock(async () => fakes.clip)
   const requestFreshScene = mock(async (_maxAgeMs: number, _timeoutMs?: number) => fakes.freshScene)
@@ -202,6 +212,7 @@ async function createHarness() {
         return newest && at - newest.at <= maxAgeMs ? newest : null
       },
       recordScene,
+      sceneEpoch: () => fakes.sceneEpoch,
     },
     './vision/select-frames': { selectFrames },
   }
@@ -768,6 +779,38 @@ describe('AI chat stream vision', () => {
     await h.triggerNow()
     expect(frameLabels(h.call())).toEqual(['【当前】'])
     expect(userText(h.call())).not.toContain('主播在画画')
+  })
+
+  test('a reply landing after sampling stopped leaves no scene note and primes no shortcut', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.fakes.current = frame(10_000, 120)
+    h.chatCompletion.mockImplementationOnce(async () => {
+      // 看画面 went off and on while the reply was on its way.
+      h.fakes.sceneEpoch++
+      return reply({ scene: '主播在画画' })
+    })
+    await h.triggerNow()
+    expect(h.recordScene).not.toHaveBeenCalled()
+
+    h.advance(10_000)
+    h.fakes.current = frame(20_000, 121)
+    await h.triggerNow()
+    expect(frameLabels(h.call())).toEqual(['【当前】'])
+  })
+
+  test('frames gathered across a sampling restart never go out', async () => {
+    const h = await createHarness()
+    h.settings.visionEnabled.value = true
+    h.fakes.kept = [frame(5_000, 0)]
+    const grab = Promise.withResolvers<VisionFrame | null>()
+    h.grabCurrentFrame.mockImplementationOnce(() => grab.promise)
+    h.engine.triggerNow()
+    await flush()
+    h.fakes.sceneEpoch++
+    grab.resolve(frame(10_000, 120))
+    await h.settle()
+    expect(h.call().messages[1].content).toBe(VIEWER_ONLY)
   })
 
   test('caption mode adds a [当前画面] note of the last 15 s and asks only whether the reply uses it', async () => {

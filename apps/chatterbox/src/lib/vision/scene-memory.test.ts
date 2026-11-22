@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { clearScenes, currentScene, latestScene, recordScene, recordSceneCut, sceneNotes } from './scene-memory'
+import {
+  clearScenes,
+  currentScene,
+  latestScene,
+  recordScene,
+  recordSceneCut,
+  sceneEpoch,
+  sceneNotes,
+} from './scene-memory'
 
 beforeEach(clearScenes)
 
@@ -75,5 +83,13 @@ describe('currentScene', () => {
     clearScenes()
     recordScene('打 Boss', 'caption', 1_000)
     expect(currentScene(10_000, 5_000)?.scene).toBe('打 Boss')
+  })
+})
+
+describe('sceneEpoch', () => {
+  test('moves on with every clearScenes', () => {
+    const before = sceneEpoch()
+    clearScenes()
+    expect(sceneEpoch()).toBe(before + 1)
   })
 })

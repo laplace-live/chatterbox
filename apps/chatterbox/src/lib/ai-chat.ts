@@ -55,7 +55,7 @@ import {
   visionAvailability,
 } from './vision/frame-sampler'
 import { lumaDiff, SAME_SCENE_DIFF, SCENE_CUT_DIFF } from './vision/luma'
-import { recordScene } from './vision/scene-memory'
+import { recordScene, sceneEpoch } from './vision/scene-memory'
 import { selectFrames } from './vision/select-frames'
 
 export interface ViewerChatEntry {
@@ -667,9 +667,7 @@ async function callAiChatLlm(
         // A provider that reports no usage clears the readout rather than leaving an older call's count.
         aiChatLastPromptTokens.value = promptTokens
         const decision = parseDecision(content, maxLen, fields)
-        const frames = withMedia ? attachedFrames(vision, clip) : []
-        rememberUpload(frames, decision.scene)
-        return { decision, frames }
+        return { decision, frames: withMedia ? attachedFrames(vision, clip) : [] }
       } catch (err) {
         if (isResponseFormatRejection(err)) {
           const next: ResponseFormatMode | null =
@@ -859,10 +857,11 @@ async function runGeneration(reason: TriggerReason, cut: CutTimes | null = null)
   try {
     const config = readAiChatConfig()
     if (!config) return
+    const epoch = sceneEpoch()
     const gathered = await gatherVision(config.provider, reason, utteranceStartedAt, cut)
     if (!isCurrent()) return
-    // 看画面 switched off while gathering: nothing gathered may go out.
-    const vision = visionEnabled.value ? gathered : NO_VISION
+    // 看画面 switched off (or sampling restarted) while gathering: nothing gathered may go out.
+    const vision = visionEnabled.value && sceneEpoch() === epoch ? gathered : NO_VISION
     // A picture-change round that can't see the picture has nothing to react to.
     if (reason === 'visual' && vision.frames.length === 0 && !vision.textScene) return
     const result = await callAiChatLlm(config, transcript.trim(), reason, vision)
@@ -871,6 +870,8 @@ async function runGeneration(reason: TriggerReason, cut: CutTimes | null = null)
       return
     }
     if (!isCurrent()) return
+    // A reply landing after sampling stopped must not leave notes of a picture nobody has watched since.
+    if (sceneEpoch() === epoch) rememberUpload(result.frames, result.decision.scene)
     aiChatLastGenAt.value = Date.now()
     const decision = { ...result.decision, scene: result.decision.scene || vision.textScene }
     const frames = result.frames.map(({ thumbUrl, label }) => ({ thumbUrl, label }))

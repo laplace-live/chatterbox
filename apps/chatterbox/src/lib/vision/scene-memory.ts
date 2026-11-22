@@ -36,8 +36,16 @@ export function currentScene(maxAgeMs: number, now = Date.now()): SceneNote | nu
   return note && (lastCutAt === null || note.at >= lastCutAt) ? note : null
 }
 
-/** Forget every scene note and the latest cut. */
+let epoch = 0
+
+/** Bumped by `clearScenes`; work begun under an older epoch saw pictures from before the reset. */
+export function sceneEpoch(): number {
+  return epoch
+}
+
+/** Forget every scene note and the latest cut, and start a new epoch. */
 export function clearScenes(): void {
   sceneNotes.value = []
   lastCutAt = null
+  epoch++
 }
