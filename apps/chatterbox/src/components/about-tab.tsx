@@ -1,4 +1,5 @@
 import { DOCUMENT_URL, GITHUB_URL } from '../lib/const'
+import { DECISION_DEFAULT_HOSTS } from '../lib/decision-model'
 import { VERSION } from '../lib/version'
 import { Separator } from './ui/separator'
 
@@ -44,7 +45,7 @@ const EXTERNAL_SERVICES: ExternalService[] = [
   },
   {
     name: '决策模型 API',
-    host: 'generativelanguage.googleapis.com / api.typesafe.ai / openrouter.ai（默认，可自定义）',
+    host: `${DECISION_DEFAULT_HOSTS.join(' / ')}（默认，可自定义）`,
     trigger:
       '在「自动融入」中勾选「决策模型判断是否发送」后弹幕达到触发条件时，或在设置「决策模型」中点击「刷新列表」时',
     description:
