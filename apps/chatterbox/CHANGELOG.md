@@ -1,5 +1,18 @@
 # laplace-chatterbox
 
+## 5.0.0
+
+### Major Changes
+
+- 8c72340: Let AI 融入 see the stream with the new 画面识别 settings (off by default). Frames are sampled locally from the player. In the default 直接看图 mode they're uploaded only when AI 融入 is about to generate: up to a few frames from the moment the streamer or chat is reacting to, one frame for a static picture, and none when nothing changed since the last upload. The model keeps a short note of what it saw, and those notes also reach 自动融入's decision model and YOLO polish. 画面描述 mode instead sends frames to a separate vision model on scene changes, about every 45 seconds and before AI 融入 rounds, turning them into text for chat models that can't take images. An experimental mode sends a short silent clip instead of frames. Vision pauses in background tabs, 仅音频 mode, or when the picture stalls.
+
+### Minor Changes
+
+- 6e69fba: Add Perplexity Decisions (`pplx-decider-latest`, `POST /v1/decisions`), OpenAI Decisions (`gpt-6-luna`, `POST /v1/decisions` with a single `predicate` question whose instructions carry `trueCriteria` / `falseCriteria`, since predicates have no `criteria` field) and Cloudflare Workers AI (`@cf/cloudflare/clef` on an account-scoped `…/accounts/{account_id}/ai` base that also accepts a pasted `…/ai/run/@cf/cloudflare/<model>` URL, with the REST `result` envelope unwrapped) as decision providers; rename the TypeSafe protocol to System One（TypeSafe 及兼容服务）, since Vercel AI Gateway, Liquid AI, 阿里云百炼, Ollama and other `POST /systemone` services speak it too (the stored `typesafe` id is unchanged, so saved profiles and settings backups keep working); move the OpenRouter default model from the pinned `typesafe/jev-1.13` to the `~typesafe/jev-latest` alias, leaving saved profiles on their model; report a `refusal` answer as 决策模型拒绝判断该弹幕 instead of an invalid send decision; and hide the model picker and 刷新列表 for providers without a decision-model list (Perplexity, OpenAI, Cloudflare), keeping the 模型 ID field.
+- 868aa98: Add the 读空气融入 persona to AI 融入. It follows what recent viewer chat is saying and copies the room's length, slang, punctuation and mood, joining a running wave as it is instead of inventing a line of its own, and skips when there's nothing to follow or the room turns hostile. Existing users find it appended to their AI 融入 prompt list once.
+  
+  Across all personas, AI 融入 now treats the speech transcript only as a hint of what the streamer is talking about: speech recognition mishears words and turns Japanese or English into similar-sounding Chinese, so replies no longer quote it and take specific names and terms from viewer chat or the picture instead. Replies also stay consistent with the persona's own earlier messages, including review-mode candidates: a candidate you edit counts as the text actually sent, and one you skip no longer counts as said. AI 融入 also keeps the newest viewer messages that fit its context budget instead of dropping the whole viewer chat block when a busy room overflows it, and shows a taller 候选弹幕 list.
+
 ## 4.13.1
 
 ### Patch Changes
