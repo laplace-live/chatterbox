@@ -14,7 +14,7 @@
     "lint": "biome check",
     "typecheck": "bun run --workspaces typecheck",
     "test": "bun test",
-    "version": "changeset version",
+    "version": "changeset version && biome format --write",
     "release": "changeset publish"
   },
   "devDependencies": {
