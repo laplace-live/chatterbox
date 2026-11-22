@@ -26,7 +26,7 @@ import {
 } from './danmaku-limit'
 import { gmSignal, migrateGmKey } from './gm-signal'
 import { appendLog } from './log'
-import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT, DEFAULT_KANCHI_PROMPT } from './prompts'
+import { DEFAULT_AI_CHAT_PROMPTS, DEFAULT_GLOBAL_PROMPT, DEFAULT_KANCHI_PROMPT, READ_THE_ROOM_PROMPT } from './prompts'
 import { resolveInvisibleChar } from './utils'
 
 export { cachedRoomId, danmakuMaxChars, danmakuMaxUnits, roomDanmakuChars, roomDanmakuUnits }
@@ -233,6 +233,14 @@ export const llmActivePromptAutoBlend = gmSignal('llmActivePromptAutoBlend', 0)
 export const llmPromptsAutoSend = gmSignal<string[]>('llmPromptsAutoSend', [])
 export const llmActivePromptAutoSend = gmSignal('llmActivePromptAutoSend', 0)
 
+// One-shot: append 读空气融入 to lists saved before it shipped; the flag lets a later deletion stick.
+;(() => {
+  if (GM_getValue<boolean>('aiChatReadTheRoomSeeded', false) === true) return
+  const stored = GM_getValue<unknown>('llmPromptsAiChat', undefined)
+  // An emptied list stays empty: index 0 would silently make the new persona active.
+  if (Array.isArray(stored) && stored.length > 0) GM_setValue('llmPromptsAiChat', [...stored, READ_THE_ROOM_PROMPT])
+  GM_setValue('aiChatReadTheRoomSeeded', true)
+})()
 export const llmPromptsAiChat = gmSignal<string[]>('llmPromptsAiChat', [...DEFAULT_AI_CHAT_PROMPTS])
 export const llmActivePromptAiChat = gmSignal('llmActivePromptAiChat', 0)
 // 感知忍術: Copy Ninja mirrors rewrite master actions with these instead of copying verbatim.
