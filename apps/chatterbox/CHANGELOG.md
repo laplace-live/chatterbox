@@ -1,5 +1,11 @@
 # laplace-chatterbox
 
+## 5.0.1
+
+### Patch Changes
+
+- 25c939c: Move audio-only volume slider and controls (`AudioOnlyControls`) into the fold group (`StatusBarFold`) in live rooms so they collapse and expand together with streamer info items.
+
 ## 5.0.0
 
 ### Major Changes
