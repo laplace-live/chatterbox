@@ -10,6 +10,7 @@ function setCachedWbiKeys(keys: BilibiliWbiKeys) {
 }
 
 ;(() => {
+  if (!location.hostname.endsWith('.bilibili.com')) return
   const originalOpen = XMLHttpRequest.prototype.open
   const originalSend = XMLHttpRequest.prototype.send
   const xhrUrls = new WeakMap<XMLHttpRequest, string>()

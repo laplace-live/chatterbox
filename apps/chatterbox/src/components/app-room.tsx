@@ -8,6 +8,7 @@ import { startAutoSeek, stopAutoSeek } from '../lib/auto-seek'
 import { startCopyNinja, stopCopyNinja } from '../lib/copy-ninja/client'
 import { copyNinjaEnabled, copyNinjaServerUrl, copyNinjaToken } from '../lib/copy-ninja/settings'
 import { startDanmakuDirect, stopDanmakuDirect } from '../lib/danmaku-direct'
+import { startLaplaceChatRelay, stopLaplaceChatRelay } from '../lib/laplace-chat/room-relay'
 import { loop } from '../lib/loop'
 import { PLAYER_WATERMARK_SELECTOR } from '../lib/player-dom'
 import {
@@ -19,6 +20,7 @@ import {
   dialogWidth,
   floatingInputEnabled,
   hideUidWatermark,
+  laplaceChatRelayEnabled,
   optimizeLayout,
 } from '../lib/store'
 import { startUserBlacklistHijack, stopUserBlacklistHijack } from '../lib/user-blacklist'
@@ -73,6 +75,12 @@ export function AppRoom() {
     startCopyNinja()
     return () => stopCopyNinja()
   }, [copyNinjaEnabled.value, copyNinjaServerUrl.value, copyNinjaToken.value])
+
+  useEffect(() => {
+    if (!laplaceChatRelayEnabled.value) return
+    startLaplaceChatRelay()
+    return () => stopLaplaceChatRelay()
+  }, [laplaceChatRelayEnabled.value])
 
   // Always-on so users can pre-blacklist spammers via the chat-item menu even while 自动融入 is off.
   useEffect(() => {

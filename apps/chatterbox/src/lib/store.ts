@@ -73,6 +73,8 @@ export const floatingInputRect = gmSignal<FloatingRect | null>('floatingInputRec
 export const danmakuDirectMode = gmSignal('danmakuDirectMode', true)
 export const danmakuDirectConfirm = gmSignal('danmakuDirectConfirm', false)
 export const danmakuDirectAlwaysShow = gmSignal('danmakuDirectAlwaysShow', false)
+/** 允许 LAPLACE Chat 控制台发送弹幕; synced so the dashboard bridge and every room tab agree. */
+export const laplaceChatRelayEnabled = gmSignal('laplaceChatRelayEnabled', false, { syncTabs: true })
 // Audio-only mode: `livePlayer.stopPlayback()` halts the native HLS pull, then a true audio-only FLV stream (`only_audio=1` from the app endpoint — web endpoint ignores it) plays via hidden `<audio>` + mpegts.js. ~180 vs ~1700 kbps. See `lib/audio-only.ts`.
 /** 'off' = 视频, 'on' = 仅音频, 'auto' = 自适应音频 (audio-only just while the tab is hidden). */
 export type AudioOnlyMode = 'off' | 'on' | 'auto'

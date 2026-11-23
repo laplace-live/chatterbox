@@ -19,8 +19,8 @@ export const SendPriority = {
 
 export type SendPriority = (typeof SendPriority)[keyof typeof SendPriority]
 
-/** Feature that produced a send; `copy` = a Copy Ninja mirror copy, which is never re-broadcast. */
-export type SendSource = ActionSource | 'copy'
+/** Feature that produced a send; `copy` (a Copy Ninja mirror copy) and `laplace-chat` (a dashboard relay) are never broadcast to mirrors. */
+export type SendSource = ActionSource | 'copy' | 'laplace-chat'
 
 /** A send Bilibili accepted. */
 export interface SentDanmaku {

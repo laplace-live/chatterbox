@@ -185,6 +185,8 @@ function applyTransforms(url: string, data: any): void {
  * verify these unlocks against a build.
  */
 ;(() => {
+  // The script also runs on the LAPLACE Chat dashboard, whose responses must stay untouched.
+  if (!location.hostname.endsWith('.bilibili.com')) return
   console.log('[LAPLACE Chatterbox] fetch-hijack loaded on', location.hostname)
   try {
     const ResponseProto = unsafeWindow.Response.prototype

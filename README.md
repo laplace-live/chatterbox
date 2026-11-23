@@ -12,11 +12,12 @@ Copy Ninja (拷贝忍者) also needs [kakashi-server](apps/kakashi-server) runni
 
 ## Layout
 
-| Package                                                  | What                                                    |
-| -------------------------------------------------------- | ------------------------------------------------------- |
-| [`apps/chatterbox`](apps/chatterbox)                     | The userscript (`laplace-chatterbox`)                   |
-| [`apps/kakashi-server`](apps/kakashi-server)             | Copy Ninja relay, shipped as signed standalone binaries |
-| [`packages/kakashi-protocol`](packages/kakashi-protocol) | WebSocket protocol shared by the two                    |
+| Package                                                  | What                                                                                                            |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [`apps/chatterbox`](apps/chatterbox)                     | The userscript (`laplace-chatterbox`)                                                                           |
+| [`apps/kakashi-server`](apps/kakashi-server)             | Copy Ninja relay, shipped as signed standalone binaries                                                         |
+| [`packages/kakashi-protocol`](packages/kakashi-protocol) | WebSocket protocol shared by the two                                                                            |
+| [`packages/chatterbox-sdk`](packages/chatterbox-sdk)     | `@laplace.live/chatterbox-sdk` on npm: lets a web page such as LAPLACE Chat send danmaku through the userscript |
 
 ## Development
 
@@ -26,6 +27,7 @@ bun run dev          # userscript dev server
 bun run dev:server   # kakashi-server in watch mode
 bun run lint && bun run typecheck && bun test
 bun run build        # userscript → apps/chatterbox/dist
+bun run build:sdk    # SDK → packages/chatterbox-sdk/dist (in-repo code imports its source)
 ```
 
 ## Releasing
@@ -34,6 +36,7 @@ Releases use [changesets](https://github.com/changesets/changesets). Run `bunx c
 
 - tags each bumped package and publishes its GitHub Release;
 - deploys the userscript when `laplace-chatterbox` was bumped;
+- publishes `@laplace.live/chatterbox-sdk` to npm when it was bumped;
 - builds and signs the server binaries when `@laplace.live/kakashi-server` was bumped, then publishes its release with them attached.
 
 Releases are immutable once published (enforced for the laplace-live org), so every release is published whole: nothing can be attached afterwards.

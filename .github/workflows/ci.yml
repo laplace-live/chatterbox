@@ -26,3 +26,5 @@ jobs:
       - run: bun test
 
       - run: bun run build
+
+      - run: bun run build:sdk

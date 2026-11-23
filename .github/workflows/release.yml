@@ -15,6 +15,10 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm trusted publishing (https://docs.npmjs.com/trusted-publishers) for @laplace.live/chatterbox-sdk
+      id-token: write
     outputs:
       published-packages: ${{ steps.changesets.outputs.published-packages }}
 
@@ -30,6 +34,13 @@ jobs:
 
       - name: Install Dependencies
         run: bun install --frozen-lockfile
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Update npm
+        run: sudo npm install -g npm@latest
+
+      - name: Build SDK
+        run: bun run build:sdk
 
       # Release writes (the Version Packages PR, tags and GitHub Releases) use
       # a GitHub App token instead of `GITHUB_TOKEN`. Events caused by
@@ -54,8 +65,9 @@ jobs:
         id: changesets
         uses: changesets/action@v2
         with:
-          # Every package is private: `changeset publish` only tags the new
-          # versions (`privatePackages.tag`), and the action pushes the tags.
+          # `changeset publish` publishes @laplace.live/chatterbox-sdk to npm
+          # and only tags the private packages (`privatePackages.tag`); the
+          # action pushes the tags.
           publish-script: bun run release
           version-script: bun run version
           commit-message: "Version Packages [skip ci]"

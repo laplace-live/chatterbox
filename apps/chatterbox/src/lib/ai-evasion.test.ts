@@ -14,12 +14,22 @@ async function loadAiEvasion(opts: { maxUnits?: number; sensitiveWords?: string[
   const danmakuMaxUnits = signal(opts.maxUnits ?? 80)
   const invisibleChar = signal('\u00AD')
   const sent: string[] = []
-  const enqueueDanmaku = mock(async (message: string) => {
-    const idx = sent.length
-    sent.push(message)
-    if (opts.failChunkAt === idx) return { success: false, message, isEmoticon: false, error: 'f' }
-    return { success: true, message, isEmoticon: false }
-  })
+  const enqueueDanmaku = mock(
+    async (
+      message: string,
+      _roomId: number,
+      _csrf: string,
+      _priority: number,
+      _source: string,
+      guard?: () => boolean
+    ) => {
+      if (guard && !guard()) return { success: false, cancelled: true, message, isEmoticon: false }
+      const idx = sent.length
+      sent.push(message)
+      if (opts.failChunkAt === idx) return { success: false, message, isEmoticon: false, error: 'f' }
+      return { success: true, message, isEmoticon: false }
+    }
+  )
   const fetch = mock(async () =>
     Response.json({
       completion: opts.sensitiveWords
@@ -89,6 +99,13 @@ describe('tryAiEvasion overflow splitting', () => {
     for (const chunk of sent) {
       expect(utils.getDanmakuUnits(chunk)).toBeLessThanOrEqual(80)
     }
+  })
+
+  test('a failing guard stops the retry before it posts', async () => {
+    const { mod, sent } = await loadAiEvasion({ sensitiveWords: ['敏感词'] })
+    const result = await mod.tryAiEvasion('有敏感词', 100, 'csrf', '', 'laplace-chat', () => false)
+    expect(result).toMatchObject({ success: false, cancelled: true })
+    expect(sent).toEqual([])
   })
 
   test('stops and reports failure if a split evasion chunk is rejected', async () => {
