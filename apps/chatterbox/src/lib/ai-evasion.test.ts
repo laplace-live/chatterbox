@@ -104,7 +104,7 @@ describe('tryAiEvasion overflow splitting', () => {
   test('a failing guard stops the retry before it posts', async () => {
     const { mod, sent } = await loadAiEvasion({ sensitiveWords: ['敏感词'] })
     const result = await mod.tryAiEvasion('有敏感词', 100, 'csrf', '', 'laplace-chat', () => false)
-    expect(result.success).toBe(false)
+    expect(result).toMatchObject({ success: false, cancelled: true })
     expect(sent).toEqual([])
   })
 

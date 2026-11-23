@@ -25,7 +25,6 @@ import {
   RING_KEY,
   type RoomTabState,
   readRelayRequests,
-  STALE_STATE_MS,
   TAB_KEY_PREFIX,
 } from './relay-state'
 
@@ -85,7 +84,7 @@ async function relay(request: RelayRequest, requestsKey: string): Promise<Outcom
     session !== null &&
     tabId === session &&
     laplaceChatRelayEnabled.value &&
-    !!readRelayRequests(GM_getValue(requestsKey))?.requests.some(listed => listed.id === request.id)
+    !!readRelayRequests(GM_getValue(requestsKey))?.some(listed => listed.id === request.id)
   if (!active()) return { status: 'disabled', sent: 0, total: 0 }
   const csrfToken = getCsrfToken()
   if (!csrfToken) return { status: 'not-logged-in', sent: 0, total: 0 }
@@ -106,9 +105,15 @@ async function relay(request: RelayRequest, requestsKey: string): Promise<Outcom
     const label = total > 1 ? `${LOG_LABEL} [${i + 1}/${total}]` : LOG_LABEL
     const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'laplace-chat', active)
     appendLog(result, label, segment)
-    if (result.cancelled) return { status: 'disabled', sent, total }
-    if (result.success || (await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat', active)).success)
+    if (result.success) {
       sent++
+      continue
+    }
+    // Checked before evasion too, so a stopped relay never sends the segment to the audit endpoint.
+    if (result.cancelled || !active()) return { status: 'disabled', sent, total }
+    const evaded = await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat', active)
+    if (evaded.cancelled) return { status: 'disabled', sent, total }
+    if (evaded.success) sent++
     else error ??= clipError(formatDanmakuError(result.error))
   }
   return { status: sent === total ? 'sent' : sent > 0 ? 'partial' : 'failed', sent, total, error }
@@ -130,13 +135,8 @@ function scanRequests(): void {
   const now = Date.now()
   for (const key of GM_listValues()) {
     if (!key.startsWith(REQUESTS_KEY_PREFIX)) continue
-    const state = readRelayRequests(GM_getValue(key))
-    if (!state) continue
-    if (now - state.updatedAt > STALE_STATE_MS) {
-      GM_deleteValue(key)
-      continue
-    }
-    for (const request of state.requests) {
+    // Only the bridge that wrote a list deletes it: aging lists out here would cancel sends a waking bridge still wants.
+    for (const request of readRelayRequests(GM_getValue(key)) ?? []) {
       // Picked-up requests already have an outcome; expired ones were already reported to the dashboard as unanswered.
       if (request.tabId !== tabId || outcomes.has(request.id) || now > request.expiresAt) continue
       report(request.id, { status: 'accepted', sent: 0, total: 0 })

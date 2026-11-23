@@ -87,10 +87,12 @@ async function waitFor<T>(read: () => T | undefined, timeoutMs = 4000): Promise<
 async function startDashboard(bus: GmBus, enabled: Signal<boolean>, timeoutMs?: number) {
   type Listener = (event: { source: unknown; origin: string; data: unknown }) => void
   const listeners = new Set<Listener>()
-  // Only `message` listeners hear page messages, so the bridge's `pagehide` cleanup stays out of the way.
+  let pagehide: (event: { persisted: boolean }) => void = () => {}
+  // Only `message` listeners hear page messages; the bridge's `pagehide` cleanup runs only when a test fires it.
   const page = {
-    addEventListener: (type: string, listener: Listener) => {
+    addEventListener: (type: string, listener: Listener & ((event: { persisted: boolean }) => void)) => {
       if (type === 'message') listeners.add(listener)
+      if (type === 'pagehide') pagehide = listener
     },
     removeEventListener: (type: string, listener: Listener) => {
       if (type === 'message') listeners.delete(listener)
@@ -123,6 +125,7 @@ async function startDashboard(bus: GmBus, enabled: Signal<boolean>, timeoutMs?: 
   return {
     client,
     send: (text: string, roomId = ROOM_ID) => client.send(roomId, text, { wrapBrackets: true }),
+    hide: (persisted: boolean) => pagehide({ persisted }),
   }
 }
 
@@ -132,6 +135,7 @@ interface RoomOptions {
   send?: (message: string) => SendDanmakuResult
   /** How long each stubbed send takes. */
   sendMs?: number
+  evasion?: { success: boolean; cancelled?: boolean }
 }
 
 /** A live-room tab running the relay, with the send queue stubbed out. */
@@ -154,16 +158,8 @@ async function startRoom(bus: GmBus, enabled: Signal<boolean>, options: RoomOpti
   )
   const posted: string[] = []
   const tryAiEvasion = mock(
-    async (
-      _segment: string,
-      _roomId: number,
-      _csrf: string,
-      _label: string,
-      _source: string,
-      _guard?: () => boolean
-    ) => ({
-      success: false,
-    })
+    async (_segment: string, _roomId: number, _csrf: string, _label: string, _source: string, _guard?: () => boolean) =>
+      options.evasion ?? { success: false }
   )
   let pagehide = () => {}
   const relay = await loadWithMocks<typeof import('./room-relay')>(
@@ -363,7 +359,7 @@ describe('LAPLACE Chat relay', () => {
     const result = dashboard.send('晚上好')
     const request = await waitFor(() => {
       const key = [...bus.store.keys()].find(key => key.startsWith(relayState.REQUESTS_KEY_PREFIX))
-      return key ? relayState.readRelayRequests(bus.store.get(key))?.requests[0] : undefined
+      return key ? relayState.readRelayRequests(bus.store.get(key))?.[0] : undefined
     })
     try {
       setSystemTime(new Date(request.expiresAt + 400))
@@ -396,13 +392,10 @@ describe('LAPLACE Chat relay', () => {
     const tabId = tabKey.slice(relayState.TAB_KEY_PREFIX.length)
     const other = bus.tab()
     const expiresAt = Date.now() + 5000
-    other.GM_setValue(`${relayState.REQUESTS_KEY_PREFIX}b1`, {
-      updatedAt: Date.now(),
-      requests: [
-        { id: 'r1', tabId, roomId: ROOM_ID, text: '甲甲乙乙', wrapBrackets: true, expiresAt },
-        { id: 'r2', tabId, roomId: ROOM_ID, text: '丙丙', wrapBrackets: true, expiresAt },
-      ],
-    })
+    other.GM_setValue(`${relayState.REQUESTS_KEY_PREFIX}b1`, [
+      { id: 'r1', tabId, roomId: ROOM_ID, text: '甲甲乙乙', wrapBrackets: true, expiresAt },
+      { id: 'r2', tabId, roomId: ROOM_ID, text: '丙丙', wrapBrackets: true, expiresAt },
+    ])
     other.GM_setValue(relayState.RING_KEY, 'ring 1')
     const outcomes = () => relayState.readRoomTabState(bus.store.get(tabKey))?.outcomes
     await waitFor(() => outcomes()?.r2)
@@ -462,12 +455,12 @@ describe('LAPLACE Chat relay', () => {
     const expiresAt = Date.now() + 5000
     const first = { id: 'r1', tabId, roomId: ROOM_ID, text: '甲甲乙乙', wrapBrackets: true, expiresAt }
     const queued = { id: 'r2', tabId, roomId: ROOM_ID, text: '丙丙', wrapBrackets: true, expiresAt }
-    other.GM_setValue(requestsKey, { updatedAt: Date.now(), requests: [first, queued] })
+    other.GM_setValue(requestsKey, [first, queued])
     other.GM_setValue(relayState.RING_KEY, 'ring 1')
     const outcomes = () => relayState.readRoomTabState(bus.store.get(tabKey))?.outcomes
     await waitFor(() => outcomes()?.r2)
     // The dashboard gave up on r2 (or closed) while r1 was still sending.
-    other.GM_setValue(requestsKey, { updatedAt: Date.now(), requests: [first] })
+    other.GM_setValue(requestsKey, [first])
     await waitFor(() => (outcomes()?.r2?.status === 'disabled' ? true : undefined))
     expect(room.posted).toEqual(['【甲甲】', '【乙乙】'])
   })
@@ -493,24 +486,90 @@ describe('LAPLACE Chat relay', () => {
     expect(typeof room.tryAiEvasion.mock.calls[0]?.[5]).toBe('function')
   })
 
+  test('never ages out a request list, so a bridge waking from a long sleep keeps its sends', async () => {
+    const bus = createGmBus()
+    const room = await startRoom(bus, signal(true), { maxUnits: 8, sendMs: 300 })
+    const tabKey = [...bus.store.keys()].find(key => key.startsWith(relayState.TAB_KEY_PREFIX)) ?? ''
+    const other = bus.tab()
+    const requestsKey = `${relayState.REQUESTS_KEY_PREFIX}b1`
+    const request = {
+      id: 'r1',
+      tabId: tabKey.slice(relayState.TAB_KEY_PREFIX.length),
+      roomId: ROOM_ID,
+      text: '甲甲乙乙',
+      wrapBrackets: true,
+      expiresAt: Date.now() + 5000,
+    }
+    other.GM_setValue(requestsKey, [request])
+    other.GM_setValue(relayState.RING_KEY, 'ring 1')
+    await waitFor(() => (room.posted.length > 0 ? true : undefined))
+    try {
+      setSystemTime(new Date(Date.now() + 2 * 60 * 60_000))
+      other.GM_setValue(relayState.RING_KEY, 'ring 2')
+      const outcomes = () => relayState.readRoomTabState(bus.store.get(tabKey))?.outcomes
+      await waitFor(() => (outcomes()?.r1?.status === 'sent' ? true : undefined))
+      expect(room.posted).toEqual(['【甲甲】', '【乙乙】'])
+      expect(bus.store.has(requestsKey)).toBe(true)
+    } finally {
+      setSystemTime()
+    }
+  })
+
+  test('keeps its requests listed while the dashboard sits in the back/forward cache', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled)
+    await startRoom(bus, enabled, { maxUnits: 8, sendMs: 300 })
+    const progress: number[] = []
+    const result = dashboard.client.send(ROOM_ID, '甲甲乙乙', {
+      wrapBrackets: true,
+      onProgress: ({ sent }) => progress.push(sent),
+    })
+    await waitFor(() => (progress.length > 0 ? true : undefined))
+    dashboard.hide(true)
+    expect(await result).toMatchObject({ status: 'sent', sent: 2, total: 2 })
+  })
+
+  test('never sends a segment to AI evasion once the setting is off', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled)
+    const room = await startRoom(bus, enabled, {
+      send: message => {
+        enabled.value = false
+        return { success: false, message, isEmoticon: false, error: 'k', rejected: true }
+      },
+    })
+    expect(await dashboard.send('晚上好')).toMatchObject({ status: 'disabled', sent: 0, total: 1 })
+    expect(room.tryAiEvasion).not.toHaveBeenCalled()
+  })
+
+  test('stops when the AI evasion retry is cancelled', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled)
+    await startRoom(bus, enabled, {
+      send: message => ({ success: false, message, isEmoticon: false, error: 'k', rejected: true }),
+      evasion: { success: false, cancelled: true },
+    })
+    expect(await dashboard.send('晚上好')).toMatchObject({ status: 'disabled' })
+  })
+
   test('relays a request once even when rings keep re-reading it', async () => {
     const bus = createGmBus()
     const room = await startRoom(bus, signal(true), { sendMs: 30 })
     const tabKey = [...bus.store.keys()].find(key => key.startsWith(relayState.TAB_KEY_PREFIX)) ?? ''
     const other = bus.tab()
-    other.GM_setValue(`${relayState.REQUESTS_KEY_PREFIX}b1`, {
-      updatedAt: Date.now(),
-      requests: [
-        {
-          id: 'r1',
-          tabId: tabKey.slice(relayState.TAB_KEY_PREFIX.length),
-          roomId: ROOM_ID,
-          text: '晚上好',
-          wrapBrackets: true,
-          expiresAt: Date.now() + 5000,
-        },
-      ],
-    })
+    other.GM_setValue(`${relayState.REQUESTS_KEY_PREFIX}b1`, [
+      {
+        id: 'r1',
+        tabId: tabKey.slice(relayState.TAB_KEY_PREFIX.length),
+        roomId: ROOM_ID,
+        text: '晚上好',
+        wrapBrackets: true,
+        expiresAt: Date.now() + 5000,
+      },
+    ])
     for (const n of [1, 2, 3]) {
       other.GM_setValue(relayState.RING_KEY, `ring ${n}`)
       await new Promise(resolve => setTimeout(resolve, 5))

@@ -61,6 +61,8 @@ export interface TryAiEvasionResult {
   success: boolean
   evadedMessage?: string
   error?: string
+  /** The guard stopped a resend before it posted. */
+  cancelled?: boolean
 }
 
 /**
@@ -94,7 +96,7 @@ export async function tryAiEvasion(
       const chunk = chunks[i]
       const suffix = chunks.length > 1 ? ` [${i + 1}/${chunks.length}]` : ''
       const retryResult = await enqueueDanmaku(chunk, roomId, csrfToken, SendPriority.MANUAL, source, guard)
-      if (retryResult.cancelled) return { success: false, evadedMessage }
+      if (retryResult.cancelled) return { success: false, evadedMessage, cancelled: true }
       if (!retryResult.success) {
         appendLog(`❌ ${logPrefix}AI规避失败${suffix}: ${chunk}，原因：${retryResult.error}`)
         return { success: false, evadedMessage, error: retryResult.error }

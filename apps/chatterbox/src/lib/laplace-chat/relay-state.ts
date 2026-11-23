@@ -13,7 +13,7 @@ export const RING_KEY = `${RELAY_KEY_PREFIX}ring`
 /** `+ tabId`: a room tab's {@link RoomTabState}, written only by that tab. */
 export const TAB_KEY_PREFIX = `${RELAY_KEY_PREFIX}tab:`
 
-/** `+ bridgeId`: a dashboard bridge's {@link RelayRequests}, written only by that bridge. */
+/** `+ bridgeId`: a dashboard bridge's pending {@link RelayRequest}s, written only by that bridge. */
 export const REQUESTS_KEY_PREFIX = `${RELAY_KEY_PREFIX}requests:`
 
 /** State keys untouched for this long belong to tabs that died without cleaning up. */
@@ -28,11 +28,6 @@ export interface RelayRequest {
   wrapBrackets: boolean
   /** Epoch ms after which the tab must not pick the request up. */
   expiresAt: number
-}
-
-export interface RelayRequests {
-  updatedAt: number
-  requests: RelayRequest[]
 }
 
 export interface RelayOutcome {
@@ -94,12 +89,12 @@ function parseRequest(raw: unknown): RelayRequest | null {
 }
 
 /** Read a bridge's pending requests; null when missing or malformed. */
-export function readRelayRequests(raw: unknown): RelayRequests | null {
-  if (!isRecord(raw) || !isCount(raw.updatedAt) || !Array.isArray(raw.requests)) return null
+export function readRelayRequests(raw: unknown): RelayRequest[] | null {
+  if (!Array.isArray(raw)) return null
   const requests: RelayRequest[] = []
-  for (const value of raw.requests) {
+  for (const value of raw) {
     const request = parseRequest(value)
     if (request) requests.push(request)
   }
-  return { updatedAt: raw.updatedAt, requests }
+  return requests
 }

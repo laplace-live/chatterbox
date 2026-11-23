@@ -17,7 +17,6 @@ import {
   REQUESTS_KEY_PREFIX,
   type RelayOutcome,
   type RelayRequest,
-  type RelayRequests,
   RING_KEY,
   readRoomTabState,
   STALE_STATE_MS,
@@ -89,7 +88,7 @@ function ring(): number {
 function writeRequests(): void {
   const key = REQUESTS_KEY_PREFIX + bridgeId
   const requests = [...pending.values()].map(entry => entry.request)
-  if (requests.length > 0) GM_setValue(key, { updatedAt: Date.now(), requests } satisfies RelayRequests)
+  if (requests.length > 0) GM_setValue(key, requests)
   else GM_deleteValue(key)
 }
 
@@ -223,5 +222,8 @@ export function startLaplaceChatBridge(): void {
   })
   // Announces the bridge now and again whenever the setting flips in a room tab.
   effect(postStatus)
-  window.addEventListener('pagehide', () => GM_deleteValue(REQUESTS_KEY_PREFIX + bridgeId))
+  // Closing the dashboard releases its requests; a page kept in the back/forward cache still waits on them.
+  window.addEventListener('pagehide', (event: PageTransitionEvent) => {
+    if (!event.persisted) GM_deleteValue(REQUESTS_KEY_PREFIX + bridgeId)
+  })
 }
