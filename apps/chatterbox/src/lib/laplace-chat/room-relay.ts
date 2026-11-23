@@ -136,6 +136,7 @@ function scanRequests(): void {
   for (const key of GM_listValues()) {
     if (!key.startsWith(REQUESTS_KEY_PREFIX)) continue
     // Only the bridge that wrote a list deletes it: aging lists out here would cancel sends a waking bridge still wants.
+    // A crashed dashboard's list is left behind on purpose; its requests are all handled or expired, so it stays inert.
     for (const request of readRelayRequests(GM_getValue(key)) ?? []) {
       // Picked-up requests already have an outcome; expired ones were already reported to the dashboard as unanswered.
       if (request.tabId !== tabId || outcomes.has(request.id) || now > request.expiresAt) continue
