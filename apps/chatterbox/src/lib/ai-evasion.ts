@@ -63,13 +63,17 @@ export interface TryAiEvasionResult {
   error?: string
 }
 
-/** Attempts AI evasion for a failed message by detecting and replacing sensitive words, then resending. */
+/**
+ * Attempts AI evasion for a failed message by detecting and replacing sensitive words, then resending.
+ * @param guard Passed to every resend; `false` stops the retry before it posts.
+ */
 export async function tryAiEvasion(
   message: string,
   roomId: number,
   csrfToken: string,
   logPrefix: string,
-  source: SendSource
+  source: SendSource,
+  guard?: () => boolean
 ): Promise<TryAiEvasionResult> {
   if (!aiEvasion.value) return { success: false }
 
@@ -89,7 +93,8 @@ export async function tryAiEvasion(
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]
       const suffix = chunks.length > 1 ? ` [${i + 1}/${chunks.length}]` : ''
-      const retryResult = await enqueueDanmaku(chunk, roomId, csrfToken, SendPriority.MANUAL, source)
+      const retryResult = await enqueueDanmaku(chunk, roomId, csrfToken, SendPriority.MANUAL, source, guard)
+      if (retryResult.cancelled) return { success: false, evadedMessage }
       if (!retryResult.success) {
         appendLog(`❌ ${logPrefix}AI规避失败${suffix}: ${chunk}，原因：${retryResult.error}`)
         return { success: false, evadedMessage, error: retryResult.error }

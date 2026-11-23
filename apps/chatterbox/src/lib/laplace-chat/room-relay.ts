@@ -77,10 +77,15 @@ function report(id: string, update: OutcomeUpdate): void {
 }
 
 /** Send `request.text` the way 常规发送 would: replacement rules, split at the room's cap, AI evasion on rejection. */
-async function relay(request: RelayRequest): Promise<OutcomeUpdate> {
+async function relay(request: RelayRequest, requestsKey: string): Promise<OutcomeUpdate> {
   const session = tabId
-  // Turning the setting off or stopping the relay holds back every segment not posted yet.
-  const active = () => session !== null && tabId === session && laplaceChatRelayEnabled.value
+  // A segment posts only while the setting is on, this relay runs, and the dashboard still lists the request:
+  // it drops requests it gave up on or when it closes, so a tab that resumes late can't post a duplicate.
+  const active = () =>
+    session !== null &&
+    tabId === session &&
+    laplaceChatRelayEnabled.value &&
+    !!readRelayRequests(GM_getValue(requestsKey))?.requests.some(listed => listed.id === request.id)
   if (!active()) return { status: 'disabled', sent: 0, total: 0 }
   const csrfToken = getCsrfToken()
   if (!csrfToken) return { status: 'not-logged-in', sent: 0, total: 0 }
@@ -102,17 +107,17 @@ async function relay(request: RelayRequest): Promise<OutcomeUpdate> {
     const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'laplace-chat', active)
     appendLog(result, label, segment)
     if (result.cancelled) return { status: 'disabled', sent, total }
-    if (result.success || (active() && (await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat')).success))
+    if (result.success || (await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat', active)).success)
       sent++
     else error ??= clipError(formatDanmakuError(result.error))
   }
   return { status: sent === total ? 'sent' : sent > 0 ? 'partial' : 'failed', sent, total, error }
 }
 
-async function handleRequest(request: RelayRequest): Promise<void> {
+async function handleRequest(request: RelayRequest, requestsKey: string): Promise<void> {
   let outcome: OutcomeUpdate
   try {
-    outcome = await relay(request)
+    outcome = await relay(request, requestsKey)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     appendLog(`🔴 ${LOG_LABEL}发送出错：${message}`)
@@ -136,9 +141,14 @@ function scanRequests(): void {
       if (request.tabId !== tabId || outcomes.has(request.id) || now > request.expiresAt) continue
       report(request.id, { status: 'accepted', sent: 0, total: 0 })
       // One relay at a time, so two split superchats never interleave their segments.
-      relayChain = relayChain.then(() => handleRequest(request))
+      relayChain = relayChain.then(() => handleRequest(request, key))
     }
   }
+}
+
+/** Leave discovery when the page goes away; a page restored from the back/forward cache rejoins on the next ring. */
+function forget(): void {
+  if (tabId) GM_deleteValue(TAB_KEY_PREFIX + tabId)
 }
 
 /** Offer this room tab to the LAPLACE Chat dashboard bridge: answer its rings and send what it addresses to this tab. */
@@ -152,7 +162,7 @@ export function startLaplaceChatRelay(): void {
     writeState()
     scanRequests()
   })
-  window.addEventListener('pagehide', stopLaplaceChatRelay)
+  window.addEventListener('pagehide', forget)
   // The real room id resolves asynchronously; until then the tab matches by the URL's room number.
   void ensureRoomId().then(writeState, () => {})
 }
@@ -160,7 +170,7 @@ export function startLaplaceChatRelay(): void {
 export function stopLaplaceChatRelay(): void {
   if (!tabId) return
   if (ringListener !== null) GM_removeValueChangeListener(ringListener)
-  window.removeEventListener('pagehide', stopLaplaceChatRelay)
+  window.removeEventListener('pagehide', forget)
   GM_deleteValue(TAB_KEY_PREFIX + tabId)
   tabId = null
   ringListener = null

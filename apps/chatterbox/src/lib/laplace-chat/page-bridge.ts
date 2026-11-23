@@ -28,8 +28,8 @@ import {
 const DISCOVERY_MS = 1500
 /** How long the chosen tab gets to pick a request up. */
 const ACCEPT_MS = 5000
-/** An accepted request is given up on once its tab stops answering rings for this long (closed, frozen, discarded). */
-const TAB_SILENCE_MS = 10_000
+/** An accepted request is given up on once its tab leaves this many rings in a row unanswered (closed, frozen, discarded). */
+const SILENT_RINGS = 10
 const POLL_MS = 200
 /** Ring cadence while requests are pending: wakes a tab that missed a request and keeps every tab's `seenAt` fresh. */
 const RERING_MS = 1000
@@ -40,6 +40,9 @@ interface Pending {
   accepted: boolean
   /** `at` of the last outcome seen. */
   lastAt: number
+  /** The tab's `seenAt` when it last answered, and the rings since. */
+  seenAt: number
+  unanswered: number
 }
 
 let bridgeId = ''
@@ -82,9 +85,10 @@ function ring(): number {
   return lastRingAt
 }
 
+/** Every request stays listed until settled: room tabs post a segment only while its request is still listed. */
 function writeRequests(): void {
   const key = REQUESTS_KEY_PREFIX + bridgeId
-  const requests = [...pending.values()].filter(entry => !entry.accepted).map(entry => entry.request)
+  const requests = [...pending.values()].map(entry => entry.request)
   if (requests.length > 0) GM_setValue(key, { updatedAt: Date.now(), requests } satisfies RelayRequests)
   else GM_deleteValue(key)
 }
@@ -128,33 +132,37 @@ function checkPending(): void {
   let requestsChanged = false
   for (const [id, entry] of pending) {
     const state = readRoomTabState(GM_getValue(TAB_KEY_PREFIX + entry.request.tabId))
+    if (state && state.seenAt !== entry.seenAt) {
+      entry.seenAt = state.seenAt
+      entry.unanswered = 0
+    }
     const outcome = state?.outcomes[id]
     if (outcome && outcome.status !== 'accepted') {
       pending.delete(id)
-      requestsChanged ||= !entry.accepted
+      requestsChanged = true
       postResult(id, outcome.status, outcome)
       continue
     }
     // Re-posted on every ring so a send queued behind others never trips the SDK's silence timeout.
     if (outcome && (outcome.at !== entry.lastAt || ringDue)) {
-      requestsChanged ||= !entry.accepted
       entry.accepted = true
       entry.lastAt = outcome.at
       post({ source: BRIDGE_SOURCE, type: 'progress', id, sent: outcome.sent, total: outcome.total })
     }
-    // Accepted requests may queue behind others in their tab, so only a gone or silent tab ends the wait.
-    // Unaccepted ones get one extra ring of grace: a pickup just before `expiresAt` may still be propagating.
-    const timedOut = entry.accepted
-      ? !state || now - state.seenAt > TAB_SILENCE_MS
-      : now > entry.request.expiresAt + RERING_MS
+    // Silence counts unanswered rings, not time, so a dashboard whose timers paused (throttling, sleep) can't misjudge
+    // a live tab. Unaccepted requests get one extra ring of grace: a pickup just before `expiresAt` may still be landing.
+    const timedOut = entry.accepted ? entry.unanswered > SILENT_RINGS : now > entry.request.expiresAt + RERING_MS
     if (timedOut) {
       pending.delete(id)
-      requestsChanged ||= !entry.accepted
+      requestsChanged = true
       postResult(id, 'no-response', outcome)
     }
   }
   if (requestsChanged) writeRequests()
-  if (pending.size > 0 && ringDue) ring()
+  if (pending.size > 0 && ringDue) {
+    for (const entry of pending.values()) entry.unanswered++
+    ring()
+  }
   if (pending.size === 0) {
     clearInterval(pollTimer)
     pollTimer = undefined
@@ -186,6 +194,8 @@ async function handleSend(message: SendMessage): Promise<void> {
     request: { id, tabId, roomId, text, wrapBrackets, expiresAt: Date.now() + ACCEPT_MS },
     accepted: false,
     lastAt: 0,
+    seenAt: 0,
+    unanswered: 0,
   })
   writeRequests()
   ring()

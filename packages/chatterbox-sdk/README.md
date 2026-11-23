@@ -11,6 +11,7 @@ The viewer turns this on in Chatterbox under 设置 → 功能切换 → 允许�
 import { ChatterboxClient } from '@laplace.live/chatterbox-sdk'
 
 const chatterbox = new ChatterboxClient()
+const sendButton = document.querySelector<HTMLButtonElement>('#send')!
 // null until Chatterbox announces itself on this page; sends before that settle as `unavailable`
 chatterbox.onStatusChange(status => {
   sendButton.hidden = status === null

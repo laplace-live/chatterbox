@@ -153,11 +153,24 @@ async function startRoom(bus: GmBus, enabled: Signal<boolean>, options: RoomOpti
     }
   )
   const posted: string[] = []
+  const tryAiEvasion = mock(
+    async (
+      _segment: string,
+      _roomId: number,
+      _csrf: string,
+      _label: string,
+      _source: string,
+      _guard?: () => boolean
+    ) => ({
+      success: false,
+    })
+  )
+  let pagehide = () => {}
   const relay = await loadWithMocks<typeof import('./room-relay')>(
     new URL('./room-relay.ts', import.meta.url),
     {
       $: bus.tab(),
-      '../ai-evasion': { tryAiEvasion: async () => ({ success: false }) },
+      '../ai-evasion': { tryAiEvasion },
       '../api': { ensureRoomId: async () => ROOM_ID, getCsrfToken: () => 'csrf' },
       '../log': { appendLog: () => {} },
       '../page-visibility': { isTabHidden: options.hidden ?? (() => false) },
@@ -173,12 +186,17 @@ async function startRoom(bus: GmBus, enabled: Signal<boolean>, options: RoomOpti
       './relay-state': relayState,
     },
     {
-      window: { addEventListener: () => {}, removeEventListener: () => {} },
+      window: {
+        addEventListener: (type: string, listener: () => void) => {
+          if (type === 'pagehide') pagehide = listener
+        },
+        removeEventListener: () => {},
+      },
       location: { href: `https://live.bilibili.com/${ROOM_ID}` },
     }
   )
   relay.startLaplaceChatRelay()
-  return { enqueue, posted, stop: relay.stopLaplaceChatRelay }
+  return { enqueue, posted, tryAiEvasion, stop: relay.stopLaplaceChatRelay, hide: () => pagehide() }
 }
 
 describe('readRoomTabState', () => {
@@ -212,7 +230,6 @@ describe('LAPLACE Chat relay', () => {
     expect(room.enqueue.mock.calls.map(([message, , , priority, source]) => [message, priority, source])).toEqual([
       ['【主播晚上好】', 2, 'laplace-chat'],
     ])
-    // Accepted requests leave the bridge's request list.
     expect([...bus.store.keys()].some(key => key.startsWith(relayState.REQUESTS_KEY_PREFIX))).toBe(false)
   })
 
@@ -413,6 +430,67 @@ describe('LAPLACE Chat relay', () => {
     expect(results).toMatchObject([{ status: 'sent' }, { status: 'sent' }])
     expect(first.posted).toEqual(['【甲甲】', '【乙乙】', '【丙丙】', '【丁丁】'])
     expect(second.posted).toEqual([])
+  })
+
+  test('lets a dashboard whose timers paused hear from a live tab before calling it silent', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled)
+    await startRoom(bus, enabled, { maxUnits: 8, sendMs: 400 })
+    const progress: number[] = []
+    const result = dashboard.client.send(ROOM_ID, '甲甲乙乙', {
+      wrapBrackets: true,
+      onProgress: ({ sent }) => progress.push(sent),
+    })
+    await waitFor(() => (progress.length > 0 ? true : undefined))
+    try {
+      // Both tabs slept for 30 s (a closed laptop) with the relay mid-send.
+      setSystemTime(new Date(Date.now() + 30_000))
+      expect(await result).toMatchObject({ status: 'sent', sent: 2, total: 2 })
+    } finally {
+      setSystemTime()
+    }
+  })
+
+  test('drops a queued relay once the dashboard stops listing it', async () => {
+    const bus = createGmBus()
+    const room = await startRoom(bus, signal(true), { maxUnits: 8, sendMs: 300 })
+    const tabKey = [...bus.store.keys()].find(key => key.startsWith(relayState.TAB_KEY_PREFIX)) ?? ''
+    const tabId = tabKey.slice(relayState.TAB_KEY_PREFIX.length)
+    const other = bus.tab()
+    const requestsKey = `${relayState.REQUESTS_KEY_PREFIX}b1`
+    const expiresAt = Date.now() + 5000
+    const first = { id: 'r1', tabId, roomId: ROOM_ID, text: '甲甲乙乙', wrapBrackets: true, expiresAt }
+    const queued = { id: 'r2', tabId, roomId: ROOM_ID, text: '丙丙', wrapBrackets: true, expiresAt }
+    other.GM_setValue(requestsKey, { updatedAt: Date.now(), requests: [first, queued] })
+    other.GM_setValue(relayState.RING_KEY, 'ring 1')
+    const outcomes = () => relayState.readRoomTabState(bus.store.get(tabKey))?.outcomes
+    await waitFor(() => outcomes()?.r2)
+    // The dashboard gave up on r2 (or closed) while r1 was still sending.
+    other.GM_setValue(requestsKey, { updatedAt: Date.now(), requests: [first] })
+    await waitFor(() => (outcomes()?.r2?.status === 'disabled' ? true : undefined))
+    expect(room.posted).toEqual(['【甲甲】', '【乙乙】'])
+  })
+
+  test('rejoins discovery after a back/forward-cache restore', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled)
+    const room = await startRoom(bus, enabled)
+    room.hide()
+    expect([...bus.store.keys()].some(key => key.startsWith(relayState.TAB_KEY_PREFIX))).toBe(false)
+    expect(await dashboard.send('晚上好')).toMatchObject({ status: 'sent' })
+  })
+
+  test('hands AI evasion the same guard as the first attempt', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled)
+    const room = await startRoom(bus, enabled, {
+      send: message => ({ success: false, message, isEmoticon: false, error: 'k', rejected: true }),
+    })
+    expect(await dashboard.send('晚上好')).toMatchObject({ status: 'failed', error: 'k - 包含房间屏蔽词' })
+    expect(typeof room.tryAiEvasion.mock.calls[0]?.[5]).toBe('function')
   })
 
   test('relays a request once even when rings keep re-reading it', async () => {
