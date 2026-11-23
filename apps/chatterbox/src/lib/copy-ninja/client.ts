@@ -1,5 +1,11 @@
 import type { ClientMessage, CopyStatus, Presence, ServerMessage } from '@laplace.live/kakashi-protocol'
-import { CloseCode, MAX_DETAIL_LENGTH, PROTOCOL_VERSION, parseServerMessage } from '@laplace.live/kakashi-protocol'
+import {
+  CloseCode,
+  isActionSource,
+  MAX_DETAIL_LENGTH,
+  PROTOCOL_VERSION,
+  parseServerMessage,
+} from '@laplace.live/kakashi-protocol'
 import { effect, signal } from '@preact/signals'
 
 import { fetchSelfUname, getDedeUid } from '../api'
@@ -184,7 +190,7 @@ export function startCopyNinja(): void {
 
   disposers.push(
     onDanmakuSent(sent => {
-      if (sent.source === 'copy' || copyNinjaEffectiveRole.value !== 'master') return
+      if (!isActionSource(sent.source) || copyNinjaEffectiveRole.value !== 'master') return
       send({
         type: 'action',
         action: { kind: 'danmaku', roomId: sent.roomId, text: sent.message, source: sent.source },

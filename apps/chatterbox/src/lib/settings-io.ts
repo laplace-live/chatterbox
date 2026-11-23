@@ -1,4 +1,5 @@
 import { GM_deleteValue, GM_getValue, GM_listValues, GM_setValue } from '$'
+import { RELAY_KEY_PREFIX } from './laplace-chat/relay-state'
 import { isRecord } from './utils'
 import { VERSION } from './version'
 
@@ -30,9 +31,14 @@ function buildTimestamp(d = new Date()): string {
   ].join('-')
 }
 
+/** Settings keys, minus the transient LAPLACE Chat relay state that must never land in (or be cleared by) a backup. */
+function settingsKeys(): string[] {
+  return GM_listValues().filter(key => !key.startsWith(RELAY_KEY_PREFIX))
+}
+
 /** Snapshot all GM storage keys to a downloaded JSON file; returns keys written. */
 export function exportSettings(): number {
-  const keys = GM_listValues()
+  const keys = settingsKeys()
   const data: Record<string, unknown> = {}
   for (const key of keys) {
     data[key] = GM_getValue(key)
@@ -84,7 +90,7 @@ export function parseSettingsFile(text: string): SettingsFile {
  * Signals aren't updated in place — callers must reload so they re-init from the new GM values.
  */
 export function applySettingsFile(file: SettingsFile): { imported: number; cleared: number } {
-  const before = GM_listValues()
+  const before = settingsKeys()
   const incoming = new Set(Object.keys(file.data))
   let cleared = 0
   for (const key of before) {
@@ -95,6 +101,7 @@ export function applySettingsFile(file: SettingsFile): { imported: number; clear
   }
   let imported = 0
   for (const [key, value] of Object.entries(file.data)) {
+    if (key.startsWith(RELAY_KEY_PREFIX)) continue
     GM_setValue(key, value)
     imported++
   }

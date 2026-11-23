@@ -4,6 +4,9 @@ export const PROJECT_URL = 'https://laplace.live/chatterbox'
 export const GITHUB_URL = 'https://github.com/laplace-live/chatterbox'
 export const DOCUMENT_URL = 'https://laplace.live/chatterbox'
 
+/** LAPLACE Chat dashboard hosts the userscript also runs on, to relay its 作为弹幕发送 requests to a live-room tab. */
+export const LAPLACE_CHAT_HOSTS = ['chat.laplace.live', 'chat-dev.laplace.live', 'chat.vrp.moe', 'laplace.chat']
+
 /** Soniox realtime STT WebSocket. Auth via `Sec-WebSocket-Protocol` (`['soniox-api-key', apiKey]`) — no header, no CORS. */
 export const SONIOX_WS_URL = 'wss://stt-rt.soniox.com/transcribe-websocket'
 

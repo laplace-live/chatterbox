@@ -3,13 +3,15 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
 
-import { GITHUB_URL, PROJECT_URL } from './src/lib/const.ts'
+import { GITHUB_URL, LAPLACE_CHAT_HOSTS, PROJECT_URL } from './src/lib/const.ts'
 
 // const DOWNLOAD_BASE = 'https://laplace-live.github.io/chatterbox' // Github Pages backup, 100 GB bandwidth/month limit
 const DOWNLOAD_BASE = 'https://downloads.vrp.moe/chatterbox'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // In-repo packages (`@laplace.live/chatterbox-sdk`) resolve to source via tsconfig.app.json `paths`, so dev needs no prebuild.
+  resolve: { tsconfigPaths: true },
   plugins: [
     // Must run before preact() to scan JSX before it's transformed to plain JS.
     tailwindcss(),
@@ -31,6 +33,7 @@ export default defineConfig({
           '*://space.bilibili.com/*',
           '*://www.bilibili.com/video/*',
           '*://www.bilibili.com/opus/*',
+          ...LAPLACE_CHAT_HOSTS.map(host => `https://${host}/*`),
         ],
         'run-at': 'document-start',
         // Hosts gmFetch (GM_xmlhttpRequest) may reach; page fetch and WebSockets don't consult this. Unlisted hosts get a one-time manager

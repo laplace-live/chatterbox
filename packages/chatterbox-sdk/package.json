@@ -1,0 +1,37 @@
+{
+  "name": "@laplace.live/chatterbox-sdk",
+  "version": "0.0.0",
+  "description": "TypeScript SDK and page protocol for sending danmaku through LAPLACE Chatterbox from a web page",
+  "license": "MIT",
+  "type": "module",
+  "author": "LAPLACE Live! <s@laplace.live>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/laplace-live/chatterbox",
+    "directory": "packages/chatterbox-sdk"
+  },
+  "homepage": "https://laplace.live/chatterbox",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.5",
+    "typescript": "^7.0.2"
+  }
+}

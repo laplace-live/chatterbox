@@ -33,6 +33,7 @@ import {
   invisibleChar,
   invisibleCharCustom,
   invisibleCharPreset,
+  laplaceChatRelayEnabled,
   llmActivePromptAiChat,
   llmActivePromptAutoBlend,
   llmActivePromptAutoSend,
@@ -1032,6 +1033,22 @@ export function SettingsTab() {
               label='开启悬浮弹幕输入框'
             />
           </div>
+
+          <Separator className='my-3' />
+
+          <div class={HEADING_CLASS}>LAPLACE Chat 控制台</div>
+          <div class={HINT_CLASS}>
+            开启后，可在 LAPLACE Chat
+            控制台醒目留言的菜单中点击「作为弹幕发送」，由本浏览器中已打开该直播间的页面以当前账号发出（用【】包裹，超长自动分段）。登录信息不会离开浏览器
+          </div>
+          <Checkbox
+            id='laplaceChatRelayEnabled'
+            checked={laplaceChatRelayEnabled.value}
+            onInput={e => {
+              laplaceChatRelayEnabled.value = e.currentTarget.checked
+            }}
+            label='允许控制台通过本脚本发送弹幕'
+          />
 
           <Separator className='my-3' />
 

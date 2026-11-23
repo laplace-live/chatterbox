@@ -11,6 +11,7 @@
     "build": "bun run --cwd apps/chatterbox build",
     "dev:server": "bun run --cwd apps/kakashi-server dev",
     "build:server": "bun run --cwd apps/kakashi-server build",
+    "build:sdk": "bun run --cwd packages/chatterbox-sdk build",
     "lint": "biome check",
     "typecheck": "bun run --workspaces typecheck",
     "test": "bun test",

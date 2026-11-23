@@ -9,7 +9,9 @@ import { AppOpus } from './components/app-opus'
 import { AppRoom } from './components/app-room'
 import { AppSpace } from './components/app-space'
 import { AppVideo } from './components/app-video'
+import { LAPLACE_CHAT_HOSTS } from './lib/const'
 import { infoCurrentUid, infoOpusMeta } from './lib/info-status'
+import { startLaplaceChatBridge } from './lib/laplace-chat/page-bridge'
 import { installShadowKeyboardGuard } from './lib/shadow-keyboard-guard'
 import { extractBvid, extractOpusAuthorUid, extractOpusPubDate, extractRoomNumber, whenDomReady } from './lib/utils'
 
@@ -133,4 +135,8 @@ if (isLiveHost && hasResolvableRoom) {
       }
     })
   }
+} else if ([...LAPLACE_CHAT_HOSTS, 'localhost', '127.0.0.1'].includes(location.hostname)) {
+  // LAPLACE Chat dashboard: no UI, only the bridge relaying its sends to a live-room tab. Loopback is
+  // reached only through a user-added @match, for testing against a local dashboard.
+  startLaplaceChatBridge()
 }

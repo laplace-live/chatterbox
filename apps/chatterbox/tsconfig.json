@@ -1,5 +1,11 @@
 {
   "files": [],
+  // Bun resolves `paths` from this file only, so in-repo SDK imports run from source without a build.
+  "compilerOptions": {
+    "paths": {
+      "@laplace.live/chatterbox-sdk": ["../../packages/chatterbox-sdk/src/index.ts"]
+    }
+  },
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" },

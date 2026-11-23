@@ -1,0 +1,162 @@
+import type { GmValueListenerId } from '$'
+
+import {
+  GM_addValueChangeListener,
+  GM_deleteValue,
+  GM_getValue,
+  GM_listValues,
+  GM_removeValueChangeListener,
+  GM_setValue,
+} from '$'
+import { tryAiEvasion } from '../ai-evasion'
+import { ensureRoomId, getCsrfToken } from '../api'
+import { appendLog } from '../log'
+import { isTabHidden } from '../page-visibility'
+import { applyReplacements } from '../replacement'
+import { enqueueDanmaku, SendPriority } from '../send-queue'
+import { cachedRoomId, danmakuMaxUnits, laplaceChatRelayEnabled } from '../store'
+import { extractRoomNumber, formatDanmakuError, processDanmakuMessages } from '../utils'
+import { wrapSegment, wrapSplitUnits } from '../wrap'
+import {
+  isRoomId,
+  REQUESTS_KEY_PREFIX,
+  type RelayOutcome,
+  type RelayRequest,
+  RING_KEY,
+  type RoomTabState,
+  readRelayRequests,
+  STALE_STATE_MS,
+  TAB_KEY_PREFIX,
+} from './relay-state'
+
+type OutcomeUpdate = Omit<RelayOutcome, 'at'>
+
+/** How long a finished outcome stays readable by the dashboard bridge. */
+const OUTCOME_TTL_MS = 10 * 60_000
+const MAX_ERROR = 200
+const LOG_LABEL = '控制台'
+
+let tabId: string | null = null
+let ringListener: GmValueListenerId | null = null
+const outcomes = new Map<string, RelayOutcome>()
+let relayChain = Promise.resolve()
+
+function servedRoomIds(): number[] {
+  return [...new Set([cachedRoomId.value, Number(extractRoomNumber(location.href))])].filter(isRoomId)
+}
+
+/** Clip a send error for the wire. */
+function clipError(error: string): string {
+  return error.length > MAX_ERROR ? `${error.slice(0, MAX_ERROR - 1)}…` : error
+}
+
+function writeState(): void {
+  if (!tabId) return
+  const now = Date.now()
+  for (const [id, outcome] of outcomes) {
+    if (now - outcome.at > OUTCOME_TTL_MS) outcomes.delete(id)
+  }
+  GM_setValue(TAB_KEY_PREFIX + tabId, {
+    roomIds: servedRoomIds(),
+    visible: !isTabHidden(),
+    seenAt: now,
+    outcomes: Object.fromEntries(outcomes),
+  } satisfies RoomTabState)
+}
+
+function ring(): void {
+  if (tabId) GM_setValue(RING_KEY, `${tabId}:${Date.now()}:${Math.random()}`)
+}
+
+function report(id: string, update: OutcomeUpdate): void {
+  // Strictly increasing so the bridge sees every update, even two in the same millisecond.
+  const at = Math.max(Date.now(), (outcomes.get(id)?.at ?? 0) + 1)
+  outcomes.set(id, { ...update, at })
+  writeState()
+  ring()
+}
+
+/** Send `request.text` the way 常规发送 would: replacement rules, split at the room's cap, AI evasion on rejection. */
+async function relay(request: RelayRequest): Promise<OutcomeUpdate> {
+  if (!laplaceChatRelayEnabled.value) return { status: 'disabled', sent: 0, total: 0 }
+  const csrfToken = getCsrfToken()
+  if (!csrfToken) return { status: 'not-logged-in', sent: 0, total: 0 }
+  const roomId = await ensureRoomId()
+  if (!servedRoomIds().includes(request.roomId)) return { status: 'no-room-tab', sent: 0, total: 0 }
+
+  const text = applyReplacements(request.text.trim()).trim()
+  if (!text) return { status: 'failed', sent: 0, total: 0, error: '替换规则处理后内容为空' }
+  const wrap = request.wrapBrackets
+  const segments = processDanmakuMessages(text, wrapSplitUnits(danmakuMaxUnits.value, wrap)).map(segment =>
+    wrapSegment(segment, wrap)
+  )
+  const total = segments.length
+  let sent = 0
+  let error: string | undefined
+  for (const [i, segment] of segments.entries()) {
+    report(request.id, { status: 'accepted', sent, total })
+    const label = total > 1 ? `${LOG_LABEL} [${i + 1}/${total}]` : LOG_LABEL
+    const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'laplace-chat')
+    appendLog(result, label, segment)
+    if (result.success || (await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat')).success) sent++
+    else error ??= clipError(formatDanmakuError(result.error))
+  }
+  return { status: sent === total ? 'sent' : sent > 0 ? 'partial' : 'failed', sent, total, error }
+}
+
+async function handleRequest(request: RelayRequest): Promise<void> {
+  let outcome: OutcomeUpdate
+  try {
+    outcome = await relay(request)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    appendLog(`🔴 ${LOG_LABEL}发送出错：${message}`)
+    outcome = { status: 'failed', sent: 0, total: 0, error: clipError(message) }
+  }
+  report(request.id, outcome)
+}
+
+function scanRequests(): void {
+  const now = Date.now()
+  for (const key of GM_listValues()) {
+    if (!key.startsWith(REQUESTS_KEY_PREFIX)) continue
+    const state = readRelayRequests(GM_getValue(key))
+    if (!state) continue
+    if (now - state.updatedAt > STALE_STATE_MS) {
+      GM_deleteValue(key)
+      continue
+    }
+    for (const request of state.requests) {
+      // Picked-up requests already have an outcome; expired ones were already reported to the dashboard as unanswered.
+      if (request.tabId !== tabId || outcomes.has(request.id) || now > request.expiresAt) continue
+      report(request.id, { status: 'accepted', sent: 0, total: 0 })
+      // One relay at a time, so two split superchats never interleave their segments.
+      relayChain = relayChain.then(() => handleRequest(request))
+    }
+  }
+}
+
+/** Offer this room tab to the LAPLACE Chat dashboard bridge: answer its rings and send what it addresses to this tab. */
+export function startLaplaceChatRelay(): void {
+  if (tabId) return
+  tabId = crypto.randomUUID()
+  outcomes.clear()
+  writeState()
+  ringListener = GM_addValueChangeListener(RING_KEY, (_key, _oldValue, _newValue, remote) => {
+    if (!remote) return
+    writeState()
+    scanRequests()
+  })
+  window.addEventListener('pagehide', stopLaplaceChatRelay)
+  // The real room id resolves asynchronously; until then the tab matches by the URL's room number.
+  void ensureRoomId().then(writeState, () => {})
+}
+
+export function stopLaplaceChatRelay(): void {
+  if (!tabId) return
+  if (ringListener !== null) GM_removeValueChangeListener(ringListener)
+  window.removeEventListener('pagehide', stopLaplaceChatRelay)
+  GM_deleteValue(TAB_KEY_PREFIX + tabId)
+  tabId = null
+  ringListener = null
+}
