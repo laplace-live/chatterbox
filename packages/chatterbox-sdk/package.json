@@ -1,6 +1,6 @@
 {
   "name": "@laplace.live/chatterbox-sdk",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "TypeScript SDK and page protocol for sending danmaku through LAPLACE Chatterbox from a web page",
   "license": "MIT",
   "type": "module",
