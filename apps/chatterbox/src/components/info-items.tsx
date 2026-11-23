@@ -69,15 +69,22 @@ export function InfoItems() {
   )
 }
 
+interface FoldableInfoItemsProps {
+  children?: ComponentChildren
+  foldLabel?: string
+}
+
 /** `InfoItems` with the fold toggle; the fold state carries over across pages and reloads. */
-export function FoldableInfoItems() {
+export function FoldableInfoItems({ children, foldLabel }: FoldableInfoItemsProps = {}) {
   const collapsed = statusBarInfoCollapsed.value
   return (
     <StatusBarFold
       collapsed={collapsed}
+      label={foldLabel}
       onToggle={() => (statusBarInfoCollapsed.value = !statusBarInfoCollapsed.value)}
     >
       <InfoItems />
+      {children}
     </StatusBarFold>
   )
 }

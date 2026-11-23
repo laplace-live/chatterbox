@@ -12,6 +12,7 @@ import { loop } from '../lib/loop'
 import { PLAYER_WATERMARK_SELECTOR } from '../lib/player-dom'
 import {
   aiChatEnabled,
+  audioOnlyActive,
   autoBlendEnabled,
   danmakuDirectMode,
   dialogOpen,
@@ -147,8 +148,9 @@ export function AppRoom() {
     <>
       {floatingInputEnabled.value && <FloatingInputBox />}
       <StatusBar>
-        <FoldableInfoItems />
-        <AudioOnlyControls />
+        <FoldableInfoItems foldLabel={audioOnlyActive.value ? '主播信息与音量' : undefined}>
+          <AudioOnlyControls />
+        </FoldableInfoItems>
         <AudioOnlyModeSelect />
         {floatingInputEnabled.value && <FloatingInputToggleButton />}
         <ConfiguratorButton />
