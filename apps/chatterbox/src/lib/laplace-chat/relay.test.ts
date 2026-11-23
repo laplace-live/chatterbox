@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { describe, expect, mock, setSystemTime, test } from 'bun:test'
 import * as sdk from '@laplace.live/chatterbox-sdk'
 import { effect, type Signal, signal } from '@preact/signals'
 
@@ -82,7 +82,7 @@ async function waitFor<T>(read: () => T | undefined, timeoutMs = 4000): Promise<
 }
 
 /** The dashboard tab: Chatterbox's bridge on a fake page, driven by the SDK client the dashboard uses. */
-async function startDashboard(bus: GmBus, enabled: Signal<boolean>) {
+async function startDashboard(bus: GmBus, enabled: Signal<boolean>, timeoutMs?: number) {
   type Listener = (event: { source: unknown; origin: string; data: unknown }) => void
   const listeners = new Set<Listener>()
   // Only `message` listeners hear page messages, so the bridge's `pagehide` cleanup stays out of the way.
@@ -115,7 +115,7 @@ async function startDashboard(bus: GmBus, enabled: Signal<boolean>) {
     { window: page, location: { origin: ORIGIN } }
   )
   bridge.startLaplaceChatBridge()
-  const client = new sdk.ChatterboxClient({ target: page })
+  const client = new sdk.ChatterboxClient({ target: page, timeoutMs })
   client.connect()
   await waitFor(() => client.status ?? undefined)
   return {
@@ -302,6 +302,47 @@ describe('LAPLACE Chat relay', () => {
     room.stop()
     expect(await dashboard.send('晚上好')).toMatchObject({ status: 'no-room-tab' })
     expect([...bus.store.keys()].some(key => key.startsWith(relayState.TAB_KEY_PREFIX))).toBe(false)
+  })
+
+  test('keeps a send queued behind another alive past the client timeout', async () => {
+    const bus = createGmBus()
+    const enabled = signal(true)
+    const dashboard = await startDashboard(bus, enabled, 2000)
+    await startRoom(bus, enabled, { maxUnits: 8, sendMs: 1250 })
+    const results = await Promise.all([dashboard.send('甲甲乙乙'), dashboard.send('丁丁')])
+    expect(results).toMatchObject([
+      { status: 'sent', total: 2 },
+      { status: 'sent', total: 1 },
+    ])
+  })
+
+  test('waits one more ring for a pickup that lands right at the deadline', async () => {
+    const bus = createGmBus()
+    const dashboard = await startDashboard(bus, signal(true))
+    // The test plays a room tab whose pickup write arrives late.
+    const tab = bus.tab()
+    const tabKey = `${relayState.TAB_KEY_PREFIX}slow`
+    let outcomes: Record<string, relayState.RelayOutcome> = {}
+    const writeTab = () => tab.GM_setValue(tabKey, { roomIds: [ROOM_ID], visible: true, seenAt: Date.now(), outcomes })
+    writeTab()
+    tab.GM_addValueChangeListener(relayState.RING_KEY, (_key, _oldValue, _newValue, remote) => {
+      if (remote) writeTab()
+    })
+    const result = dashboard.send('晚上好')
+    const request = await waitFor(() => {
+      const key = [...bus.store.keys()].find(key => key.startsWith(relayState.REQUESTS_KEY_PREFIX))
+      return key ? relayState.readRelayRequests(bus.store.get(key))?.requests[0] : undefined
+    })
+    try {
+      setSystemTime(new Date(request.expiresAt + 400))
+      await new Promise(resolve => setTimeout(resolve, 300))
+      outcomes = { [request.id]: { status: 'sent', sent: 1, total: 1, at: Date.now() } }
+      writeTab()
+      tab.GM_setValue(relayState.RING_KEY, 'late pickup')
+      expect(await result).toMatchObject({ status: 'sent' })
+    } finally {
+      setSystemTime()
+    }
   })
 
   test('relays a request once even when rings keep re-reading it', async () => {

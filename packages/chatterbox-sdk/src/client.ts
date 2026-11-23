@@ -99,7 +99,7 @@ export class ChatterboxClient {
     if (!this.#listening) return
     this.#window().removeEventListener('message', this.#onMessage)
     this.#listening = false
-    for (const id of this.#pending.keys()) this.#settle(id, { status: 'unavailable', sent: 0, total: 0 })
+    for (const [id, entry] of this.#pending) this.#settle(id, { status: 'unavailable', ...entry.progress })
     this.#setStatus(null)
   }
 
@@ -156,8 +156,10 @@ export class ChatterboxClient {
     const entry = this.#pending.get(message.id)
     if (!entry) return
     if (message.type === 'progress') {
-      entry.progress = { sent: message.sent, total: message.total }
+      // The bridge re-posts progress as a heartbeat while a send is queued: it restarts the timeout, but only changes notify.
       this.#armTimeout(message.id, entry)
+      if (message.sent === entry.progress.sent && message.total === entry.progress.total) return
+      entry.progress = { sent: message.sent, total: message.total }
       entry.onProgress?.(entry.progress)
       return
     }

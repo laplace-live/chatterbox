@@ -95,12 +95,7 @@ function pickRoomTab(roomId: number, since: number): string | null {
   for (const key of GM_listValues()) {
     if (!key.startsWith(TAB_KEY_PREFIX)) continue
     const state = readRoomTabState(GM_getValue(key))
-    if (!state) continue
-    if (Date.now() - state.seenAt > STALE_STATE_MS) {
-      GM_deleteValue(key)
-      continue
-    }
-    if (state.seenAt < since || !state.roomIds.includes(roomId)) continue
+    if (!state || state.seenAt < since || !state.roomIds.includes(roomId)) continue
     const better =
       !best || (state.visible && !best.visible) || (state.visible === best.visible && state.seenAt > best.seenAt)
     if (better) best = { tabId: key.slice(TAB_KEY_PREFIX.length), visible: state.visible, seenAt: state.seenAt }
@@ -109,6 +104,12 @@ function pickRoomTab(roomId: number, since: number): string | null {
 }
 
 async function findRoomTab(roomId: number): Promise<string | null> {
+  // Before the ring, so a live tab's answer always lands after the delete instead of being wiped by it.
+  for (const key of GM_listValues()) {
+    if (!key.startsWith(TAB_KEY_PREFIX)) continue
+    const state = readRoomTabState(GM_getValue(key))
+    if (state && Date.now() - state.seenAt > STALE_STATE_MS) GM_deleteValue(key)
+  }
   const since = ring()
   do {
     await new Promise(resolve => setTimeout(resolve, POLL_MS))
@@ -120,6 +121,7 @@ async function findRoomTab(roomId: number): Promise<string | null> {
 
 function checkPending(): void {
   const now = Date.now()
+  const ringDue = now - lastRingAt >= RERING_MS
   let requestsChanged = false
   for (const [id, entry] of pending) {
     const state = readRoomTabState(GM_getValue(TAB_KEY_PREFIX + entry.request.tabId))
@@ -130,14 +132,18 @@ function checkPending(): void {
       postResult(id, outcome.status, outcome)
       continue
     }
-    if (outcome && outcome.at !== entry.lastAt) {
+    // Re-posted on every ring so a send queued behind others never trips the SDK's silence timeout.
+    if (outcome && (outcome.at !== entry.lastAt || ringDue)) {
       requestsChanged ||= !entry.accepted
       entry.accepted = true
       entry.lastAt = outcome.at
       post({ source: BRIDGE_SOURCE, type: 'progress', id, sent: outcome.sent, total: outcome.total })
     }
     // Accepted requests may queue behind others in their tab, so only a gone or silent tab ends the wait.
-    const timedOut = entry.accepted ? !state || now - state.seenAt > TAB_SILENCE_MS : now > entry.request.expiresAt
+    // Unaccepted ones get one extra ring of grace: a pickup just before `expiresAt` may still be propagating.
+    const timedOut = entry.accepted
+      ? !state || now - state.seenAt > TAB_SILENCE_MS
+      : now > entry.request.expiresAt + RERING_MS
     if (timedOut) {
       pending.delete(id)
       requestsChanged ||= !entry.accepted
@@ -145,7 +151,7 @@ function checkPending(): void {
     }
   }
   if (requestsChanged) writeRequests()
-  if (pending.size > 0 && now - lastRingAt >= RERING_MS) ring()
+  if (pending.size > 0 && ringDue) ring()
   if (pending.size === 0) {
     clearInterval(pollTimer)
     pollTimer = undefined

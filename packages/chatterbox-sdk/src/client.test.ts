@@ -108,6 +108,27 @@ describe('ChatterboxClient', () => {
     ])
   })
 
+  test('a repeated progress message keeps the send alive without notifying again', async () => {
+    const { page } = createPage(
+      announcing({ protocol: 1, version: '5.1.0', enabled: true }, (message, reply) => {
+        for (const delay of [0, 30, 60, 90])
+          setTimeout(() => reply({ type: 'progress', id: message.id, sent: 0, total: 2 }), delay)
+        setTimeout(() => reply({ type: 'result', id: message.id, status: 'sent', sent: 2, total: 2 }), 120)
+      })
+    )
+    const client = new ChatterboxClient({ target: page, timeoutMs: 50 })
+    client.connect()
+    await tick()
+    const progress: unknown[] = []
+    expect(await client.send(1, 'hi', { onProgress: p => progress.push(p) })).toEqual({
+      status: 'sent',
+      sent: 2,
+      total: 2,
+      error: undefined,
+    })
+    expect(progress).toEqual([{ sent: 0, total: 2 }])
+  })
+
   test('gives up on a bridge that goes silent, keeping the last progress', async () => {
     const { page } = createPage(
       announcing({ protocol: 1, version: '5.1.0', enabled: true }, (message, reply) => {
