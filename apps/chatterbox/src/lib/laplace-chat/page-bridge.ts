@@ -91,11 +91,14 @@ function writeRequests(): void {
 
 /** Live tab for `roomId` that answered a ring at or after `since`, preferring a visible one, then the freshest. */
 function pickRoomTab(roomId: number, since: number): string | null {
+  // A tab still sending this room's earlier requests keeps the room, so the relays share one send queue.
+  const busyTabId = [...pending.values()].find(entry => entry.request.roomId === roomId)?.request.tabId
   let best: { tabId: string; visible: boolean; seenAt: number } | null = null
   for (const key of GM_listValues()) {
     if (!key.startsWith(TAB_KEY_PREFIX)) continue
     const state = readRoomTabState(GM_getValue(key))
     if (!state || state.seenAt < since || !state.roomIds.includes(roomId)) continue
+    if (key.slice(TAB_KEY_PREFIX.length) === busyTabId) return busyTabId
     const better =
       !best || (state.visible && !best.visible) || (state.visible === best.visible && state.seenAt > best.seenAt)
     if (better) best = { tabId: key.slice(TAB_KEY_PREFIX.length), visible: state.visible, seenAt: state.seenAt }

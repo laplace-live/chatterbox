@@ -11,14 +11,19 @@ The viewer turns this on in Chatterbox under 设置 → 功能切换 → 允许�
 import { ChatterboxClient } from '@laplace.live/chatterbox-sdk'
 
 const chatterbox = new ChatterboxClient()
-chatterbox.onStatusChange(status => console.log(status)) // { version, enabled } or null
+// null until Chatterbox announces itself on this page; sends before that settle as `unavailable`
+chatterbox.onStatusChange(status => {
+  sendButton.hidden = status === null
+})
 chatterbox.connect()
 
-const result = await chatterbox.send(21452505, '主播晚上好', {
-  wrapBrackets: true, // 【主播晚上好】
-  onProgress: ({ sent, total }) => console.log(`${sent}/${total}`),
-})
-// result.status: 'sent' | 'partial' | 'failed' | 'disabled' | 'no-room-tab' | 'no-response' | 'not-logged-in' | 'busy' | 'invalid' | 'unavailable'
+sendButton.onclick = async () => {
+  const result = await chatterbox.send(21452505, '主播晚上好', {
+    wrapBrackets: true, // 【主播晚上好】
+    onProgress: ({ sent, total }) => console.log(`${sent}/${total}`),
+  })
+  // result.status: 'sent' | 'partial' | 'failed' | 'disabled' | 'no-room-tab' | 'no-response' | 'not-logged-in' | 'busy' | 'invalid' | 'unavailable'
+}
 ```
 
 `parseClientMessage` and `parseBridgeMessage` validate the raw page messages for code that speaks the protocol

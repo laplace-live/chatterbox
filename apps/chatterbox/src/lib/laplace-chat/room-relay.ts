@@ -54,7 +54,7 @@ function writeState(): void {
   if (!tabId) return
   const now = Date.now()
   for (const [id, outcome] of outcomes) {
-    if (now - outcome.at > OUTCOME_TTL_MS) outcomes.delete(id)
+    if (outcome.status !== 'accepted' && now - outcome.at > OUTCOME_TTL_MS) outcomes.delete(id)
   }
   GM_setValue(TAB_KEY_PREFIX + tabId, {
     roomIds: servedRoomIds(),
@@ -78,7 +78,10 @@ function report(id: string, update: OutcomeUpdate): void {
 
 /** Send `request.text` the way 常规发送 would: replacement rules, split at the room's cap, AI evasion on rejection. */
 async function relay(request: RelayRequest): Promise<OutcomeUpdate> {
-  if (!laplaceChatRelayEnabled.value) return { status: 'disabled', sent: 0, total: 0 }
+  const session = tabId
+  // Turning the setting off or stopping the relay holds back every segment not posted yet.
+  const active = () => session !== null && tabId === session && laplaceChatRelayEnabled.value
+  if (!active()) return { status: 'disabled', sent: 0, total: 0 }
   const csrfToken = getCsrfToken()
   if (!csrfToken) return { status: 'not-logged-in', sent: 0, total: 0 }
   const roomId = await ensureRoomId()
@@ -96,9 +99,11 @@ async function relay(request: RelayRequest): Promise<OutcomeUpdate> {
   for (const [i, segment] of segments.entries()) {
     report(request.id, { status: 'accepted', sent, total })
     const label = total > 1 ? `${LOG_LABEL} [${i + 1}/${total}]` : LOG_LABEL
-    const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'laplace-chat')
+    const result = await enqueueDanmaku(segment, roomId, csrfToken, SendPriority.MANUAL, 'laplace-chat', active)
     appendLog(result, label, segment)
-    if (result.success || (await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat')).success) sent++
+    if (result.cancelled) return { status: 'disabled', sent, total }
+    if (result.success || (active() && (await tryAiEvasion(segment, roomId, csrfToken, label, 'laplace-chat')).success))
+      sent++
     else error ??= clipError(formatDanmakuError(result.error))
   }
   return { status: sent === total ? 'sent' : sent > 0 ? 'partial' : 'failed', sent, total, error }
