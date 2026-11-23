@@ -373,6 +373,38 @@ describe('LAPLACE Chat relay', () => {
     }
   })
 
+  test('keeps a finished outcome until the dashboard delists its request', async () => {
+    const bus = createGmBus()
+    await startRoom(bus, signal(true))
+    const tabKey = [...bus.store.keys()].find(key => key.startsWith(relayState.TAB_KEY_PREFIX)) ?? ''
+    const other = bus.tab()
+    const requestsKey = `${relayState.REQUESTS_KEY_PREFIX}b1`
+    const request = {
+      id: 'r1',
+      tabId: tabKey.slice(relayState.TAB_KEY_PREFIX.length),
+      roomId: ROOM_ID,
+      text: '晚上好',
+      wrapBrackets: true,
+      expiresAt: Date.now() + 5000,
+    }
+    other.GM_setValue(requestsKey, [request])
+    other.GM_setValue(relayState.RING_KEY, 'ring 1')
+    const outcomes = () => relayState.readRoomTabState(bus.store.get(tabKey))?.outcomes
+    await waitFor(() => (outcomes()?.r1?.status === 'sent' ? true : undefined))
+    try {
+      // A dashboard kept in the back/forward cache for a while still finds its result.
+      setSystemTime(new Date(Date.now() + 60 * 60_000))
+      other.GM_setValue(relayState.RING_KEY, 'ring 2')
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(outcomes()?.r1?.status).toBe('sent')
+    } finally {
+      setSystemTime()
+    }
+    other.GM_setValue(requestsKey, [])
+    other.GM_setValue(relayState.RING_KEY, 'ring 3')
+    await waitFor(() => (outcomes() && !outcomes()?.r1 ? true : undefined))
+  })
+
   test('holds back unsent segments once the setting goes off', async () => {
     const bus = createGmBus()
     const enabled = signal(true)
@@ -385,7 +417,7 @@ describe('LAPLACE Chat relay', () => {
     expect(room.posted).toEqual([])
   })
 
-  test('keeps the outcome of a send still queued past the outcome TTL', async () => {
+  test('keeps a queued send’s outcome however long its request stays listed', async () => {
     const bus = createGmBus()
     await startRoom(bus, signal(true), { maxUnits: 8, sendMs: 300 })
     const tabKey = [...bus.store.keys()].find(key => key.startsWith(relayState.TAB_KEY_PREFIX)) ?? ''

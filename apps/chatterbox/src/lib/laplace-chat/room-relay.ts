@@ -30,8 +30,6 @@ import {
 
 type OutcomeUpdate = Omit<RelayOutcome, 'at'>
 
-/** How long a finished outcome stays readable by the dashboard bridge. */
-const OUTCOME_TTL_MS = 10 * 60_000
 const MAX_ERROR = 200
 const LOG_LABEL = '控制台'
 
@@ -51,14 +49,10 @@ function clipError(error: string): string {
 
 function writeState(): void {
   if (!tabId) return
-  const now = Date.now()
-  for (const [id, outcome] of outcomes) {
-    if (outcome.status !== 'accepted' && now - outcome.at > OUTCOME_TTL_MS) outcomes.delete(id)
-  }
   GM_setValue(TAB_KEY_PREFIX + tabId, {
     roomIds: servedRoomIds(),
     visible: !isTabHidden(),
-    seenAt: now,
+    seenAt: Date.now(),
     outcomes: Object.fromEntries(outcomes),
   } satisfies RoomTabState)
 }
@@ -133,18 +127,23 @@ async function handleRequest(request: RelayRequest, requestsKey: string): Promis
 
 function scanRequests(): void {
   const now = Date.now()
+  const listed = new Set<string>()
   for (const key of GM_listValues()) {
     if (!key.startsWith(REQUESTS_KEY_PREFIX)) continue
     // Only the bridge that wrote a list deletes it: aging lists out here would cancel sends a waking bridge still wants.
     // A crashed dashboard's list is left behind on purpose; its requests are all handled or expired, so it stays inert.
     for (const request of readRelayRequests(GM_getValue(key)) ?? []) {
+      if (request.tabId !== tabId) continue
+      listed.add(request.id)
       // Picked-up requests already have an outcome; expired ones were already reported to the dashboard as unanswered.
-      if (request.tabId !== tabId || outcomes.has(request.id) || now > request.expiresAt) continue
+      if (outcomes.has(request.id) || now > request.expiresAt) continue
       report(request.id, { status: 'accepted', sent: 0, total: 0 })
       // One relay at a time, so two split superchats never interleave their segments.
       relayChain = relayChain.then(() => handleRequest(request, key))
     }
   }
+  // An outcome lives as long as its request stays listed: the bridge delists a request once it has read the result.
+  for (const id of outcomes.keys()) if (!listed.has(id)) outcomes.delete(id)
 }
 
 /** Leave discovery when the page goes away; a page restored from the back/forward cache rejoins on the next ring. */
@@ -160,8 +159,8 @@ export function startLaplaceChatRelay(): void {
   writeState()
   ringListener = GM_addValueChangeListener(RING_KEY, (_key, _oldValue, _newValue, remote) => {
     if (!remote) return
-    writeState()
     scanRequests()
+    writeState()
   })
   window.addEventListener('pagehide', forget)
   // The real room id resolves asynchronously; until then the tab matches by the URL's room number.
