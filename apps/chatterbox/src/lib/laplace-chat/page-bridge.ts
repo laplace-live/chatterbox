@@ -165,6 +165,8 @@ function checkPending(): void {
   if (pending.size === 0) {
     clearInterval(pollTimer)
     pollTimer = undefined
+    // One last ring lets room tabs drop the outcomes of the requests just delisted.
+    if (requestsChanged) ring()
   }
 }
 

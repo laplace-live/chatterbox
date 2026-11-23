@@ -227,6 +227,12 @@ describe('LAPLACE Chat relay', () => {
       ['【主播晚上好】', 2, 'laplace-chat'],
     ])
     expect([...bus.store.keys()].some(key => key.startsWith(relayState.REQUESTS_KEY_PREFIX))).toBe(false)
+    // Once the dashboard has read the result, the room tab forgets it too.
+    const tabKey = [...bus.store.keys()].find(key => key.startsWith(relayState.TAB_KEY_PREFIX)) ?? ''
+    await waitFor(() => {
+      const outcomes = relayState.readRoomTabState(bus.store.get(tabKey))?.outcomes
+      return outcomes && Object.keys(outcomes).length === 0 ? true : undefined
+    })
   })
 
   test('splits long text at the room cap with every segment bracketed', async () => {
