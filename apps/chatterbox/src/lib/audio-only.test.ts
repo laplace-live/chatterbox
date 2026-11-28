@@ -168,10 +168,14 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
   }
 
   const stopPlayback = mock(() => {})
+  const saveVolume = mock((_value: number) => {})
+  const saveMute = mock((_muted: boolean) => {})
   const livePlayer = {
     getPlayerInfo: () => ({ volume: { value: 80, disabled: false } }),
     stopPlayback,
     reload() {},
+    volume: saveVolume,
+    mute: saveMute,
   }
 
   const audioOnlyMode = signal<AudioOnlyMode>('off')
@@ -339,8 +343,12 @@ async function loadAudioOnly(opts: LoadAudioOnlyOptions = {}) {
       logs,
       createdPlayers,
       stopPlayback,
+      saveVolume,
+      saveMute,
       audioOnlyMode,
       audioOnlyActive,
+      audioOnlyVolume: audioOnlyVolumeSig,
+      audioOnlyMuted: audioOnlyMutedSig,
       advanceTimersBy,
       flushMicrotasks,
       waitForLog,
@@ -634,6 +642,35 @@ describe('engageAudioOnly candidate failover', () => {
 
     expect(createdPlayers).toHaveLength(2)
     expect(new URL(createdPlayers[1]?.url ?? '').hostname).toBe(BACKUP_HOST)
+
+    mod.stopAudioOnly()
+  })
+})
+
+describe('persistAudioOnlyVolume', () => {
+  test('saves the level (as 0–100) and mute into B站 player settings', async () => {
+    const { mod, saveVolume, saveMute, audioOnlyVolume, audioOnlyMuted } = await loadAudioOnly()
+    audioOnlyVolume.value = 0.354
+    audioOnlyMuted.value = true
+
+    mod.persistAudioOnlyVolume()
+
+    expect(saveVolume.mock.calls).toEqual([[35]])
+    expect(saveMute.mock.calls).toEqual([[true]])
+  })
+
+  test('engaging never writes the captured level back', async () => {
+    const { mod, saveVolume, saveMute, audioOnlyMode, audioOnlyActive, audioOnlyVolume, waitForLog } =
+      await loadAudioOnly()
+    audioOnlyMode.value = 'on'
+    audioOnlyActive.value = true
+    mod.startAudioOnly()
+
+    await waitForLog(msg => msg.includes('已开启仅音频模式'))
+
+    expect(audioOnlyVolume.value).toBe(0.8)
+    expect(saveVolume).not.toHaveBeenCalled()
+    expect(saveMute).not.toHaveBeenCalled()
 
     mod.stopAudioOnly()
   })

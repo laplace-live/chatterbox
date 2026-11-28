@@ -8,7 +8,8 @@
  *   preserved.
  * - Watchdog re-stops on `blob:` src revert: BLTH's SwitchLiveStreamQuality
  *   re-engages the player, else you'd stream video + audio at once.
- * - Volume/mute captured BEFORE stopPlayback (which nulls getPlayerInfo).
+ * - Volume/mute captured BEFORE stopPlayback (which nulls getPlayerInfo);
+ *   user changes are saved back into B站's player settings, so reloads keep them.
  * - Swaps are make-before-break: the incoming stream starts beside the
  *   outgoing one and only takes over once it's actually playing.
  */
@@ -108,6 +109,10 @@ interface LivePlayerLike {
   }
   stopPlayback?: () => unknown
   reload?: () => unknown
+  /** Set and save the volume (0–100) to B站's player settings; works while stopped. */
+  volume?: (value: number) => unknown
+  /** Set and save the mute state to B站's player settings; works while stopped. */
+  mute?: (muted: boolean) => unknown
 }
 
 function getLivePlayer(): LivePlayerLike | null {
@@ -416,6 +421,20 @@ function captureNativeVolume(): void {
 }
 
 /**
+ * Save the audio-only volume/mute into B站's player settings, which the next page load starts
+ * from (and `captureNativeVolume` reads back). Call on user changes only.
+ */
+export function persistAudioOnlyVolume(): void {
+  const player = getLivePlayer()
+  try {
+    player?.volume?.(Math.round(audioOnlyVolume.value * 100))
+    player?.mute?.(audioOnlyMuted.value)
+  } catch (err) {
+    console.warn('[audio-only] saving volume failed:', err)
+  }
+}
+
+/**
  * Push `audioOnlyVolume`/`audioOnlyMuted` onto the hidden <audio>. Reads
  * both signals BEFORE the null-guard so the live-apply effect subscribes
  * even before a pipeline exists — else a pre-attach slider move wouldn't
@@ -454,7 +473,7 @@ function waitForNativePlayback(): Promise<void> {
 
 /**
  * Keep our stream audible until the reloaded native player plays, then drop it and carry its
- * level over (counterpart of `captureNativeVolume`; reload() restores B站's own pre-stop volume).
+ * level over (counterpart of `captureNativeVolume`; covers a level `persistAudioOnlyVolume` couldn't save).
  * Runs to completion even if re-engaged meanwhile: that engage waits on `handoff` before starting.
  */
 async function handOffToNativePlayer(volume: number, muted: boolean): Promise<void> {

@@ -1,6 +1,7 @@
 import { IconVolume, IconVolume2, IconVolumeOff } from '@tabler/icons-preact'
 import { cn } from 'cn'
 
+import { persistAudioOnlyVolume } from '../lib/audio-only'
 import { volumeIconState } from '../lib/audio-only-volume'
 import { audioOnlyActive, audioOnlyMuted, audioOnlyVolume } from '../lib/store'
 import { STATUS_BAR_BUTTON_CLASS, StatusBarCollapsible, useStatusBarCompact } from './status-bar'
@@ -13,7 +14,7 @@ const UNMUTE_FALLBACK_VOLUME = 0.5
 
 /**
  * Audio-only mute toggle and volume slider (a vertical popup when compact), replacing the
- * controls `stopPlayback()` removes; writes only the volume/mute signals, never the audio element.
+ * controls `stopPlayback()` removes; writes the volume/mute signals (never the audio element) and saves them.
  */
 export function AudioOnlyControls() {
   const compact = useStatusBarCompact()
@@ -33,12 +34,14 @@ export function AudioOnlyControls() {
     // muting with this button leaves the level intact.
     if (!nextMuted && audioOnlyVolume.value <= 0) audioOnlyVolume.value = UNMUTE_FALLBACK_VOLUME
     audioOnlyMuted.value = nextMuted
+    persistAudioOnlyVolume()
   }
 
   const onSlide = (nextPercent: number) => {
     const next = nextPercent / 100
     audioOnlyVolume.value = next
     audioOnlyMuted.value = next <= 0
+    persistAudioOnlyVolume()
   }
 
   const renderSlider = (className: string) => (
