@@ -82,7 +82,7 @@ migrateGmKey('audioOnlyEnabled', 'audioOnlyMode', (v): AudioOnlyMode => (v === t
 export const audioOnlyMode = gmSignal<AudioOnlyMode>('audioOnlyMode', 'off')
 // Whether audio-only is engaged right now. Runtime, derived from `audioOnlyMode` (+ tab visibility for 'auto') by `lib/audio-only.ts`.
 export const audioOnlyActive = signal(false)
-// Audio-only playback controls. Runtime signals, NOT persisted: re-seeded from the native player's volume/mute each engage, so persisting would fight that seed. `audioOnlyVolume` is 0–1.
+// Audio-only playback controls. Not GM-persisted: re-seeded from the native player's volume/mute each engage, and user changes are saved into B站's own player settings instead (`persistAudioOnlyVolume`). `audioOnlyVolume` is 0–1.
 export const audioOnlyVolume = signal(1)
 export const audioOnlyMuted = signal(false)
 // Auto-seek (自动追帧): nudges `playbackRate` to minimize latency; targets the hidden `<audio>` while `audioOnlyActive`. Event-driven (no polling). Threshold in seconds = target buffered-ahead. See `lib/auto-seek.ts`.
